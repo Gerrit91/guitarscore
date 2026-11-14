@@ -46,7 +46,6 @@
 <line x1="8" y1="41.11" x2="36.25" y2="41.11" stroke="#707070" stroke-width="0.13"/>
 <line x1="8" y1="42.11" x2="36.25" y2="42.11" stroke="#707070" stroke-width="0.13"/>
 <text x="8.6" y="41.11" font-family="Bravura" font-size="4" fill="#101010" data-glyph="gClef">&#xE050;</text>
-<line x1="8.08" y1="38.11" x2="8.08" y2="57.61" stroke="#303030" stroke-width="0.16"/>
 <text x="13.43" y="39.11" font-family="Bravura" font-size="4" fill="#101010" data-glyph="timeSig4">&#xE084;</text>
 <text x="13.43" y="41.11" font-family="Bravura" font-size="4" fill="#101010" data-glyph="timeSig4">&#xE084;</text>
 <text x="17.71" y="40.11" font-family="Bravura" font-size="4" fill="#101010" data-glyph="restQuarter">&#xE4E5;</text>
@@ -57,6 +56,10 @@
 <line x1="36" y1="50.11" x2="36" y2="57.61" stroke="#303030" stroke-width="0.5"/>
 <line x1="35.27" y1="38.11" x2="35.27" y2="42.11" stroke="#303030" stroke-width="0.16"/>
 <line x1="36" y1="38.11" x2="36" y2="42.11" stroke="#303030" stroke-width="0.5"/>
+<line x1="8.08" y1="38.11" x2="8.08" y2="57.61" stroke="#303030" stroke-width="0.16"/>
+<line x1="7.25" y1="38.11" x2="7.25" y2="57.61" stroke="#303030" stroke-width="0.22"/>
+<line x1="7.25" y1="38.11" x2="7.85" y2="38.11" stroke="#303030" stroke-width="0.22"/>
+<line x1="7.25" y1="57.61" x2="7.85" y2="57.61" stroke="#303030" stroke-width="0.22"/>
 <text x="6.8" y="48.28" font-family="Noto Sans" font-size="1.2" text-anchor="end" fill="#404040">Track 2</text>
 <line x1="8.08" y1="20.11" x2="8.08" y2="57.61" stroke="#303030" stroke-width="0.16"/>
 </svg>

@@ -20,7 +20,6 @@
 <line x1="8" y1="39.84" x2="112" y2="39.84" stroke="#707070" stroke-width="0.13"/>
 <line x1="8" y1="40.84" x2="112" y2="40.84" stroke="#707070" stroke-width="0.13"/>
 <text x="8.6" y="39.84" font-family="Bravura" font-size="4" fill="#101010" data-glyph="gClef">&#xE050;</text>
-<line x1="8.08" y1="36.84" x2="8.08" y2="56.34" stroke="#303030" stroke-width="0.16"/>
 <text x="12.28" y="36.04" font-family="Noto Sans" font-size="1.1" fill="#404040">1</text>
 <text x="13.38" y="37.84" font-family="Bravura" font-size="4" fill="#101010" data-glyph="timeSig4">&#xE084;</text>
 <text x="13.38" y="39.84" font-family="Bravura" font-size="4" fill="#101010" data-glyph="timeSig4">&#xE084;</text>
@@ -77,6 +76,10 @@
 <text x="68.34" y="34.24" font-family="Noto Sans" font-size="1" fill="#404040">Hammer on and pull off</text>
 <line x1="111.92" y1="48.84" x2="111.92" y2="56.34" stroke="#303030" stroke-width="0.16"/>
 <line x1="111.92" y1="36.84" x2="111.92" y2="40.84" stroke="#303030" stroke-width="0.16"/>
+<line x1="8.08" y1="36.84" x2="8.08" y2="56.34" stroke="#303030" stroke-width="0.16"/>
+<line x1="7.25" y1="36.84" x2="7.25" y2="56.34" stroke="#303030" stroke-width="0.22"/>
+<line x1="7.25" y1="36.84" x2="7.85" y2="36.84" stroke="#303030" stroke-width="0.22"/>
+<line x1="7.25" y1="56.34" x2="7.85" y2="56.34" stroke="#303030" stroke-width="0.22"/>
 <line x1="8" y1="80.74" x2="112" y2="80.74" stroke="#707070" stroke-width="0.13"/>
 <line x1="8" y1="82.24" x2="112" y2="82.24" stroke="#707070" stroke-width="0.13"/>
 <line x1="8" y1="83.74" x2="112" y2="83.74" stroke="#707070" stroke-width="0.13"/>
@@ -90,7 +93,6 @@
 <line x1="8" y1="71.74" x2="112" y2="71.74" stroke="#707070" stroke-width="0.13"/>
 <line x1="8" y1="72.74" x2="112" y2="72.74" stroke="#707070" stroke-width="0.13"/>
 <text x="8.6" y="71.74" font-family="Bravura" font-size="4" fill="#101010" data-glyph="gClef">&#xE050;</text>
-<line x1="8.08" y1="68.74" x2="8.08" y2="88.24" stroke="#303030" stroke-width="0.16"/>
 <text x="12.28" y="67.94" font-family="Noto Sans" font-size="1.1" fill="#404040">4</text>
 <rect x="13.48" y="81.5" width="2.02" height="1.47" fill="#ffffff"/>
 <text x="14.49" y="82.78" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">15</text>
@@ -247,6 +249,10 @@
 <text x="79.09" y="66.14" font-family="Noto Sans" font-size="1" fill="#404040">Vibratos</text>
 <line x1="111.92" y1="80.74" x2="111.92" y2="88.24" stroke="#303030" stroke-width="0.16"/>
 <line x1="111.92" y1="68.74" x2="111.92" y2="72.74" stroke="#303030" stroke-width="0.16"/>
+<line x1="8.08" y1="68.74" x2="8.08" y2="88.24" stroke="#303030" stroke-width="0.16"/>
+<line x1="7.25" y1="68.74" x2="7.25" y2="88.24" stroke="#303030" stroke-width="0.22"/>
+<line x1="7.25" y1="68.74" x2="7.85" y2="68.74" stroke="#303030" stroke-width="0.22"/>
+<line x1="7.25" y1="88.24" x2="7.85" y2="88.24" stroke="#303030" stroke-width="0.22"/>
 <line x1="8" y1="112.64" x2="112" y2="112.64" stroke="#707070" stroke-width="0.13"/>
 <line x1="8" y1="114.14" x2="112" y2="114.14" stroke="#707070" stroke-width="0.13"/>
 <line x1="8" y1="115.64" x2="112" y2="115.64" stroke="#707070" stroke-width="0.13"/>
@@ -260,7 +266,6 @@
 <line x1="8" y1="103.64" x2="112" y2="103.64" stroke="#707070" stroke-width="0.13"/>
 <line x1="8" y1="104.64" x2="112" y2="104.64" stroke="#707070" stroke-width="0.13"/>
 <text x="8.6" y="103.64" font-family="Bravura" font-size="4" fill="#101010" data-glyph="gClef">&#xE050;</text>
-<line x1="8.08" y1="100.64" x2="8.08" y2="120.14" stroke="#303030" stroke-width="0.16"/>
 <text x="12.28" y="99.84" font-family="Noto Sans" font-size="1.1" fill="#404040">7</text>
 <rect x="13.48" y="114.9" width="2.06" height="1.47" fill="#ffffff"/>
 <text x="14.51" y="116.18" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">(0)</text>
@@ -340,6 +345,10 @@
 <text x="90.65" y="98.04" font-family="Noto Sans" font-size="1" fill="#404040">Dive bomb</text>
 <line x1="111.92" y1="112.64" x2="111.92" y2="120.14" stroke="#303030" stroke-width="0.16"/>
 <line x1="111.92" y1="100.64" x2="111.92" y2="104.64" stroke="#303030" stroke-width="0.16"/>
+<line x1="8.08" y1="100.64" x2="8.08" y2="120.14" stroke="#303030" stroke-width="0.16"/>
+<line x1="7.25" y1="100.64" x2="7.25" y2="120.14" stroke="#303030" stroke-width="0.22"/>
+<line x1="7.25" y1="100.64" x2="7.85" y2="100.64" stroke="#303030" stroke-width="0.22"/>
+<line x1="7.25" y1="120.14" x2="7.85" y2="120.14" stroke="#303030" stroke-width="0.22"/>
 <line x1="8" y1="144.54" x2="71.96" y2="144.54" stroke="#707070" stroke-width="0.13"/>
 <line x1="8" y1="146.04" x2="71.96" y2="146.04" stroke="#707070" stroke-width="0.13"/>
 <line x1="8" y1="147.54" x2="71.96" y2="147.54" stroke="#707070" stroke-width="0.13"/>
@@ -353,7 +362,6 @@
 <line x1="8" y1="135.54" x2="71.96" y2="135.54" stroke="#707070" stroke-width="0.13"/>
 <line x1="8" y1="136.54" x2="71.96" y2="136.54" stroke="#707070" stroke-width="0.13"/>
 <text x="8.6" y="135.54" font-family="Bravura" font-size="4" fill="#101010" data-glyph="gClef">&#xE050;</text>
-<line x1="8.08" y1="132.54" x2="8.08" y2="152.04" stroke="#303030" stroke-width="0.16"/>
 <text x="12.28" y="131.74" font-family="Noto Sans" font-size="1.1" fill="#404040">10</text>
 <rect x="14.74" y="143.8" width="1.16" height="1.47" fill="#ffffff"/>
 <text x="15.32" y="145.08" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">2</text>
@@ -485,4 +493,8 @@
 <line x1="71.71" y1="144.54" x2="71.71" y2="152.04" stroke="#303030" stroke-width="0.5"/>
 <line x1="70.98" y1="132.54" x2="70.98" y2="136.54" stroke="#303030" stroke-width="0.16"/>
 <line x1="71.71" y1="132.54" x2="71.71" y2="136.54" stroke="#303030" stroke-width="0.5"/>
+<line x1="8.08" y1="132.54" x2="8.08" y2="152.04" stroke="#303030" stroke-width="0.16"/>
+<line x1="7.25" y1="132.54" x2="7.25" y2="152.04" stroke="#303030" stroke-width="0.22"/>
+<line x1="7.25" y1="132.54" x2="7.85" y2="132.54" stroke="#303030" stroke-width="0.22"/>
+<line x1="7.25" y1="152.04" x2="7.85" y2="152.04" stroke="#303030" stroke-width="0.22"/>
 </svg>

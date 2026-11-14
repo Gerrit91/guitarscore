@@ -171,6 +171,47 @@ fn tab_only_shows_tuplet_numbers() {
     }
 }
 
+/// A single staff shown as several rows (standard notation and TAB) is joined by a square
+/// bracket at the system's start, like Guitar Pro draws it; one row gets none.
+#[test]
+fn a_staff_shown_as_notation_and_tab_gets_a_square_bracket() {
+    let bracket_lines = |layout: &Layout| -> Vec<(gscore_layout::Point, gscore_layout::Point)> {
+        layout
+            .ops
+            .iter()
+            .filter_map(|op| match op {
+                DrawOp::Line {
+                    from,
+                    to,
+                    thickness,
+                    color: ColorToken::Barline,
+                } if (*thickness - 0.22).abs() < 1e-6 => Some((*from, *to)),
+                _ => None,
+            })
+            .collect()
+    };
+    let both = layout(TrackStaves::NOTATION_AND_TAB);
+    let lines = bracket_lines(&both);
+    assert_eq!(lines.len(), 3, "a vertical line and two hooks: {lines:?}");
+    let vertical = lines
+        .iter()
+        .find(|(from, to)| (from.x - to.x).abs() < 1e-6)
+        .expect("the bracket's vertical line");
+    assert!(vertical.1.y - vertical.0.y > 8.0, "it spans both rows");
+    for (from, to) in &lines {
+        if (from.x - to.x).abs() < 1e-6 {
+            continue;
+        }
+        assert!((from.y - to.y).abs() < 1e-6, "a horizontal hook");
+        assert!(to.x > from.x, "the hooks reach towards the staves");
+    }
+    // One row alone has no bracket.
+    let tab = layout(TrackStaves::TAB_ONLY);
+    assert!(bracket_lines(&tab).is_empty());
+    let notation = layout(TrackStaves::NOTATION_ONLY);
+    assert!(bracket_lines(&notation).is_empty());
+}
+
 /// Slash notation is a staff of its own: rhythm slashes on one line, without a clef, and
 /// it combines with the other two staves as the top one, joined to them at the start.
 #[test]

@@ -5457,3 +5457,12 @@ signal, and the bus's 150 Hz low cut takes the kick's body (about 3 dB of a kit)
 - Tests: Escape closes the Sound chain and the compressor bus window; the source-switch
   tests use the accessible names; snapshots regenerated for the moved section and the
   segmented switch.
+
+## 2026-11-14 — A square bracket joins a staff's notation and TAB rows
+
+A track written on one staff but shown as several rows (standard notation and TAB, with or
+without slash notation) now gets the square bracket Guitar Pro draws at every system's
+start, instead of only the plain joining line. `Part::row_count` counts the rows the staff
+switches draw; the group logic uses it next to the stored extra staves (a piano keeps its
+curly brace). Header names, join line and bracket span the whole group. Layout goldens
+updated; a unit test checks the bracket on notation+TAB and its absence on a single row.

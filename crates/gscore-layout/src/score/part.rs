@@ -318,6 +318,15 @@ impl<'a> Part<'a> {
         }
     }
 
+    /// How many staff rows this part draws in a system: standard notation, the tablature and
+    /// slash notation can each be on (a track with extra stored staves draws one row per
+    /// staff instead).
+    pub(super) fn row_count(&self) -> usize {
+        usize::from(self.ctx.notation.is_some())
+            .saturating_add(usize::from(self.show_tab))
+            .saturating_add(usize::from(self.show_slash))
+    }
+
     /// Where the line joining this staff's staves at the start of a system begins, below
     /// the part's top: at the topmost staff's top line (the slash staff's frame reaches a
     /// space above its line).

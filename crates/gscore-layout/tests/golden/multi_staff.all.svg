@@ -28,7 +28,6 @@
 <line x1="8" y1="36.07" x2="112" y2="36.07" stroke="#707070" stroke-width="0.13"/>
 <line x1="8" y1="37.07" x2="112" y2="37.07" stroke="#707070" stroke-width="0.13"/>
 <text x="8.6" y="36.07" font-family="Bravura" font-size="4" fill="#101010" data-glyph="gClef">&#xE050;</text>
-<line x1="8.08" y1="33.07" x2="8.08" y2="52.57" stroke="#303030" stroke-width="0.16"/>
 <text x="12.9" y="32.27" font-family="Noto Sans" font-size="1.1" fill="#404040">1</text>
 <text x="13.2" y="33.07" font-family="Bravura" font-size="4" fill="#101010" data-glyph="accidentalSharp">&#xE262;</text>
 <text x="14.2" y="34.57" font-family="Bravura" font-size="4" fill="#101010" data-glyph="accidentalSharp">&#xE262;</text>
@@ -266,6 +265,10 @@
 <line x1="112" y1="54.12" x2="112" y2="54.72" stroke="#404040" stroke-width="0.2"/>
 <line x1="111.92" y1="45.07" x2="111.92" y2="52.57" stroke="#303030" stroke-width="0.16"/>
 <line x1="111.92" y1="33.07" x2="111.92" y2="37.07" stroke="#303030" stroke-width="0.16"/>
+<line x1="8.08" y1="33.07" x2="8.08" y2="52.57" stroke="#303030" stroke-width="0.16"/>
+<line x1="7.25" y1="33.07" x2="7.25" y2="52.57" stroke="#303030" stroke-width="0.22"/>
+<line x1="7.25" y1="33.07" x2="7.85" y2="33.07" stroke="#303030" stroke-width="0.22"/>
+<line x1="7.25" y1="52.57" x2="7.85" y2="52.57" stroke="#303030" stroke-width="0.22"/>
 <text x="6.8" y="43.24" font-family="Noto Sans" font-size="1.2" text-anchor="end" fill="#404040">el.guit.</text>
 <line x1="8" y1="70.57" x2="112" y2="70.57" stroke="#707070" stroke-width="0.13"/>
 <line x1="8" y1="72.07" x2="112" y2="72.07" stroke="#707070" stroke-width="0.13"/>
@@ -280,7 +283,6 @@
 <line x1="8" y1="61.57" x2="112" y2="61.57" stroke="#707070" stroke-width="0.13"/>
 <line x1="8" y1="62.57" x2="112" y2="62.57" stroke="#707070" stroke-width="0.13"/>
 <text x="8.6" y="61.57" font-family="Bravura" font-size="4" fill="#101010" data-glyph="gClef">&#xE050;</text>
-<line x1="8.08" y1="58.57" x2="8.08" y2="78.07" stroke="#303030" stroke-width="0.16"/>
 <text x="13.2" y="58.57" font-family="Bravura" font-size="4" fill="#101010" data-glyph="accidentalSharp">&#xE262;</text>
 <text x="14.2" y="60.07" font-family="Bravura" font-size="4" fill="#101010" data-glyph="accidentalSharp">&#xE262;</text>
 <text x="15.2" y="58.07" font-family="Bravura" font-size="4" fill="#101010" data-glyph="accidentalSharp">&#xE262;</text>
@@ -514,6 +516,10 @@
 <line x1="112" y1="79.62" x2="112" y2="80.22" stroke="#404040" stroke-width="0.2"/>
 <line x1="111.92" y1="70.57" x2="111.92" y2="78.07" stroke="#303030" stroke-width="0.16"/>
 <line x1="111.92" y1="58.57" x2="111.92" y2="62.57" stroke="#303030" stroke-width="0.16"/>
+<line x1="8.08" y1="58.57" x2="8.08" y2="78.07" stroke="#303030" stroke-width="0.16"/>
+<line x1="7.25" y1="58.57" x2="7.25" y2="78.07" stroke="#303030" stroke-width="0.22"/>
+<line x1="7.25" y1="58.57" x2="7.85" y2="58.57" stroke="#303030" stroke-width="0.22"/>
+<line x1="7.25" y1="78.07" x2="7.85" y2="78.07" stroke="#303030" stroke-width="0.22"/>
 <text x="6.8" y="68.74" font-family="Noto Sans" font-size="1.2" text-anchor="end" fill="#404040">el.guit.</text>
 <line x1="8" y1="95.07" x2="112" y2="95.07" stroke="#707070" stroke-width="0.13"/>
 <line x1="8" y1="96.57" x2="112" y2="96.57" stroke="#707070" stroke-width="0.13"/>
@@ -528,7 +534,6 @@
 <line x1="8" y1="86.07" x2="112" y2="86.07" stroke="#707070" stroke-width="0.13"/>
 <line x1="8" y1="87.07" x2="112" y2="87.07" stroke="#707070" stroke-width="0.13"/>
 <text x="8.6" y="86.07" font-family="Bravura" font-size="4" fill="#101010" data-glyph="gClef">&#xE050;</text>
-<line x1="8.08" y1="83.07" x2="8.08" y2="102.57" stroke="#303030" stroke-width="0.16"/>
 <text x="13.2" y="83.07" font-family="Bravura" font-size="4" fill="#101010" data-glyph="accidentalSharp">&#xE262;</text>
 <text x="14.2" y="84.57" font-family="Bravura" font-size="4" fill="#101010" data-glyph="accidentalSharp">&#xE262;</text>
 <text x="15.2" y="82.57" font-family="Bravura" font-size="4" fill="#101010" data-glyph="accidentalSharp">&#xE262;</text>
@@ -549,6 +554,10 @@
 <line x1="81.61" y1="83.07" x2="81.61" y2="87.07" stroke="#303030" stroke-width="0.16"/>
 <line x1="111.92" y1="95.07" x2="111.92" y2="102.57" stroke="#303030" stroke-width="0.16"/>
 <line x1="111.92" y1="83.07" x2="111.92" y2="87.07" stroke="#303030" stroke-width="0.16"/>
+<line x1="8.08" y1="83.07" x2="8.08" y2="102.57" stroke="#303030" stroke-width="0.16"/>
+<line x1="7.25" y1="83.07" x2="7.25" y2="102.57" stroke="#303030" stroke-width="0.22"/>
+<line x1="7.25" y1="83.07" x2="7.85" y2="83.07" stroke="#303030" stroke-width="0.22"/>
+<line x1="7.25" y1="102.57" x2="7.85" y2="102.57" stroke="#303030" stroke-width="0.22"/>
 <text x="6.8" y="93.24" font-family="Noto Sans" font-size="1.2" text-anchor="end" fill="#404040">el.guit.</text>
 <line x1="8" y1="119.57" x2="112" y2="119.57" stroke="#707070" stroke-width="0.13"/>
 <line x1="8" y1="121.07" x2="112" y2="121.07" stroke="#707070" stroke-width="0.13"/>
@@ -563,7 +572,6 @@
 <line x1="8" y1="110.57" x2="112" y2="110.57" stroke="#707070" stroke-width="0.13"/>
 <line x1="8" y1="111.57" x2="112" y2="111.57" stroke="#707070" stroke-width="0.13"/>
 <text x="8.6" y="110.57" font-family="Bravura" font-size="4" fill="#101010" data-glyph="gClef">&#xE050;</text>
-<line x1="8.08" y1="107.57" x2="8.08" y2="127.07" stroke="#303030" stroke-width="0.16"/>
 <text x="13.2" y="107.57" font-family="Bravura" font-size="4" fill="#101010" data-glyph="accidentalSharp">&#xE262;</text>
 <text x="14.2" y="109.07" font-family="Bravura" font-size="4" fill="#101010" data-glyph="accidentalSharp">&#xE262;</text>
 <text x="15.2" y="107.07" font-family="Bravura" font-size="4" fill="#101010" data-glyph="accidentalSharp">&#xE262;</text>
@@ -584,6 +592,10 @@
 <line x1="81.61" y1="107.57" x2="81.61" y2="111.57" stroke="#303030" stroke-width="0.16"/>
 <line x1="111.92" y1="119.57" x2="111.92" y2="127.07" stroke="#303030" stroke-width="0.16"/>
 <line x1="111.92" y1="107.57" x2="111.92" y2="111.57" stroke="#303030" stroke-width="0.16"/>
+<line x1="8.08" y1="107.57" x2="8.08" y2="127.07" stroke="#303030" stroke-width="0.16"/>
+<line x1="7.25" y1="107.57" x2="7.25" y2="127.07" stroke="#303030" stroke-width="0.22"/>
+<line x1="7.25" y1="107.57" x2="7.85" y2="107.57" stroke="#303030" stroke-width="0.22"/>
+<line x1="7.25" y1="127.07" x2="7.85" y2="127.07" stroke="#303030" stroke-width="0.22"/>
 <text x="6.8" y="117.74" font-family="Noto Sans" font-size="1.2" text-anchor="end" fill="#404040">el.guit.</text>
 <line x1="8" y1="132.07" x2="112" y2="132.07" stroke="#707070" stroke-width="0.13"/>
 <line x1="8" y1="133.57" x2="112" y2="133.57" stroke="#707070" stroke-width="0.13"/>
@@ -721,7 +733,6 @@
 <text x="12.58" y="163.07" font-family="Bravura" font-size="4" fill="#101010" data-glyph="accidentalSharp">&#xE262;</text>
 <text x="13.58" y="161.07" font-family="Bravura" font-size="4" fill="#101010" data-glyph="accidentalSharp">&#xE262;</text>
 <text x="14.57" y="162.57" font-family="Bravura" font-size="4" fill="#101010" data-glyph="accidentalSharp">&#xE262;</text>
-<line x1="8.08" y1="161.57" x2="8.08" y2="181.07" stroke="#303030" stroke-width="0.16"/>
 <text x="16.17" y="160.77" font-family="Noto Sans" font-size="1.1" fill="#404040">4</text>
 <rect x="17.8" y="175.83" width="1.16" height="1.47" fill="#ffffff"/>
 <text x="18.38" y="177.11" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
@@ -880,6 +891,10 @@
 <line x1="111.02" y1="161.57" x2="111.02" y2="165.57" stroke="#303030" stroke-width="0.16"/>
 <text x="110.38" y="163.07" font-family="Bravura" font-size="4" fill="#303030" data-glyph="repeatDot">&#xE044;</text>
 <text x="110.38" y="164.07" font-family="Bravura" font-size="4" fill="#303030" data-glyph="repeatDot">&#xE044;</text>
+<line x1="8.08" y1="161.57" x2="8.08" y2="181.07" stroke="#303030" stroke-width="0.16"/>
+<line x1="7.25" y1="161.57" x2="7.25" y2="181.07" stroke="#303030" stroke-width="0.22"/>
+<line x1="7.25" y1="161.57" x2="7.85" y2="161.57" stroke="#303030" stroke-width="0.22"/>
+<line x1="7.25" y1="181.07" x2="7.85" y2="181.07" stroke="#303030" stroke-width="0.22"/>
 <text x="6.8" y="171.74" font-family="Noto Sans" font-size="1.2" text-anchor="end" fill="#404040">el.guit.</text>
 <line x1="8" y1="198.57" x2="112" y2="198.57" stroke="#707070" stroke-width="0.13"/>
 <line x1="8" y1="200.07" x2="112" y2="200.07" stroke="#707070" stroke-width="0.13"/>
@@ -898,7 +913,6 @@
 <text x="12.58" y="188.07" font-family="Bravura" font-size="4" fill="#101010" data-glyph="accidentalSharp">&#xE262;</text>
 <text x="13.58" y="186.07" font-family="Bravura" font-size="4" fill="#101010" data-glyph="accidentalSharp">&#xE262;</text>
 <text x="14.57" y="187.57" font-family="Bravura" font-size="4" fill="#101010" data-glyph="accidentalSharp">&#xE262;</text>
-<line x1="8.08" y1="186.57" x2="8.08" y2="206.07" stroke="#303030" stroke-width="0.16"/>
 <rect x="17.37" y="202.33" width="2.02" height="1.47" fill="#ffffff"/>
 <text x="18.38" y="203.61" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">14</text>
 <rect x="28.64" y="202.33" width="2.02" height="1.47" fill="#ffffff"/>
@@ -1058,6 +1072,10 @@
 <line x1="111.02" y1="186.57" x2="111.02" y2="190.57" stroke="#303030" stroke-width="0.16"/>
 <text x="110.38" y="188.07" font-family="Bravura" font-size="4" fill="#303030" data-glyph="repeatDot">&#xE044;</text>
 <text x="110.38" y="189.07" font-family="Bravura" font-size="4" fill="#303030" data-glyph="repeatDot">&#xE044;</text>
+<line x1="8.08" y1="186.57" x2="8.08" y2="206.07" stroke="#303030" stroke-width="0.16"/>
+<line x1="7.25" y1="186.57" x2="7.25" y2="206.07" stroke="#303030" stroke-width="0.22"/>
+<line x1="7.25" y1="186.57" x2="7.85" y2="186.57" stroke="#303030" stroke-width="0.22"/>
+<line x1="7.25" y1="206.07" x2="7.85" y2="206.07" stroke="#303030" stroke-width="0.22"/>
 <text x="6.8" y="196.74" font-family="Noto Sans" font-size="1.2" text-anchor="end" fill="#404040">el.guit.</text>
 <line x1="8" y1="223.07" x2="112" y2="223.07" stroke="#707070" stroke-width="0.13"/>
 <line x1="8" y1="224.57" x2="112" y2="224.57" stroke="#707070" stroke-width="0.13"/>
@@ -1076,7 +1094,6 @@
 <text x="12.58" y="212.57" font-family="Bravura" font-size="4" fill="#101010" data-glyph="accidentalSharp">&#xE262;</text>
 <text x="13.58" y="210.57" font-family="Bravura" font-size="4" fill="#101010" data-glyph="accidentalSharp">&#xE262;</text>
 <text x="14.57" y="212.07" font-family="Bravura" font-size="4" fill="#101010" data-glyph="accidentalSharp">&#xE262;</text>
-<line x1="8.08" y1="211.07" x2="8.08" y2="230.57" stroke="#303030" stroke-width="0.16"/>
 <line x1="111.75" y1="223.07" x2="111.75" y2="230.57" stroke="#303030" stroke-width="0.5"/>
 <line x1="111.02" y1="223.07" x2="111.02" y2="230.57" stroke="#303030" stroke-width="0.16"/>
 <text x="110.38" y="225.32" font-family="Bravura" font-size="4" fill="#303030" data-glyph="repeatDot">&#xE044;</text>
@@ -1085,6 +1102,10 @@
 <line x1="111.02" y1="211.07" x2="111.02" y2="215.07" stroke="#303030" stroke-width="0.16"/>
 <text x="110.38" y="212.57" font-family="Bravura" font-size="4" fill="#303030" data-glyph="repeatDot">&#xE044;</text>
 <text x="110.38" y="213.57" font-family="Bravura" font-size="4" fill="#303030" data-glyph="repeatDot">&#xE044;</text>
+<line x1="8.08" y1="211.07" x2="8.08" y2="230.57" stroke="#303030" stroke-width="0.16"/>
+<line x1="7.25" y1="211.07" x2="7.25" y2="230.57" stroke="#303030" stroke-width="0.22"/>
+<line x1="7.25" y1="211.07" x2="7.85" y2="211.07" stroke="#303030" stroke-width="0.22"/>
+<line x1="7.25" y1="230.57" x2="7.85" y2="230.57" stroke="#303030" stroke-width="0.22"/>
 <text x="6.8" y="221.24" font-family="Noto Sans" font-size="1.2" text-anchor="end" fill="#404040">el.guit.</text>
 <line x1="8" y1="247.57" x2="112" y2="247.57" stroke="#707070" stroke-width="0.13"/>
 <line x1="8" y1="249.07" x2="112" y2="249.07" stroke="#707070" stroke-width="0.13"/>
@@ -1103,7 +1124,6 @@
 <text x="12.58" y="237.07" font-family="Bravura" font-size="4" fill="#101010" data-glyph="accidentalSharp">&#xE262;</text>
 <text x="13.58" y="235.07" font-family="Bravura" font-size="4" fill="#101010" data-glyph="accidentalSharp">&#xE262;</text>
 <text x="14.57" y="236.57" font-family="Bravura" font-size="4" fill="#101010" data-glyph="accidentalSharp">&#xE262;</text>
-<line x1="8.08" y1="235.57" x2="8.08" y2="255.07" stroke="#303030" stroke-width="0.16"/>
 <line x1="111.75" y1="247.57" x2="111.75" y2="255.07" stroke="#303030" stroke-width="0.5"/>
 <line x1="111.02" y1="247.57" x2="111.02" y2="255.07" stroke="#303030" stroke-width="0.16"/>
 <text x="110.38" y="249.82" font-family="Bravura" font-size="4" fill="#303030" data-glyph="repeatDot">&#xE044;</text>
@@ -1112,6 +1132,10 @@
 <line x1="111.02" y1="235.57" x2="111.02" y2="239.57" stroke="#303030" stroke-width="0.16"/>
 <text x="110.38" y="237.07" font-family="Bravura" font-size="4" fill="#303030" data-glyph="repeatDot">&#xE044;</text>
 <text x="110.38" y="238.07" font-family="Bravura" font-size="4" fill="#303030" data-glyph="repeatDot">&#xE044;</text>
+<line x1="8.08" y1="235.57" x2="8.08" y2="255.07" stroke="#303030" stroke-width="0.16"/>
+<line x1="7.25" y1="235.57" x2="7.25" y2="255.07" stroke="#303030" stroke-width="0.22"/>
+<line x1="7.25" y1="235.57" x2="7.85" y2="235.57" stroke="#303030" stroke-width="0.22"/>
+<line x1="7.25" y1="255.07" x2="7.85" y2="255.07" stroke="#303030" stroke-width="0.22"/>
 <text x="6.8" y="245.74" font-family="Noto Sans" font-size="1.2" text-anchor="end" fill="#404040">el.guit.</text>
 <line x1="8" y1="260.07" x2="112" y2="260.07" stroke="#707070" stroke-width="0.13"/>
 <line x1="8" y1="261.57" x2="112" y2="261.57" stroke="#707070" stroke-width="0.13"/>
@@ -1188,7 +1212,6 @@
 <text x="12.58" y="295.87" font-family="Bravura" font-size="4" fill="#101010" data-glyph="accidentalSharp">&#xE262;</text>
 <text x="13.58" y="293.87" font-family="Bravura" font-size="4" fill="#101010" data-glyph="accidentalSharp">&#xE262;</text>
 <text x="14.57" y="295.37" font-family="Bravura" font-size="4" fill="#101010" data-glyph="accidentalSharp">&#xE262;</text>
-<line x1="8.08" y1="294.37" x2="8.08" y2="313.87" stroke="#303030" stroke-width="0.16"/>
 <text x="17.79" y="293.57" font-family="Noto Sans" font-size="1.1" fill="#404040">5</text>
 <text x="18.95" y="295.37" font-family="Bravura" font-size="4" fill="#101010" data-glyph="timeSig6">&#xE086;</text>
 <text x="18.88" y="297.37" font-family="Bravura" font-size="4" fill="#101010" data-glyph="timeSig4">&#xE084;</text>
@@ -1212,6 +1235,10 @@
 <text x="66.83" y="293.57" font-family="Noto Sans" font-size="1.1" fill="#404040">6</text>
 <line x1="111.92" y1="306.37" x2="111.92" y2="313.87" stroke="#303030" stroke-width="0.16"/>
 <line x1="111.92" y1="294.37" x2="111.92" y2="298.37" stroke="#303030" stroke-width="0.16"/>
+<line x1="8.08" y1="294.37" x2="8.08" y2="313.87" stroke="#303030" stroke-width="0.16"/>
+<line x1="7.25" y1="294.37" x2="7.25" y2="313.87" stroke="#303030" stroke-width="0.22"/>
+<line x1="7.25" y1="294.37" x2="7.85" y2="294.37" stroke="#303030" stroke-width="0.22"/>
+<line x1="7.25" y1="313.87" x2="7.85" y2="313.87" stroke="#303030" stroke-width="0.22"/>
 <text x="6.8" y="304.54" font-family="Noto Sans" font-size="1.2" text-anchor="end" fill="#404040">el.guit.</text>
 <line x1="8" y1="330.87" x2="112" y2="330.87" stroke="#707070" stroke-width="0.13"/>
 <line x1="8" y1="332.37" x2="112" y2="332.37" stroke="#707070" stroke-width="0.13"/>
@@ -1230,7 +1257,6 @@
 <text x="12.58" y="320.37" font-family="Bravura" font-size="4" fill="#101010" data-glyph="accidentalSharp">&#xE262;</text>
 <text x="13.58" y="318.37" font-family="Bravura" font-size="4" fill="#101010" data-glyph="accidentalSharp">&#xE262;</text>
 <text x="14.57" y="319.87" font-family="Bravura" font-size="4" fill="#101010" data-glyph="accidentalSharp">&#xE262;</text>
-<line x1="8.08" y1="318.87" x2="8.08" y2="338.37" stroke="#303030" stroke-width="0.16"/>
 <text x="18.95" y="319.87" font-family="Bravura" font-size="4" fill="#101010" data-glyph="timeSig6">&#xE086;</text>
 <text x="18.88" y="321.87" font-family="Bravura" font-size="4" fill="#101010" data-glyph="timeSig4">&#xE084;</text>
 <line x1="16.42" y1="330.87" x2="16.42" y2="338.37" stroke="#303030" stroke-width="0.5"/>
@@ -1245,6 +1271,10 @@
 <line x1="66.75" y1="318.87" x2="66.75" y2="322.87" stroke="#303030" stroke-width="0.16"/>
 <line x1="111.92" y1="330.87" x2="111.92" y2="338.37" stroke="#303030" stroke-width="0.16"/>
 <line x1="111.92" y1="318.87" x2="111.92" y2="322.87" stroke="#303030" stroke-width="0.16"/>
+<line x1="8.08" y1="318.87" x2="8.08" y2="338.37" stroke="#303030" stroke-width="0.16"/>
+<line x1="7.25" y1="318.87" x2="7.25" y2="338.37" stroke="#303030" stroke-width="0.22"/>
+<line x1="7.25" y1="318.87" x2="7.85" y2="318.87" stroke="#303030" stroke-width="0.22"/>
+<line x1="7.25" y1="338.37" x2="7.85" y2="338.37" stroke="#303030" stroke-width="0.22"/>
 <text x="6.8" y="329.04" font-family="Noto Sans" font-size="1.2" text-anchor="end" fill="#404040">el.guit.</text>
 <line x1="8" y1="359.37" x2="112" y2="359.37" stroke="#707070" stroke-width="0.13"/>
 <line x1="8" y1="360.87" x2="112" y2="360.87" stroke="#707070" stroke-width="0.13"/>
@@ -1263,7 +1293,6 @@
 <text x="12.58" y="348.87" font-family="Bravura" font-size="4" fill="#101010" data-glyph="accidentalSharp">&#xE262;</text>
 <text x="13.58" y="346.87" font-family="Bravura" font-size="4" fill="#101010" data-glyph="accidentalSharp">&#xE262;</text>
 <text x="14.57" y="348.37" font-family="Bravura" font-size="4" fill="#101010" data-glyph="accidentalSharp">&#xE262;</text>
-<line x1="8.08" y1="347.37" x2="8.08" y2="366.87" stroke="#303030" stroke-width="0.16"/>
 <text x="18.95" y="348.37" font-family="Bravura" font-size="4" fill="#101010" data-glyph="timeSig6">&#xE086;</text>
 <text x="18.88" y="350.37" font-family="Bravura" font-size="4" fill="#101010" data-glyph="timeSig4">&#xE084;</text>
 <rect x="23.79" y="363.13" width="1.16" height="1.47" fill="#ffffff"/>
@@ -1415,6 +1444,10 @@
 <line x1="101.91" y1="352.2" x2="101.91" y2="343.87" stroke="#101010" stroke-width="0.12"/>
 <line x1="111.92" y1="359.37" x2="111.92" y2="366.87" stroke="#303030" stroke-width="0.16"/>
 <line x1="111.92" y1="347.37" x2="111.92" y2="351.37" stroke="#303030" stroke-width="0.16"/>
+<line x1="8.08" y1="347.37" x2="8.08" y2="366.87" stroke="#303030" stroke-width="0.16"/>
+<line x1="7.25" y1="347.37" x2="7.25" y2="366.87" stroke="#303030" stroke-width="0.22"/>
+<line x1="7.25" y1="347.37" x2="7.85" y2="347.37" stroke="#303030" stroke-width="0.22"/>
+<line x1="7.25" y1="366.87" x2="7.85" y2="366.87" stroke="#303030" stroke-width="0.22"/>
 <text x="6.8" y="357.54" font-family="Noto Sans" font-size="1.2" text-anchor="end" fill="#404040">el.guit.</text>
 <line x1="8" y1="384.87" x2="112" y2="384.87" stroke="#707070" stroke-width="0.13"/>
 <line x1="8" y1="386.37" x2="112" y2="386.37" stroke="#707070" stroke-width="0.13"/>
@@ -1433,7 +1466,6 @@
 <text x="12.58" y="374.37" font-family="Bravura" font-size="4" fill="#101010" data-glyph="accidentalSharp">&#xE262;</text>
 <text x="13.58" y="372.37" font-family="Bravura" font-size="4" fill="#101010" data-glyph="accidentalSharp">&#xE262;</text>
 <text x="14.57" y="373.87" font-family="Bravura" font-size="4" fill="#101010" data-glyph="accidentalSharp">&#xE262;</text>
-<line x1="8.08" y1="372.87" x2="8.08" y2="392.37" stroke="#303030" stroke-width="0.16"/>
 <text x="18.95" y="373.87" font-family="Bravura" font-size="4" fill="#101010" data-glyph="timeSig6">&#xE086;</text>
 <text x="18.88" y="375.87" font-family="Bravura" font-size="4" fill="#101010" data-glyph="timeSig4">&#xE084;</text>
 <rect x="23.79" y="391.63" width="1.16" height="1.47" fill="#ffffff"/>
@@ -1618,6 +1650,10 @@
 <line x1="101.91" y1="381.2" x2="101.91" y2="373.37" stroke="#101010" stroke-width="0.12"/>
 <line x1="111.92" y1="384.87" x2="111.92" y2="392.37" stroke="#303030" stroke-width="0.16"/>
 <line x1="111.92" y1="372.87" x2="111.92" y2="376.87" stroke="#303030" stroke-width="0.16"/>
+<line x1="8.08" y1="372.87" x2="8.08" y2="392.37" stroke="#303030" stroke-width="0.16"/>
+<line x1="7.25" y1="372.87" x2="7.25" y2="392.37" stroke="#303030" stroke-width="0.22"/>
+<line x1="7.25" y1="372.87" x2="7.85" y2="372.87" stroke="#303030" stroke-width="0.22"/>
+<line x1="7.25" y1="392.37" x2="7.85" y2="392.37" stroke="#303030" stroke-width="0.22"/>
 <text x="6.8" y="383.04" font-family="Noto Sans" font-size="1.2" text-anchor="end" fill="#404040">el.guit.</text>
 <line x1="8" y1="397.37" x2="112" y2="397.37" stroke="#707070" stroke-width="0.13"/>
 <line x1="8" y1="398.87" x2="112" y2="398.87" stroke="#707070" stroke-width="0.13"/>
@@ -1759,7 +1795,6 @@
 <text x="12.58" y="431.77" font-family="Bravura" font-size="4" fill="#101010" data-glyph="accidentalSharp">&#xE262;</text>
 <text x="13.58" y="429.77" font-family="Bravura" font-size="4" fill="#101010" data-glyph="accidentalSharp">&#xE262;</text>
 <text x="14.57" y="431.27" font-family="Bravura" font-size="4" fill="#101010" data-glyph="accidentalSharp">&#xE262;</text>
-<line x1="8.08" y1="430.27" x2="8.08" y2="449.77" stroke="#303030" stroke-width="0.16"/>
 <text x="16.17" y="429.47" font-family="Noto Sans" font-size="1.1" fill="#404040">7</text>
 <line x1="63.19" y1="442.27" x2="63.19" y2="449.77" stroke="#303030" stroke-width="0.16"/>
 <line x1="63.19" y1="430.27" x2="63.19" y2="434.27" stroke="#303030" stroke-width="0.16"/>
@@ -1776,6 +1811,10 @@
 <line x1="111.02" y1="430.27" x2="111.02" y2="434.27" stroke="#303030" stroke-width="0.16"/>
 <text x="110.38" y="431.77" font-family="Bravura" font-size="4" fill="#303030" data-glyph="repeatDot">&#xE044;</text>
 <text x="110.38" y="432.77" font-family="Bravura" font-size="4" fill="#303030" data-glyph="repeatDot">&#xE044;</text>
+<line x1="8.08" y1="430.27" x2="8.08" y2="449.77" stroke="#303030" stroke-width="0.16"/>
+<line x1="7.25" y1="430.27" x2="7.25" y2="449.77" stroke="#303030" stroke-width="0.22"/>
+<line x1="7.25" y1="430.27" x2="7.85" y2="430.27" stroke="#303030" stroke-width="0.22"/>
+<line x1="7.25" y1="449.77" x2="7.85" y2="449.77" stroke="#303030" stroke-width="0.22"/>
 <text x="6.8" y="440.44" font-family="Noto Sans" font-size="1.2" text-anchor="end" fill="#404040">el.guit.</text>
 <line x1="8" y1="466.77" x2="112" y2="466.77" stroke="#707070" stroke-width="0.13"/>
 <line x1="8" y1="468.27" x2="112" y2="468.27" stroke="#707070" stroke-width="0.13"/>
@@ -1794,7 +1833,6 @@
 <text x="12.58" y="456.27" font-family="Bravura" font-size="4" fill="#101010" data-glyph="accidentalSharp">&#xE262;</text>
 <text x="13.58" y="454.27" font-family="Bravura" font-size="4" fill="#101010" data-glyph="accidentalSharp">&#xE262;</text>
 <text x="14.57" y="455.77" font-family="Bravura" font-size="4" fill="#101010" data-glyph="accidentalSharp">&#xE262;</text>
-<line x1="8.08" y1="454.77" x2="8.08" y2="474.27" stroke="#303030" stroke-width="0.16"/>
 <line x1="63.19" y1="466.77" x2="63.19" y2="474.27" stroke="#303030" stroke-width="0.16"/>
 <line x1="63.19" y1="454.77" x2="63.19" y2="458.77" stroke="#303030" stroke-width="0.16"/>
 <line x1="111.75" y1="466.77" x2="111.75" y2="474.27" stroke="#303030" stroke-width="0.5"/>
@@ -1805,6 +1843,10 @@
 <line x1="111.02" y1="454.77" x2="111.02" y2="458.77" stroke="#303030" stroke-width="0.16"/>
 <text x="110.38" y="456.27" font-family="Bravura" font-size="4" fill="#303030" data-glyph="repeatDot">&#xE044;</text>
 <text x="110.38" y="457.27" font-family="Bravura" font-size="4" fill="#303030" data-glyph="repeatDot">&#xE044;</text>
+<line x1="8.08" y1="454.77" x2="8.08" y2="474.27" stroke="#303030" stroke-width="0.16"/>
+<line x1="7.25" y1="454.77" x2="7.25" y2="474.27" stroke="#303030" stroke-width="0.22"/>
+<line x1="7.25" y1="454.77" x2="7.85" y2="454.77" stroke="#303030" stroke-width="0.22"/>
+<line x1="7.25" y1="474.27" x2="7.85" y2="474.27" stroke="#303030" stroke-width="0.22"/>
 <text x="6.8" y="464.94" font-family="Noto Sans" font-size="1.2" text-anchor="end" fill="#404040">el.guit.</text>
 <line x1="8" y1="494.27" x2="112" y2="494.27" stroke="#707070" stroke-width="0.13"/>
 <line x1="8" y1="495.77" x2="112" y2="495.77" stroke="#707070" stroke-width="0.13"/>
@@ -1823,7 +1865,6 @@
 <text x="12.58" y="483.77" font-family="Bravura" font-size="4" fill="#101010" data-glyph="accidentalSharp">&#xE262;</text>
 <text x="13.58" y="481.77" font-family="Bravura" font-size="4" fill="#101010" data-glyph="accidentalSharp">&#xE262;</text>
 <text x="14.57" y="483.27" font-family="Bravura" font-size="4" fill="#101010" data-glyph="accidentalSharp">&#xE262;</text>
-<line x1="8.08" y1="482.27" x2="8.08" y2="501.77" stroke="#303030" stroke-width="0.16"/>
 <rect x="18.3" y="499.53" width="1.16" height="1.47" fill="#ffffff"/>
 <text x="18.88" y="500.81" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">5</text>
 <rect x="18.3" y="498.03" width="1.16" height="1.47" fill="#ffffff"/>
@@ -1957,6 +1998,10 @@
 <line x1="111.02" y1="482.27" x2="111.02" y2="486.27" stroke="#303030" stroke-width="0.16"/>
 <text x="110.38" y="483.77" font-family="Bravura" font-size="4" fill="#303030" data-glyph="repeatDot">&#xE044;</text>
 <text x="110.38" y="484.77" font-family="Bravura" font-size="4" fill="#303030" data-glyph="repeatDot">&#xE044;</text>
+<line x1="8.08" y1="482.27" x2="8.08" y2="501.77" stroke="#303030" stroke-width="0.16"/>
+<line x1="7.25" y1="482.27" x2="7.25" y2="501.77" stroke="#303030" stroke-width="0.22"/>
+<line x1="7.25" y1="482.27" x2="7.85" y2="482.27" stroke="#303030" stroke-width="0.22"/>
+<line x1="7.25" y1="501.77" x2="7.85" y2="501.77" stroke="#303030" stroke-width="0.22"/>
 <text x="6.8" y="492.44" font-family="Noto Sans" font-size="1.2" text-anchor="end" fill="#404040">el.guit.</text>
 <line x1="8" y1="519.27" x2="112" y2="519.27" stroke="#707070" stroke-width="0.13"/>
 <line x1="8" y1="520.77" x2="112" y2="520.77" stroke="#707070" stroke-width="0.13"/>
@@ -1975,7 +2020,6 @@
 <text x="12.58" y="508.77" font-family="Bravura" font-size="4" fill="#101010" data-glyph="accidentalSharp">&#xE262;</text>
 <text x="13.58" y="506.77" font-family="Bravura" font-size="4" fill="#101010" data-glyph="accidentalSharp">&#xE262;</text>
 <text x="14.57" y="508.27" font-family="Bravura" font-size="4" fill="#101010" data-glyph="accidentalSharp">&#xE262;</text>
-<line x1="8.08" y1="507.27" x2="8.08" y2="526.77" stroke="#303030" stroke-width="0.16"/>
 <rect x="18.3" y="526.03" width="1.16" height="1.47" fill="#ffffff"/>
 <text x="18.88" y="527.31" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">5</text>
 <rect x="18.3" y="524.53" width="1.16" height="1.47" fill="#ffffff"/>
@@ -2139,6 +2183,10 @@
 <line x1="111.02" y1="507.27" x2="111.02" y2="511.27" stroke="#303030" stroke-width="0.16"/>
 <text x="110.38" y="508.77" font-family="Bravura" font-size="4" fill="#303030" data-glyph="repeatDot">&#xE044;</text>
 <text x="110.38" y="509.77" font-family="Bravura" font-size="4" fill="#303030" data-glyph="repeatDot">&#xE044;</text>
+<line x1="8.08" y1="507.27" x2="8.08" y2="526.77" stroke="#303030" stroke-width="0.16"/>
+<line x1="7.25" y1="507.27" x2="7.25" y2="526.77" stroke="#303030" stroke-width="0.22"/>
+<line x1="7.25" y1="507.27" x2="7.85" y2="507.27" stroke="#303030" stroke-width="0.22"/>
+<line x1="7.25" y1="526.77" x2="7.85" y2="526.77" stroke="#303030" stroke-width="0.22"/>
 <text x="6.8" y="517.44" font-family="Noto Sans" font-size="1.2" text-anchor="end" fill="#404040">el.guit.</text>
 <line x1="8" y1="531.77" x2="112" y2="531.77" stroke="#707070" stroke-width="0.13"/>
 <line x1="8" y1="533.27" x2="112" y2="533.27" stroke="#707070" stroke-width="0.13"/>
@@ -2281,7 +2329,6 @@
 <text x="12.58" y="570.97" font-family="Bravura" font-size="4" fill="#101010" data-glyph="accidentalSharp">&#xE262;</text>
 <text x="13.58" y="568.97" font-family="Bravura" font-size="4" fill="#101010" data-glyph="accidentalSharp">&#xE262;</text>
 <text x="14.57" y="570.47" font-family="Bravura" font-size="4" fill="#101010" data-glyph="accidentalSharp">&#xE262;</text>
-<line x1="8.08" y1="569.47" x2="8.08" y2="588.97" stroke="#303030" stroke-width="0.16"/>
 <text x="16.17" y="568.67" font-family="Noto Sans" font-size="1.1" fill="#404040">9</text>
 <line x1="16.37" y1="563.27" x2="54.68" y2="563.27" stroke="#404040" stroke-width="0.12"/>
 <line x1="16.37" y1="563.27" x2="16.37" y2="564.47" stroke="#404040" stroke-width="0.12"/>
@@ -2298,6 +2345,10 @@
 <line x1="69.07" y1="581.47" x2="69.07" y2="588.97" stroke="#303030" stroke-width="0.5"/>
 <line x1="68.34" y1="569.47" x2="68.34" y2="573.47" stroke="#303030" stroke-width="0.16"/>
 <line x1="69.07" y1="569.47" x2="69.07" y2="573.47" stroke="#303030" stroke-width="0.5"/>
+<line x1="8.08" y1="569.47" x2="8.08" y2="588.97" stroke="#303030" stroke-width="0.16"/>
+<line x1="7.25" y1="569.47" x2="7.25" y2="588.97" stroke="#303030" stroke-width="0.22"/>
+<line x1="7.25" y1="569.47" x2="7.85" y2="569.47" stroke="#303030" stroke-width="0.22"/>
+<line x1="7.25" y1="588.97" x2="7.85" y2="588.97" stroke="#303030" stroke-width="0.22"/>
 <text x="6.8" y="579.64" font-family="Noto Sans" font-size="1.2" text-anchor="end" fill="#404040">el.guit.</text>
 <line x1="8" y1="608.37" x2="69.32" y2="608.37" stroke="#707070" stroke-width="0.13"/>
 <line x1="8" y1="609.87" x2="69.32" y2="609.87" stroke="#707070" stroke-width="0.13"/>
@@ -2316,7 +2367,6 @@
 <text x="12.58" y="597.87" font-family="Bravura" font-size="4" fill="#101010" data-glyph="accidentalSharp">&#xE262;</text>
 <text x="13.58" y="595.87" font-family="Bravura" font-size="4" fill="#101010" data-glyph="accidentalSharp">&#xE262;</text>
 <text x="14.57" y="597.37" font-family="Bravura" font-size="4" fill="#101010" data-glyph="accidentalSharp">&#xE262;</text>
-<line x1="8.08" y1="596.37" x2="8.08" y2="615.87" stroke="#303030" stroke-width="0.16"/>
 <line x1="54.8" y1="608.37" x2="54.8" y2="615.87" stroke="#303030" stroke-width="0.16"/>
 <line x1="54.8" y1="596.37" x2="54.8" y2="600.37" stroke="#303030" stroke-width="0.16"/>
 <text x="55.97" y="597.37" font-family="Bravura" font-size="4" fill="#101010" data-glyph="timeSig4">&#xE084;</text>
@@ -2326,6 +2376,10 @@
 <line x1="69.07" y1="608.37" x2="69.07" y2="615.87" stroke="#303030" stroke-width="0.5"/>
 <line x1="68.34" y1="596.37" x2="68.34" y2="600.37" stroke="#303030" stroke-width="0.16"/>
 <line x1="69.07" y1="596.37" x2="69.07" y2="600.37" stroke="#303030" stroke-width="0.5"/>
+<line x1="8.08" y1="596.37" x2="8.08" y2="615.87" stroke="#303030" stroke-width="0.16"/>
+<line x1="7.25" y1="596.37" x2="7.25" y2="615.87" stroke="#303030" stroke-width="0.22"/>
+<line x1="7.25" y1="596.37" x2="7.85" y2="596.37" stroke="#303030" stroke-width="0.22"/>
+<line x1="7.25" y1="615.87" x2="7.85" y2="615.87" stroke="#303030" stroke-width="0.22"/>
 <text x="6.8" y="606.54" font-family="Noto Sans" font-size="1.2" text-anchor="end" fill="#404040">el.guit.</text>
 <line x1="8" y1="635.87" x2="69.32" y2="635.87" stroke="#707070" stroke-width="0.13"/>
 <line x1="8" y1="637.37" x2="69.32" y2="637.37" stroke="#707070" stroke-width="0.13"/>
@@ -2344,7 +2398,6 @@
 <text x="12.58" y="625.37" font-family="Bravura" font-size="4" fill="#101010" data-glyph="accidentalSharp">&#xE262;</text>
 <text x="13.58" y="623.37" font-family="Bravura" font-size="4" fill="#101010" data-glyph="accidentalSharp">&#xE262;</text>
 <text x="14.57" y="624.87" font-family="Bravura" font-size="4" fill="#101010" data-glyph="accidentalSharp">&#xE262;</text>
-<line x1="8.08" y1="623.87" x2="8.08" y2="643.37" stroke="#303030" stroke-width="0.16"/>
 <rect x="18.3" y="641.13" width="1.16" height="1.47" fill="#ffffff"/>
 <text x="18.88" y="642.41" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">0</text>
 <rect x="17.87" y="639.63" width="2.02" height="1.47" fill="#ffffff"/>
@@ -2416,6 +2469,10 @@
 <line x1="69.07" y1="635.87" x2="69.07" y2="643.37" stroke="#303030" stroke-width="0.5"/>
 <line x1="68.34" y1="623.87" x2="68.34" y2="627.87" stroke="#303030" stroke-width="0.16"/>
 <line x1="69.07" y1="623.87" x2="69.07" y2="627.87" stroke="#303030" stroke-width="0.5"/>
+<line x1="8.08" y1="623.87" x2="8.08" y2="643.37" stroke="#303030" stroke-width="0.16"/>
+<line x1="7.25" y1="623.87" x2="7.25" y2="643.37" stroke="#303030" stroke-width="0.22"/>
+<line x1="7.25" y1="623.87" x2="7.85" y2="623.87" stroke="#303030" stroke-width="0.22"/>
+<line x1="7.25" y1="643.37" x2="7.85" y2="643.37" stroke="#303030" stroke-width="0.22"/>
 <text x="6.8" y="634.04" font-family="Noto Sans" font-size="1.2" text-anchor="end" fill="#404040">el.guit.</text>
 <line x1="8" y1="662.77" x2="69.32" y2="662.77" stroke="#707070" stroke-width="0.13"/>
 <line x1="8" y1="664.27" x2="69.32" y2="664.27" stroke="#707070" stroke-width="0.13"/>
@@ -2434,7 +2491,6 @@
 <text x="12.58" y="652.27" font-family="Bravura" font-size="4" fill="#101010" data-glyph="accidentalSharp">&#xE262;</text>
 <text x="13.58" y="650.27" font-family="Bravura" font-size="4" fill="#101010" data-glyph="accidentalSharp">&#xE262;</text>
 <text x="14.57" y="651.77" font-family="Bravura" font-size="4" fill="#101010" data-glyph="accidentalSharp">&#xE262;</text>
-<line x1="8.08" y1="650.77" x2="8.08" y2="670.27" stroke="#303030" stroke-width="0.16"/>
 <rect x="18.3" y="669.53" width="1.16" height="1.47" fill="#ffffff"/>
 <text x="18.88" y="670.81" font-family="Noto Sans" font-size="1.5" text-anchor="middle" fill="#101010">5</text>
 <rect x="18.3" y="668.03" width="1.16" height="1.47" fill="#ffffff"/>
@@ -2548,6 +2604,10 @@
 <line x1="69.07" y1="662.77" x2="69.07" y2="670.27" stroke="#303030" stroke-width="0.5"/>
 <line x1="68.34" y1="650.77" x2="68.34" y2="654.77" stroke="#303030" stroke-width="0.16"/>
 <line x1="69.07" y1="650.77" x2="69.07" y2="654.77" stroke="#303030" stroke-width="0.5"/>
+<line x1="8.08" y1="650.77" x2="8.08" y2="670.27" stroke="#303030" stroke-width="0.16"/>
+<line x1="7.25" y1="650.77" x2="7.25" y2="670.27" stroke="#303030" stroke-width="0.22"/>
+<line x1="7.25" y1="650.77" x2="7.85" y2="650.77" stroke="#303030" stroke-width="0.22"/>
+<line x1="7.25" y1="670.27" x2="7.85" y2="670.27" stroke="#303030" stroke-width="0.22"/>
 <text x="6.8" y="660.94" font-family="Noto Sans" font-size="1.2" text-anchor="end" fill="#404040">el.guit.</text>
 <line x1="8" y1="677.67" x2="69.32" y2="677.67" stroke="#707070" stroke-width="0.13"/>
 <line x1="8" y1="679.17" x2="69.32" y2="679.17" stroke="#707070" stroke-width="0.13"/>

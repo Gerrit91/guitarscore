@@ -390,22 +390,39 @@ pub(super) fn draw_barline_ties(part: &Part<'_>, drawn: &Drawn, ops: &mut Vec<Dr
 }
 
 /// Where a track's staff group stands in a system: the top line of its first staff and of
-/// its last, how tall the group is, and whether it has several staves (then one line and a
-/// brace join them).
+/// its last, how tall the group is, and how its rows are joined at the system's start.
 pub(super) struct Group {
     pub(super) top: f32,
     pub(super) last_top: f32,
     /// From the first staff's top line to the last staff's bottom line.
     pub(super) height: f32,
-    pub(super) joined: bool,
+    pub(super) join: GroupJoin,
+}
+
+/// How a track's rows are joined at the start of a system.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum GroupJoin {
+    /// One row: nothing joins it.
+    None,
+    /// A track with several stored staves (a piano's treble and bass): a curly brace.
+    Brace,
+    /// One staff shown as several rows (standard notation and TAB, say): a square bracket,
+    /// as Guitar Pro draws it.
+    Bracket,
 }
 
 /// Space between the brace and the line joining a track's staves.
 const BRACE_GAP: f32 = 0.35;
 
-/// Finishes a track's staves in a system: one line around them all and a brace beside it
-/// (a track with several staves), and the track's name in the margin of `left`, centered on
-/// the group.
+/// The square bracket that joins one staff's rows: its distance left of the staves, the
+/// length of its end hooks (towards the staves), and its line thickness.
+const BRACKET_GAP: f32 = 0.75;
+const BRACKET_HOOK: f32 = 0.6;
+const BRACKET_WIDTH: f32 = 0.22;
+
+/// Finishes a track's staves in a system: one line around them all and a brace or bracket
+/// beside it (a track with several rows), and the track's name in the margin of `left`,
+/// centered on the group.
 pub(super) fn draw_group(
     part: &Part<'_>,
     group: Group,
@@ -418,7 +435,7 @@ pub(super) fn draw_group(
     // Where the joining line starts and ends (the staff frames may reach past the lines).
     let top = part.join_top(group.top, measures.clone());
     let bottom = part.join_bottom(group.last_top, measures);
-    if group.joined {
+    if group.join != GroupJoin::None {
         let thin = fonts.music.engraving().thin_barline_thickness;
         ops.push(DrawOp::Line {
             from: Point::new(left + thin / 2.0, top),
@@ -426,13 +443,17 @@ pub(super) fn draw_group(
             thickness: thin,
             color: ColorToken::Barline,
         });
-        draw_brace(top, bottom, left, &fonts.music, ops);
+        match group.join {
+            GroupJoin::Brace => draw_brace(top, bottom, left, &fonts.music, ops),
+            GroupJoin::Bracket => draw_bracket(top, bottom, left, ops),
+            GroupJoin::None => {}
+        }
     }
     let Some(name) = name else {
         return;
     };
-    // The name stands beside the group, centered on all its staves.
-    let middle = if group.joined {
+    // The name stands beside the group, centered on all its rows.
+    let middle = if group.join != GroupJoin::None {
         (top + bottom) / 2.0
     } else {
         group.top + group.height / 2.0
@@ -445,6 +466,26 @@ pub(super) fn draw_group(
         anchor: TextAnchor::End,
         color: ColorToken::Annotation,
     });
+}
+
+/// The square bracket joining one staff's rows at the system's start, from `top` to
+/// `bottom`, left of the staves at `left` (its hooks reach back towards them).
+fn draw_bracket(top: f32, bottom: f32, left: f32, ops: &mut Vec<DrawOp>) {
+    let x = left - BRACKET_GAP;
+    ops.push(DrawOp::Line {
+        from: Point::new(x, top),
+        to: Point::new(x, bottom),
+        thickness: BRACKET_WIDTH,
+        color: ColorToken::Barline,
+    });
+    for y in [top, bottom] {
+        ops.push(DrawOp::Line {
+            from: Point::new(x, y),
+            to: Point::new(x + BRACKET_HOOK, y),
+            thickness: BRACKET_WIDTH,
+            color: ColorToken::Barline,
+        });
+    }
 }
 
 /// The brace joining a track's staves at the system's start, stretched from `top` to
