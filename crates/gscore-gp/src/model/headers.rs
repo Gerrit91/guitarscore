@@ -56,6 +56,22 @@ pub struct MeasureHeader {
     pub fermatas: Vec<(String, String)>,
     /// Free time (no metronome) from GPIF (GP6/GP7)
     pub free_time: bool,
+    /// GuitarScore addition: Guitar Pro's opaque layout properties for the whole song's
+    /// bars at this measure (its design mode's song-wide width scale), kept verbatim.
+    pub x_properties: Vec<XProperty>,
+}
+
+impl MeasureHeader {
+    /// The song-wide width scale of this measure (Guitar Pro's design mode), `None` when it
+    /// has none; a track's own bar scale takes precedence over it.
+    pub fn display_scale(&self) -> Option<f32> {
+        property_scale(&self.x_properties, MASTER_BAR_SCALE)
+    }
+
+    /// Sets the song-wide width scale of this measure, or removes it with `None`.
+    pub fn set_display_scale(&mut self, scale: Option<f32>) {
+        set_property_scale(&mut self.x_properties, MASTER_BAR_SCALE, scale);
+    }
 }
 
 impl Default for MeasureHeader {
@@ -79,6 +95,7 @@ impl Default for MeasureHeader {
             },
             fermatas: Vec::new(),
             free_time: false,
+            x_properties: Vec::new(),
         }
     }
 }

@@ -26,6 +26,9 @@ pub struct Measure {
     pub line_break: LineBreak,
     /// Simile mark from GPIF (GP6/GP7)
     pub simile_mark: Option<String>,
+    /// GuitarScore addition: Guitar Pro's opaque layout properties for this bar (its
+    /// design mode's width scale, and whatever else the file wrote), kept verbatim.
+    pub x_properties: Vec<XProperty>,
 }
 
 impl Default for Measure {
@@ -43,6 +46,19 @@ impl Default for Measure {
             voices: Vec::with_capacity(2),
             line_break: LineBreak::None,
             simile_mark: None,
+            x_properties: Vec::new(),
         }
+    }
+}
+
+impl Measure {
+    /// This bar's own width scale (Guitar Pro's design mode), `None` when it has none.
+    pub fn display_scale(&self) -> Option<f32> {
+        property_scale(&self.x_properties, BAR_SCALE)
+    }
+
+    /// Sets this bar's own width scale, or removes it with `None`.
+    pub fn set_display_scale(&mut self, scale: Option<f32>) {
+        set_property_scale(&mut self.x_properties, BAR_SCALE, scale);
     }
 }

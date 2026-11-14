@@ -6,6 +6,7 @@
 use std::collections::HashMap;
 
 use super::{convert_beat, extract_capo, extract_tuning, extract_tuning_label, parse_ids};
+use crate::io::gpif::xproperties;
 use crate::io::gpif::{Bar, Beat, Note, Rhythm, Track, Voice};
 use crate::model::{
     beat::Voice as SongVoice, chord::ChordDiagram, enums::MeasureClef, headers::MeasureHeader,
@@ -66,6 +67,9 @@ pub(super) fn measures(
         let bar_id = bar_ids.get(index).copied().unwrap_or(-1);
         if let Some(bar) = lookup.bars.get(&bar_id) {
             measure.simile_mark = bar.simile_mark.clone();
+            // GuitarScore addition: Guitar Pro's layout properties for this bar (the
+            // design mode's width scale), kept verbatim.
+            measure.x_properties = xproperties(bar.x_properties.as_ref());
             measure.has_clef = bar.clef.is_some();
             measure.clef = match bar.clef.as_deref() {
                 Some("F4") => MeasureClef::Bass,

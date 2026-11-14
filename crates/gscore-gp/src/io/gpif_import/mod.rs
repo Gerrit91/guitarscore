@@ -87,6 +87,8 @@ fn extract_diagrams(track: &Track) -> HashMap<i32, ChordDiagram> {
 }
 
 #[cfg(test)]
+mod design_tests;
+#[cfg(test)]
 mod display_tests;
 #[cfg(test)]
 mod effect_tests;
@@ -334,6 +336,10 @@ impl SongGpifOps for Song {
 
             // Free time
             mh.free_time = mb.free_time.is_some();
+
+            // GuitarScore addition: Guitar Pro's layout properties (the design mode's
+            // song-wide bar scale, beaming rules) are kept, so a save does not lose them.
+            mh.x_properties = xproperties(mb.x_properties.as_ref());
 
             // Directions
             if let Some(dirs) = &mb.directions {

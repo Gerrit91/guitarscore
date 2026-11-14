@@ -6,6 +6,7 @@
 use std::collections::HashMap;
 
 use super::*;
+use crate::model::beat_spacing;
 
 /// GuitarScore addition: converts note string numbers between GPIF order (1 = lowest) and
 /// legacy order (1 = highest). Its own inverse, so import and export use the same function.
@@ -258,6 +259,11 @@ pub(super) fn convert_beat(
                 "WhammyBarOriginValue" => whammy_origin = bp.float,
                 "WhammyBarMiddleValue" => whammy_middle = bp.float,
                 "WhammyBarDestinationValue" => whammy_destination = bp.float,
+                // GuitarScore addition: the design mode's offset of this beat's column, in
+                // staff spaces (the format has no field this code knows for it).
+                "GuitarScoreSpacing" => {
+                    s_beat.spacing = bp.float.and_then(beat_spacing);
+                }
                 _ => {}
             }
         }
