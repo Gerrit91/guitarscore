@@ -664,7 +664,7 @@ impl MeasureLayout {
     /// The width with the columns stretched by `stretch`, the design mode's offsets
     /// included.
     pub(crate) fn width(&self, stretch: f32) -> f32 {
-        self.column_positions(0.0, stretch).1
+        self.walk(0.0, stretch, |_| {})
     }
 
     /// The width Guitar Pro's design mode adds to the measure at a natural stretch (room
@@ -681,7 +681,7 @@ impl MeasureLayout {
     /// Where the design mode's offsets leave the measure, beyond what its columns take.
     fn spacing_span(&self, stretch: f32) -> f32 {
         let advance: f32 = self.columns.iter().map(|c| c.advance(stretch)).sum();
-        self.column_positions(0.0, stretch).1 - (self.fixed_width() + advance)
+        self.walk(0.0, stretch, |_| {}) - (self.fixed_width() + advance)
     }
 }
 

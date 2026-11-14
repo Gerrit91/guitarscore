@@ -206,19 +206,28 @@ impl MeasureLayout {
     /// follows it (and the barline) moves with it. A hostile offset cannot move a column
     /// back over its neighbour or the signature at the bar's start.
     pub(crate) fn column_positions(&self, x: f32, stretch: f32) -> (Vec<f32>, f32) {
+        let mut xs = Vec::with_capacity(self.columns.len());
+        let end = self.walk(x, stretch, |at| xs.push(at));
+        (xs, end)
+    }
+
+    /// Walks the columns from `x`, giving each column's start to `visit` and returning where
+    /// the measure ends: no allocation, for the widths a line is broken from.
+    pub(crate) fn walk(&self, x: f32, stretch: f32, mut visit: impl FnMut(f32)) -> f32 {
         let first = x + self.fixed_width();
         let mut cursor = first;
-        let mut xs = Vec::with_capacity(self.columns.len());
+        let mut previous: Option<f32> = None;
         for column in &self.columns {
             let mut at = cursor + column.spacing;
-            at = match xs.last() {
-                Some(&previous) => at.max(previous + MIN_COLUMN_GAP),
+            at = match previous {
+                Some(previous) => at.max(previous + MIN_COLUMN_GAP),
                 None => at.max(first),
             };
-            xs.push(at);
+            visit(at);
+            previous = Some(at);
             cursor = at + column.advance(stretch);
         }
-        (xs, cursor)
+        cursor
     }
 
     /// Where the first voice's beats are, for lyrics: `(beat, x)`.

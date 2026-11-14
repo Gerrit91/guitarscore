@@ -281,14 +281,24 @@ pub(super) fn overlay(
                     let next = list
                         .last()
                         .map(|last| MeasureIndex::new(last.get().saturating_add(1)));
+                    // A break is the track's own in a single-track view; with several
+                    // tracks it is the song's (Guitar Pro's multitrack layout).
                     let forced = next.is_some_and(|measure| {
-                        design
+                        let own = design
                             .song
                             .track(design.track)
                             .and_then(|track| track.measure(measure))
                             .is_some_and(|measure| {
                                 measure.system_break() != gscore_model::SystemBreak::None
-                            })
+                            });
+                        let score = design.scope.is_none()
+                            && design
+                                .song
+                                .score_line_breaks()
+                                .get(measure.get())
+                                .copied()
+                                .unwrap_or(false);
+                        own || score
                     });
                     match next {
                         Some(measure) if forced => commands.push(Command::SetSystemBreak {
