@@ -4,7 +4,7 @@
 
 use egui::{Align2, Color32, FontId, Margin, Pos2, Rect, RichText, Sense, Stroke, pos2, vec2};
 use gscore_edit::Command;
-use gscore_model::{BeatPosition, Fret, StringNumber};
+use gscore_model::{BeatPosition, Fret, NoteValue, StringNumber};
 
 use super::GuitarScoreApp;
 use super::style;
@@ -107,6 +107,9 @@ struct BeatNotes {
     string_count: usize,
     /// The cursor's string.
     cursor_string: Option<StringNumber>,
+    /// The note value of the beat to make first, when the cursor's bar has no beat yet (an
+    /// empty Guitar Pro 7 bar): a note entered there needs its beat, as a typed fret does.
+    new_beat: Option<NoteValue>,
     notes: Vec<ShownNote>,
 }
 
@@ -367,6 +370,8 @@ impl GuitarScoreApp {
             strings,
             string_count: track.string_count(),
             cursor_string: cursor.string_number(),
+            new_beat: (song.beat(at).is_none() && cursor.beat.get() == 0)
+                .then(|| tab.document.editor().new_beat_value()),
             notes,
         })
     }
@@ -493,10 +498,23 @@ impl GuitarScoreApp {
             let Ok(fret) = Fret::new(fret) else {
                 return;
             };
-            Command::SetFret {
+            let enter = Command::SetFret {
                 at: beat.at,
                 string,
                 fret,
+            };
+            match beat.new_beat {
+                // A bar without a beat gets the note's beat first, as one undo step.
+                Some(duration) => Command::Batch {
+                    commands: vec![
+                        Command::InsertBeat {
+                            at: beat.at,
+                            duration,
+                        },
+                        enter,
+                    ],
+                },
+                None => enter,
             }
         };
         self.apply_command(command, false);
@@ -809,6 +827,7 @@ mod tests {
             percussion: false,
             string_count: 6,
             cursor_string: Some(string(6)),
+            new_beat: None,
             // Standard tuning, string 1 (E4) first.
             strings: vec![
                 (string(1), 64),

@@ -5646,3 +5646,11 @@ undo and a snapshot.
 A drum track's Appearance section shows the percussion staff as a tile with the percussion
 clef (on and fixed, since a kit always has it) beside the drum tab's tile, in place of the
 "Percussion staff" text; its tooltip says why it cannot be switched off.
+
+## 2026-11-14 — The note tools enter a note in a bar without a beat
+
+A bar of a Guitar Pro 7 file can have no beat stored at all (a track that rests there). A
+click in a note tool there failed with "invalid song: ... the measure has 0 voice(s)",
+because `SetFret` needs its beat. The tools now do what a typed fret does: the beat is
+made first (`InsertBeat` with the entry value, `TabEditor::new_beat_value`), in one batch
+with the note, so it is one undo step. Tested on the fretboard and the drum map.

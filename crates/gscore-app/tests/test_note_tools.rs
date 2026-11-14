@@ -249,3 +249,68 @@ fn the_track_panel_switches_a_drum_tracks_tablature() {
     undo(&mut harness);
     assert!(tablature(&harness));
 }
+
+/// A note entered with a tool in a bar without a beat (an empty Guitar Pro 7 bar) goes in
+/// like a typed one: the note's beat is made first, as one undo step with the note.
+#[test]
+fn the_tools_enter_a_note_in_a_bar_without_beats() {
+    use gscore_edit::Command;
+    use gscore_model::TrackIndex;
+
+    let mut harness = app_with("basic/multi_staff.gp");
+    // The clean guitar rests from bar 5 on: bar 7 has no beat stored.
+    let to_bar_7 = |harness: &mut Harness<'static, GuitarScoreApp>| {
+        let document = harness.state_mut().document_mut().unwrap();
+        let mut cursor = document.editor().cursor();
+        cursor.measure = gscore_model::MeasureIndex::new(6);
+        cursor.beat = gscore_model::BeatIndex::new(0);
+        document.editor_mut().set_cursor(cursor);
+    };
+    let beatless = |harness: &Harness<'static, GuitarScoreApp>| {
+        let document = harness.state().document().unwrap();
+        document
+            .song()
+            .beat(document.editor().cursor().position())
+            .is_none()
+    };
+    to_bar_7(&mut harness);
+    harness.run();
+    assert!(beatless(&harness), "the bar has no beat");
+    // On the fretboard.
+    harness.get_by_label("Fretboard").click();
+    harness.run();
+    harness.get_by_label_contains("Fretboard: ").click();
+    harness.run();
+    assert_eq!(harness.state().notice(), None);
+    assert_eq!(beat_notes(&harness).len(), 1);
+    undo(&mut harness);
+    assert!(
+        beatless(&harness),
+        "the beat and its note are one undo step"
+    );
+
+    // On the drum map, with the track made a kit.
+    {
+        let document = harness.state_mut().document_mut().unwrap();
+        document
+            .editor_mut()
+            .execute_command(Command::SetTrackDrums {
+                track: TrackIndex::new(0),
+                drums: true,
+            })
+            .unwrap();
+    }
+    to_bar_7(&mut harness);
+    harness.run();
+    assert!(beatless(&harness));
+    harness
+        .get_by_role_and_label(egui::accesskit::Role::Button, "Drum map")
+        .click();
+    harness.run();
+    harness.get_by_label("Bass drum 1").click();
+    harness.run();
+    assert_eq!(harness.state().notice(), None);
+    let notes = beat_notes(&harness);
+    assert_eq!(notes.len(), 1, "{notes:?}");
+    assert_eq!(notes[0].1, 36);
+}
