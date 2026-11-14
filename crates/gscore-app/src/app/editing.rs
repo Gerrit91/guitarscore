@@ -449,7 +449,7 @@ impl GuitarScoreApp {
     }
 
     /// Sounds a note that was just entered, if the setting is on.
-    fn audition(
+    pub(super) fn audition(
         &mut self,
         at: BeatPosition,
         string: gscore_model::StringNumber,

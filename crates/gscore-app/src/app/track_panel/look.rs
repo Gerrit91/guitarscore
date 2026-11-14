@@ -2,7 +2,7 @@
 //! its page shows.
 
 use gscore_edit::Command;
-use gscore_model::{TrackColor, TrackIndex};
+use gscore_model::{TrackColor, TrackIndex, TrackStaves};
 
 use super::TrackPanel;
 use crate::app::tiles::{self, Face};
@@ -55,6 +55,12 @@ pub(in crate::app) const TABLATURE_FACE: Face<'static> = Face::Glyph {
     size: 17.0,
     baseline: 0.0,
 };
+/// The tile of a drum kit's percussion staff: the percussion clef.
+const PERCUSSION_FACE: Face<'static> = Face::Glyph {
+    text: "\u{E069}",
+    size: 17.0,
+    baseline: 0.0,
+};
 /// The tile of slash notation: a rhythm slash, as the slash staff writes a beat.
 pub(in crate::app) const SLASH_FACE: Face<'static> = Face::Glyph {
     text: "\u{E101}",
@@ -71,9 +77,50 @@ pub(super) fn staves(
     commands: &mut Vec<(Command, bool)>,
 ) {
     ui.add_space(4.0);
-    // A drum kit is always written on a percussion staff; there is nothing to choose.
+    // A drum kit is always written on a percussion staff (its tile is on and fixed); its
+    // one choice is the drum tab below it, which shows each hit's MIDI drum note.
     if snapshot.percussion {
-        ui.label(egui::RichText::new("Percussion staff").color(style::tokens(ui).text_weak));
+        let staves = snapshot.staves;
+        let on = staves.tablature();
+        ui.horizontal(|ui| {
+            ui.spacing_mut().item_spacing.x = 2.0;
+            // The percussion staff, like a guitar's notation tile; a kit always shows it.
+            tiles::tile(
+                ui,
+                PERCUSSION_FACE,
+                true,
+                false,
+                "Percussion staff",
+                "The percussion staff\nA drum kit is always written on it",
+            );
+            let response = tiles::tile(
+                ui,
+                TABLATURE_FACE,
+                on,
+                true,
+                "Drum tablature",
+                "Show a tablature below the percussion staff: each hit's MIDI drum note on \
+                 the line of the kit it is stored on",
+            );
+            if response.clicked() {
+                // The percussion staff always shows, so the notation switch stays on with
+                // the tab off (a track must keep one staff).
+                let next = if on {
+                    TrackStaves::NOTATION_ONLY
+                } else {
+                    staves.with_tablature(true)
+                };
+                if next != staves {
+                    commands.push((
+                        Command::SetTrackStaves {
+                            track: TrackIndex::new(index),
+                            staves: next,
+                        },
+                        false,
+                    ));
+                }
+            }
+        });
         return;
     }
     // Notation needs pitches (a tuning, or a voice's stand-in strings); slash notation

@@ -158,7 +158,7 @@ impl TabEditor {
     }
 
     /// The note value a beat created in an empty measure gets.
-    pub(crate) fn new_beat_value(&self) -> NoteValue {
+    pub fn new_beat_value(&self) -> NoteValue {
         self.entry_value
     }
 

@@ -57,6 +57,9 @@ fn glyphs(ops: &[DrawOp]) -> Vec<(Glyph, f32, f32)> {
 #[test]
 fn a_drum_kit_is_written_on_a_percussion_staff() {
     let song = drum_song();
+    // The track was a guitar with notation and tab: as a kit it starts without the tab.
+    let staves = song.track(TrackIndex::new(0)).unwrap().staves();
+    assert!(staves.notation() && !staves.tablature());
     let fonts = Fonts::bundled().unwrap();
     let layout =
         layout_track(&song, TrackIndex::new(0), &LayoutOptions::default(), &fonts).unwrap();

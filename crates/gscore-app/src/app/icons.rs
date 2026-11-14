@@ -78,6 +78,12 @@ pub(crate) enum Icon {
     TuningFork,
     /// A tuner (a sound wave).
     Tuner,
+    /// The virtual fretboard (strings crossed by frets, one note marked).
+    Fretboard,
+    /// The piano keyboard (three white keys with two black ones).
+    PianoKeys,
+    /// The drum map (a drum seen from the side, with two sticks).
+    DrumMap,
     /// The speed trainer (a speed gauge with its needle turned up).
     SpeedTrainer,
     /// The sound chain: a guitar stomp box (a pedal with two knobs and its footswitch).
@@ -811,6 +817,65 @@ pub(crate) fn paint(painter: &Painter, rect: Rect, color: Color32, icon: Icon) {
                 })
                 .collect();
             painter.add(Shape::line(wave, stroke));
+        }
+        Icon::Fretboard => {
+            // Three strings crossed by three frets, with one note on the middle string.
+            let (half_w, half_h) = (size * 0.44, size * 0.3);
+            for share in [-1.0_f32, 0.0, 1.0] {
+                let y = center.y + half_h * share;
+                painter.line_segment(
+                    [pos2(center.x - half_w, y), pos2(center.x + half_w, y)],
+                    stroke,
+                );
+            }
+            for share in [-1.0_f32, -0.2, 0.6] {
+                let x = center.x + half_w * share;
+                painter.line_segment(
+                    [pos2(x, center.y - half_h), pos2(x, center.y + half_h)],
+                    stroke,
+                );
+            }
+            painter.circle_filled(
+                pos2(center.x + half_w * 0.2, center.y),
+                size * 0.13,
+                stroke.color,
+            );
+        }
+        Icon::PianoKeys => {
+            // Three white keys in a frame, a black key over each gap.
+            let (half_w, half_h) = (size * 0.42, size * 0.36);
+            let frame = Rect::from_center_size(center, vec2(2.0 * half_w, 2.0 * half_h));
+            painter.rect_stroke(frame, 1.5, stroke, egui::StrokeKind::Inside);
+            for share in [-1.0_f32 / 3.0, 1.0 / 3.0] {
+                let x = center.x + half_w * share;
+                painter.line_segment([pos2(x, frame.top()), pos2(x, frame.bottom())], stroke);
+                painter.rect_filled(
+                    Rect::from_min_max(
+                        pos2(x - size * 0.09, frame.top()),
+                        pos2(x + size * 0.09, center.y + half_h * 0.15),
+                    ),
+                    0.0,
+                    stroke.color,
+                );
+            }
+        }
+        Icon::DrumMap => {
+            // A drum from the side (its shell between two hoops) and two crossed sticks.
+            let (half_w, half_h) = (size * 0.36, size * 0.2);
+            let shell = Rect::from_center_size(
+                pos2(center.x, center.y + size * 0.16),
+                vec2(2.0 * half_w, 2.0 * half_h),
+            );
+            painter.rect_stroke(shell, 2.0, stroke, egui::StrokeKind::Inside);
+            for (from, to) in [(-0.42_f32, 0.12_f32), (0.42, -0.12)] {
+                painter.line_segment(
+                    [
+                        pos2(center.x + size * from, center.y - size * 0.42),
+                        pos2(center.x + size * to, shell.top()),
+                    ],
+                    stroke,
+                );
+            }
         }
         Icon::SpeedTrainer => {
             // A speed gauge: an open arc, a few ticks and a needle pointing up-right.

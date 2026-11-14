@@ -37,6 +37,7 @@ mod master_chain_window;
 mod metronome;
 mod new_song;
 mod new_track;
+mod note_tools;
 mod page;
 mod page_menu;
 mod recent;
@@ -159,6 +160,8 @@ pub struct GuitarScoreApp {
     about: Option<about::AboutWindow>,
     /// The tuner window, while it is open.
     tuner: Option<tuner::TunerState>,
+    /// The note tools (fretboard, keyboard, drum map): which are open, and where.
+    note_tools: note_tools::NoteTools,
     /// The transpose window, while it is open.
     transpose: Option<transpose::TransposeWindow>,
     /// A drum kit's room window, while it is open.
@@ -322,6 +325,7 @@ impl GuitarScoreApp {
             settings_window: None,
             about: None,
             tuner: None,
+            note_tools: note_tools::NoteTools::default(),
             transpose: None,
             kit_room: None,
             sound_chain: None,
@@ -948,6 +952,7 @@ impl eframe::App for GuitarScoreApp {
         self.show_new_track_dialog(&ctx);
         self.show_about(&ctx);
         self.show_tuner(&ctx);
+        self.show_note_tools(&ctx);
         self.show_transpose(&ctx);
         self.show_kit_room(&ctx);
         self.show_shape_editors(&ctx);
