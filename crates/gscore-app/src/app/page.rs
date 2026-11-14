@@ -208,6 +208,8 @@ impl GuitarScoreApp {
         let mut text_commit: Option<(SongTextField, String)> = None;
         let mut text_cancel = false;
         let mut text_opened = false;
+        // A trackpad pinch (or Ctrl+wheel) over the page zooms the score, not the app.
+        let mut zoom_gesture = 1.0_f32;
         // Guitar Pro's design mode: the commands its handles and buttons made this frame.
         let design_mode = self.view.design_mode;
         let mut design_commands: Vec<Command> = Vec::new();
@@ -264,6 +266,14 @@ impl GuitarScoreApp {
             let (rect, response) = ui.allocate_exact_size(size, Sense::click_and_drag());
             ui.ctx()
                 .accesskit_node_builder(response.id, |node| node.set_label("Score page"));
+            // A pinch (or Ctrl+wheel) over the score zooms it; the gesture is applied once
+            // the page's borrows are done.
+            if ui.rect_contains_pointer(rect) {
+                let delta = ui.input(|input| input.zoom_delta());
+                if delta.is_finite() && delta > 0.0 {
+                    zoom_gesture *= delta;
+                }
+            }
             let origin = egui::pos2(rect.center().x - page.x / 2.0, rect.top() + PAGE_MARGIN);
             // The screen views are paper from edge to edge: no pages, no canvas around them.
             let surface = if score_view.on_pages() {
@@ -584,6 +594,11 @@ impl GuitarScoreApp {
             }
         });
         tab.shown_cursor = Some((cursor, revision));
+        // The pinch changed the zoom: the next frame lays the page out at the new size.
+        if (zoom_gesture - 1.0).abs() > f32::EPSILON {
+            self.view.zoom_by(zoom_gesture);
+            ui.ctx().request_repaint();
+        }
         if let Some(point) = clicked
             && let Some((track, hit)) = layout.hit(point)
         {

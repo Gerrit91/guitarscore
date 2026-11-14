@@ -5478,3 +5478,11 @@ filled in the accent color. Tooltips still say what each source plays.
 "Choose a recent song to see its first page." is laid out with wrapping inside the preview
 page now, instead of running past its edges. The two start-screen snapshots show it on two
 lines.
+
+## 2026-11-14 — Trackpad pinch zooms the score
+
+A pinch over the page (winit's `PinchGesture`, which egui reports as `Event::Zoom`) scales
+the score through `ViewState::zoom_by`, within the existing 25-400 % range; Ctrl+wheel over
+the page does the same. The gesture is read only while the pointer is over the page, and
+nonsense factors are ignored. Tested at the view level and through a `Event::Zoom` in the
+app.

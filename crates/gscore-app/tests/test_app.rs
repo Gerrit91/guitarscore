@@ -1815,6 +1815,28 @@ fn ctrl_equals_zooms_and_ctrl_zero_resets() {
 }
 
 #[test]
+fn a_trackpad_pinch_over_the_score_zooms_it() {
+    let mut harness = app_with(Some(testdata("basic/note_lengths.gp")));
+    let before = harness.state().view().zoom();
+    // The score fills the middle of the window between the two panels.
+    harness.hover_at(egui::pos2(500.0, 300.0));
+    harness.run();
+    harness.input_mut().events.push(egui::Event::Zoom(1.5));
+    harness.run();
+    let zoomed_in = harness.state().view().zoom();
+    assert!(
+        (zoomed_in - before * 1.5).abs() < 1e-4,
+        "{before} -> {zoomed_in}"
+    );
+    harness
+        .input_mut()
+        .events
+        .push(egui::Event::Zoom(2.0 / 3.0));
+    harness.run();
+    assert!((harness.state().view().zoom() - before).abs() < 1e-4);
+}
+
+#[test]
 fn ctrl_zooms_the_score_and_ctrl_shift_the_interface() {
     let mut harness = app_with(Some(testdata("basic/note_lengths.gp")));
     let interface = |harness: &Harness<'static, GuitarScoreApp>| harness.ctx.zoom_factor();
