@@ -12,7 +12,7 @@
 
 mod common;
 
-use gscore_layout::{Fonts, Layout, LayoutOptions, layout_track};
+use gscore_layout::{Fonts, Layout, LayoutOptions, layout_track, layout_tracks};
 use gscore_model::testing::{self, GUITAR_6};
 use gscore_model::{
     BeatIndex, BeatPosition, MeasureIndex, ScaleScope, Song, StaffIndex, TrackIndex, VoiceIndex,
@@ -209,5 +209,36 @@ fn a_moved_column_and_a_bar_width_survive_the_layout_cache() {
         after.places.measures[0].right > barline * 1.2,
         "the cached measure was laid out again: {barline} became {}",
         after.places.measures[0].right
+    );
+}
+
+#[test]
+fn a_wider_bar_of_a_later_track_widens_it_for_every_track() {
+    let song = testing::song(&[GUITAR_6, GUITAR_6], 2).expect("a song");
+    let fonts = Fonts::bundled().expect("the bundled fonts");
+    let options = LayoutOptions::default();
+    let tracks = [TrackIndex::new(0), TrackIndex::new(1)];
+    let width = |song: &Song| {
+        let layout = layout_tracks(song, &tracks, tracks[0], &options, &fonts).expect("lays out");
+        let measure = &layout.places.measures[0];
+        measure.right - measure.left
+    };
+    let before = width(&song);
+    // The second track's own bar is twice as wide; the first track has no scale.
+    let mut widened = song.clone();
+    let _ = widened
+        .set_measure_scale(
+            ScaleScope::Staff {
+                track: TrackIndex::new(1),
+                staff: StaffIndex::new(0),
+            },
+            MeasureIndex::new(0),
+            Some(2.0),
+        )
+        .expect("sets the scale");
+    let after = width(&widened);
+    assert!(
+        after > before * 1.3,
+        "the shared bar line follows the widest bar: {before} became {after}"
     );
 }
