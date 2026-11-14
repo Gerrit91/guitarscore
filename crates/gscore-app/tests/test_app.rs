@@ -879,7 +879,7 @@ fn the_track_dialogs_match_their_snapshots() {
     harness.run();
     harness.run();
     // Forget a tone the song carries, so the chain starts from the default for the editors.
-    harness.get_by_label("Built-in").click();
+    harness.get_by_label("Built-in tone").click();
     harness.run();
     harness.get_by_label("Block 2: +").click();
     harness.run();
@@ -974,7 +974,7 @@ fn the_eq_curve_and_its_knob_columns_match_their_snapshot() {
     harness.get_by_label("Sound chain").click();
     harness.run();
     harness.run();
-    harness.get_by_label("Built-in").click();
+    harness.get_by_label("Built-in tone").click();
     harness.run();
     harness.get_by_label("Block 2: +").click();
     harness.run();
@@ -4057,7 +4057,7 @@ fn a_drum_tracks_window_edits_the_kits_parts() {
         "the track plays its own kick, not the machine's kit"
     );
     // Built-in forgets it again: the kit's setting (or the built-in tone) plays.
-    harness.get_by_label("Built-in").click();
+    harness.get_by_label("Built-in tone").click();
     harness.run();
     assert!(song_drum_part(&harness, "kick").is_none());
     assert_eq!(

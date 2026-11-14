@@ -18,6 +18,10 @@ pub(crate) enum Icon {
     CountIn,
     /// Loop (two arrows going round a circle).
     Loop,
+    /// Copy (two overlapping sheets).
+    Copy,
+    /// Paste (a clipboard with a sheet on it).
+    Paste,
     /// The gliding playing cursor (a cursor bar with motion lines behind it).
     GlidingCursor,
     /// Go to the top of the score (a bar and a left-pointing triangle).
@@ -336,6 +340,36 @@ pub(crate) fn paint(painter: &Painter, rect: Rect, color: Color32, icon: Icon) {
             let deg = |d: f32| d.to_radians();
             paint_arc_arrow(painter, center, radius, deg(195.0), deg(325.0), size, color);
             paint_arc_arrow(painter, center, radius, deg(15.0), deg(145.0), size, color);
+        }
+        Icon::Copy => {
+            // Two sheets, the front one offset down and to the right.
+            let sheet = vec2(size * 0.5, size * 0.62);
+            let back = Rect::from_min_size(center - vec2(size * 0.36, size * 0.42), sheet);
+            let front = back.translate(vec2(size * 0.22, size * 0.22));
+            painter.rect_stroke(back, size * 0.06, stroke, egui::StrokeKind::Inside);
+            painter.rect_filled(front.expand(stroke.width), 0.0, Color32::TRANSPARENT);
+            painter.rect_stroke(front, size * 0.06, stroke, egui::StrokeKind::Inside);
+        }
+        Icon::Paste => {
+            // A clipboard: the board, the clip at its top, and a sheet's lines on it.
+            let board = Rect::from_center_size(
+                center + vec2(0.0, size * 0.05),
+                vec2(size * 0.62, size * 0.78),
+            );
+            painter.rect_stroke(board, size * 0.06, stroke, egui::StrokeKind::Inside);
+            let clip =
+                Rect::from_center_size(pos2(center.x, board.top()), vec2(size * 0.3, size * 0.14));
+            painter.rect_filled(clip, size * 0.03, color);
+            for share in [0.42_f32, 0.6, 0.78] {
+                let y = board.top() + board.height() * share;
+                painter.line_segment(
+                    [
+                        pos2(board.left() + size * 0.14, y),
+                        pos2(board.right() - size * 0.14, y),
+                    ],
+                    Stroke::new((stroke.width * 0.8).max(1.0), color),
+                );
+            }
         }
         Icon::GlidingCursor => {
             // The playing cursor as a bar, moving right: three motion lines trail behind

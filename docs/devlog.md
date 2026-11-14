@@ -5704,3 +5704,23 @@ outlines (`instrument::outline`); the string instruments share one diagonal and 
 widths are drawn to scale with one another, the ukulele the smallest. The other eight
 symbols are drawn as before. Tests: the rasterizer's holes, curves, lines and broken
 paths; the symbol snapshot and every snapshot that shows a symbol were regenerated.
+
+## 2026-11-15 — The sound chain window, reworked
+
+- The board stands on a dark ground. Each block shows a symbol of its own above its name
+  (`app/block_icons.rs`: a clipped wave for Drive, the amplifier triangle, a speaker cone
+  for Cab, faders for EQ, the transfer curve for Comp, two waves for Chorus, echoes for
+  Delay, spreading arcs for Reverb, a room for Room).
+- The input trim and the chain output are narrow blocks at the chain's two ends ("In",
+  "Out", with their dB); a click shows the knob and meter below, where the other blocks'
+  knobs are. The row of knobs under the board is gone.
+- Under each block, a trash can beside its mute.
+- The tone row is one line: the tone's dropdown ("Unsaved tone", or a saved tone's name
+  with "(changed)"), a save icon that is active only when the tone changed (it saves over
+  the saved tone being worked on, or asks for a name), "Save as…", a delete icon for a
+  saved tone, and ⎌ (back to the built-in tone, greyed when it plays already; a drum
+  part's reset uses it too). At the right end, copy and paste of the whole chain.
+- An empty place's "+" menu no longer offers copying or pasting the chain (the header has
+  them); a block's right-click menu still does.
+- Tests follow the new names ("Built-in tone", "Save tone as", the Tone dropdown reports
+  the tone's name as its value); snapshots regenerated.

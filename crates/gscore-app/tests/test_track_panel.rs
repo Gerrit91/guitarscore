@@ -451,7 +451,7 @@ fn a_chain_change_is_an_undo_step_and_marks_the_song_modified() {
     let mut harness = app_with("basic/note_lengths.gp");
     open_sound_chain(&mut harness);
     // The track starts from its program's default, with no song tone.
-    harness.get_by_label("Built-in").click();
+    harness.get_by_label("Built-in tone").click();
     harness.run();
     let first = empty_block_index(&harness);
     harness.get_by_label(&format!("Block {first}: +")).click();
@@ -590,8 +590,9 @@ fn a_block_and_a_chain_are_copied_between_tracks_and_a_drum_part() {
     );
 
     // Copy the whole chain of this track, and paste it into a drum part.
-    context_click(&mut harness, &format!("Block {second}: EQ"));
-    harness.get_by_label("Copy chain").click();
+    harness
+        .get_by_role_and_label(egui::accesskit::Role::Button, "Copy chain")
+        .click();
     harness.run();
     let copied_chain: ChainSetting = harness
         .state()
@@ -602,11 +603,6 @@ fn a_block_and_a_chain_are_copied_between_tracks_and_a_drum_part() {
     harness.run();
     open_sound_chain(&mut harness);
     harness.get_by_label("Kick").click();
-    harness.run();
-    let kick_first = empty_block_index(&harness);
-    harness
-        .get_by_label(&format!("Block {kick_first}: +"))
-        .click();
     harness.run();
     harness.get_by_label("Paste chain").click();
     harness.run();
@@ -870,7 +866,9 @@ fn the_sound_section_opens_the_sound_chain_and_the_strings_sound() {
             < 1e-6,
         "the typed value is taken"
     );
-    // The chain's output level is a knob of its own, after every block.
+    // The chain's output level is a narrow block of its own, after every block.
+    harness.get_by_label("Block out: chain output").click();
+    harness.run();
     harness.get_by_label("Chain output value").click();
     harness.run();
     harness.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::A);
@@ -1136,7 +1134,7 @@ fn a_preset_brings_its_kind_of_string_back() {
     harness.run();
     harness.get_by_label("Reverb").click();
     harness.run();
-    harness.get_by_label("Save as…").click();
+    harness.get_by_label("Save tone as").click();
     harness.run();
     harness.get_by_label("Tone name").focus();
     harness
@@ -1176,7 +1174,7 @@ fn a_preset_can_be_saved_over_and_deleted_while_active() {
     harness.run();
     harness.get_by_label("Reverb").click();
     harness.run();
-    harness.get_by_label("Save as…").click();
+    harness.get_by_label("Save tone as").click();
     harness.run();
     harness.get_by_label("Tone name").focus();
     harness.get_by_label("Tone name").type_text("Room 1");
@@ -1196,7 +1194,7 @@ fn a_preset_can_be_saved_over_and_deleted_while_active() {
         .unwrap()
         .click();
     harness.run();
-    assert_eq!(preset_shown(&harness), "Room 1 *");
+    assert_eq!(preset_shown(&harness), "Room 1 (changed)");
 
     // Save over it: one preset of that name, with the chain as it is now.
     harness.get_by_label("Save tone").click();
@@ -1226,16 +1224,16 @@ fn a_preset_can_be_saved_over_and_deleted_while_active() {
         harness.state().settings().string_presets.is_empty(),
         "the preset is gone"
     );
-    assert_eq!(preset_shown(&harness), "Changed");
+    assert_eq!(preset_shown(&harness), "Unsaved tone");
 }
 
 /// What the Sound chain window's Tone row shows.
 fn preset_shown(harness: &Harness<'_, GuitarScoreApp>) -> String {
+    // The Tone dropdown reports the tone's name as its value.
     harness
-        .query_all_by_label_contains("Tone: ")
+        .query_all_by_label("Tone")
         .last()
-        .and_then(|node| node.accesskit_node().label())
-        .and_then(|label| label.strip_prefix("Tone: ").map(str::to_owned))
+        .and_then(|node| node.accesskit_node().value())
         .unwrap_or_default()
 }
 
@@ -1304,7 +1302,7 @@ fn a_saved_chain_preset_brings_back_the_whole_chain() {
     harness.run();
     harness.get_by_label(&format!("Block {first}: Reverb"));
     // Save the chain (with the string sound it was dialed in with) under a name.
-    harness.get_by_label("Save as…").click();
+    harness.get_by_label("Save tone as").click();
     harness.run();
     harness.get_by_label("Tone name").focus();
     harness.get_by_label("Tone name").type_text("Hall 1");
@@ -1500,7 +1498,7 @@ fn a_dialed_tone_belongs_to_the_track() {
         harness.run();
         open_sound_chain(harness);
         // Forget a tone the song brought so the knobs start from the program's default.
-        harness.get_by_label("Built-in").click();
+        harness.get_by_label("Built-in tone").click();
         harness.run();
         // Played by the strings (if it is not yet), their box selected.
         if harness.query_by_label("Block 0: MIDI").is_some() {
@@ -1652,7 +1650,7 @@ fn a_songs_edited_tone_survives_with_default_settings() {
     // Dial the pick position of the tone the first track's preset (27) plays.
     open_sound_chain(&mut harness);
     // Built-in removes a tone the song carries, so the knobs start from the default.
-    harness.get_by_label("Built-in").click();
+    harness.get_by_label("Built-in tone").click();
     harness.run();
     if harness.query_by_label("Block 0: MIDI").is_some() {
         harness.get_by_label("Block 0: MIDI").click();
@@ -1749,7 +1747,7 @@ fn the_built_in_entry_forgets_a_tracks_tone() {
         .sound;
     assert_ne!(changed, built_in, "the track has a tone of its own now");
     // The tone row offers Built-in: the track's own tone is forgotten.
-    harness.get_by_label("Built-in").click();
+    harness.get_by_label("Built-in tone").click();
     harness.run();
     assert!(
         harness

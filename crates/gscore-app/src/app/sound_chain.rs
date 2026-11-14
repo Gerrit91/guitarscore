@@ -33,7 +33,7 @@ use crate::settings::{
 /// Width of the window's content.
 const WIDTH: f32 = 700.0;
 /// The height of the slot above the board (the tone's two rows, or a drum part's level).
-const HEADER_HEIGHT: f32 = 58.0;
+const HEADER_HEIGHT: f32 = 30.0;
 /// The height of the chosen box's knobs: the tallest editor's but the EQ's, so the window
 /// keeps one size whichever box is chosen; a chain with an EQ in it (its curve and
 /// columns) takes the taller one...
@@ -46,9 +46,16 @@ const EDITOR_MIN_HEIGHT: f32 = 200.0;
 /// How far a track's input trim goes either way, in dB.
 const TRIM_RANGE: (f32, f32) = (-24.0, 24.0);
 /// A box on the board, the gap between boxes (where the cable runs), the board's height.
-const BOX: egui::Vec2 = vec2(86.0, 60.0);
+const BOX: egui::Vec2 = vec2(78.0, 70.0);
+/// The widest gap between two boxes (the cable between them).
 const GAP: f32 = 36.0;
-const BOARD_HEIGHT: f32 = 96.0;
+/// The input trim's and the chain output's boxes: narrow, at the chain's two ends.
+const END_WIDTH: f32 = 44.0;
+const BOARD_HEIGHT: f32 = 114.0;
+/// The board's [`SoundChainWindow::selected`] value for the input trim's box.
+pub(super) const SELECT_INPUT: usize = BLOCKS + 1;
+/// The board's [`SoundChainWindow::selected`] value for the chain output's box.
+pub(super) const SELECT_OUTPUT: usize = BLOCKS + 2;
 /// The window's [`egui::Area`] id: stable even when the track named in its title changes.
 const WINDOW_ID: &str = "gscore_sound_chain";
 
@@ -106,6 +113,10 @@ struct Actions {
     /// string and its name, since names are unique within a kind only).
     save_preset: Option<String>,
     delete_preset: Option<(String, String)>,
+    /// The header's copy button: the whole chain shown goes on the clipboard.
+    copy_chain: bool,
+    /// The header's paste button: the clipboard's chain replaces the one shown.
+    paste_chain: bool,
     /// A block or chain copied from a board, for the app's clipboard.
     copy: Option<SoundClip>,
     /// A block dropped on a drum part's button (or the kit's), before that part's chain.
@@ -309,6 +320,134 @@ fn strings_editor(
 struct ShownPreset {
     program: u8,
     kind: StringKind,
+    /// Whether the clipboard holds a chain to paste.
+    chain_clip: bool,
+}
+
+/// The tone's buttons beside its dropdown: save (active once the tone changed; it saves
+/// over the saved tone being worked on, or asks for a name), save under a new name,
+/// delete the saved tone, and go back to the built-in tone.
+#[allow(clippy::too_many_arguments)]
+fn tone_buttons(
+    ui: &mut egui::Ui,
+    program: u8,
+    kind: StringKind,
+    changed: bool,
+    built_in: bool,
+    working: Option<String>,
+    window: &mut SoundChainWindow,
+    actions: &mut Actions,
+) {
+    use super::icons::{self, Icon};
+    if let Some(name) = &mut window.saving {
+        // Naming a tone: the field takes the place of the buttons.
+        let field = ui.add(
+            egui::TextEdit::singleline(name)
+                .char_limit(MAX_STRING_PRESET_NAME)
+                .hint_text("Name of the tone")
+                .desired_width(150.0),
+        );
+        ui.ctx()
+            .accesskit_node_builder(field.id, |node| node.set_label("Tone name"));
+        // The field takes the keyboard while it is empty, so the name can be typed at once.
+        if !field.has_focus() && name.is_empty() {
+            field.request_focus();
+        }
+        let name_ok = !name.trim().is_empty();
+        let enter = field.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
+        if ui.add_enabled(name_ok, egui::Button::new("Save")).clicked() || (enter && name_ok) {
+            let name = name.trim().to_owned();
+            actions.save_preset = Some(name.clone());
+            window.preset = Some((program, name));
+            window.saving = None;
+        } else if ui.button("Cancel").clicked() {
+            window.saving = None;
+        }
+        return;
+    }
+    let save_tip = match &working {
+        _ if !changed => "Nothing to save: the tone is as it was chosen".to_owned(),
+        Some(name) => format!("Save over \"{name}\" (its knobs as they are now)"),
+        None => "Save this tone under a name, for other tracks".to_owned(),
+    };
+    let save = ui
+        .add_enabled_ui(changed, |ui| {
+            icons::toolbar_button(ui, Icon::Save, "Save tone", &save_tip)
+        })
+        .inner;
+    if save.clicked() {
+        match &working {
+            Some(name) => {
+                actions.save_preset = Some(name.clone());
+                window.preset = Some((program, name.clone()));
+            }
+            None => window.saving = Some(String::new()),
+        }
+    }
+    let save_as = ui
+        .button("Save as…")
+        .on_hover_text("Save this tone under a new name, for other tracks");
+    ui.ctx()
+        .accesskit_node_builder(save_as.id, |node| node.set_label("Save tone as"));
+    if save_as.clicked() {
+        window.saving = Some(String::new());
+    }
+    if let Some(name) = &working
+        && icons::toolbar_button(
+            ui,
+            Icon::Delete,
+            "Delete tone",
+            &format!("Delete \"{name}\""),
+        )
+        .clicked()
+    {
+        actions.delete_preset = Some((kind_id(kind).to_owned(), name.clone()));
+        window.preset = None;
+    }
+    let revert = ui
+        .add_enabled_ui(!built_in, |ui| {
+            icons::toolbar_button(
+                ui,
+                Icon::Revert,
+                "Built-in tone",
+                "Back to the built-in tone (forgets this track's own tone)",
+            )
+        })
+        .inner;
+    if revert.clicked() {
+        window.preset = None;
+        actions.reset_tone = true;
+    }
+}
+
+/// The chain's copy and paste buttons, at the right end of the header.
+fn clip_buttons(ui: &mut egui::Ui, has_chain_clip: bool, actions: &mut Actions) {
+    use super::icons::{self, Icon};
+    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+        let paste = ui
+            .add_enabled_ui(has_chain_clip, |ui| {
+                icons::toolbar_button(
+                    ui,
+                    Icon::Paste,
+                    "Paste chain",
+                    "Replace every block of this chain with the copied chain",
+                )
+            })
+            .inner;
+        if paste.clicked() {
+            actions.paste_chain = true;
+        }
+        if icons::toolbar_button(
+            ui,
+            Icon::Copy,
+            "Copy chain",
+            "Copy every block of this chain, to paste into another track, part or the master",
+        )
+        .clicked()
+        {
+            actions.copy_chain = true;
+        }
+    });
 }
 
 /// The saved tones: the one this track plays, saving it (over it or under a new name),
@@ -325,158 +464,95 @@ fn preset_row(
     window: &mut SoundChainWindow,
     actions: &mut Actions,
 ) {
-    let (program, kind) = (shown.program, shown.kind);
+    let (program, kind, has_chain_clip) = (shown.program, shown.kind, shown.chain_clip);
     let current = super::tone_picker::current_tone_choice(tone, default_tone, presets);
-    let shown_name = match &current {
-        Some(super::tone_picker::PickerChoice::BuiltIn(name)) => name.clone(),
-        Some(super::tone_picker::PickerChoice::Saved { name, .. }) => name.clone(),
-        // The tone was saved under this name and its knobs moved since.
-        None => match window
-            .preset
-            .as_ref()
-            .filter(|(saved, _)| *saved == program)
-        {
-            Some((_, name)) => format!("{name} *"),
-            None => "Changed".to_owned(),
-        },
-        Some(
-            super::tone_picker::PickerChoice::Program(_)
-            | super::tone_picker::PickerChoice::DrumKit(_),
-        ) => "Changed".to_owned(),
-    };
-    ui.horizontal(|ui| {
-        let _ = ui.selectable_label(false, format!("Tone: {shown_name}"));
-        if ui
-            .button("Built-in")
-            .on_hover_text(
-                "Forget this track's tone (and its preset's local one); the built-in tone \
-                 plays again",
+    // The saved tone being worked on, if one was chosen or saved for this preset.
+    let working = window
+        .preset
+        .as_ref()
+        .filter(|(saved, _)| *saved == program)
+        .map(|(_, name)| name.clone());
+    // Changed: the tone is neither a built-in one nor a saved one as it was saved.
+    let changed = current.is_none()
+        || matches!(
+            current,
+            Some(
+                super::tone_picker::PickerChoice::Program(_)
+                    | super::tone_picker::PickerChoice::DrumKit(_)
             )
-            .clicked()
-        {
-            window.preset = None;
-            actions.reset_tone = true;
-        }
-        match &mut window.saving {
-            None => {
-                // Saving over the tone being worked on, and deleting it.
-                if let Some(name) = window
-                    .preset
-                    .as_ref()
-                    .filter(|(saved, _)| *saved == program)
-                    .map(|(_, name)| name.clone())
-                {
-                    let save = ui
-                        .button("Save")
-                        .on_hover_text(format!("Save over \"{name}\" (its knobs as they are now)"));
-                    ui.ctx().accesskit_node_builder(save.id, |node| {
-                        node.set_label("Save tone");
-                    });
-                    if save.clicked() {
-                        actions.save_preset = Some(name.clone());
-                        window.preset = Some((program, name.clone()));
-                    }
-                    let delete = ui
-                        .button("Delete")
-                        .on_hover_text(format!("Delete \"{name}\""));
-                    ui.ctx().accesskit_node_builder(delete.id, |node| {
-                        node.set_label("Delete tone");
-                    });
-                    if delete.clicked() {
-                        actions.delete_preset = Some((kind_id(kind).to_owned(), name));
-                        window.preset = None;
-                    }
-                }
-                if ui
-                    .button("Save as…")
-                    .on_hover_text(
-                        "Save this track's tone (its chain and string sound) under a new name, \
-                         for other tracks",
-                    )
-                    .clicked()
-                {
-                    window.saving = Some(String::new());
-                }
-            }
-            Some(name) => {
-                let field = ui.add(
-                    egui::TextEdit::singleline(name)
-                        .char_limit(MAX_STRING_PRESET_NAME)
-                        .hint_text("Name")
-                        .desired_width(120.0),
-                );
-                ui.ctx()
-                    .accesskit_node_builder(field.id, |node| node.set_label("Tone name"));
-                let name_ok = !name.trim().is_empty();
-                let enter = field.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
-                if ui.add_enabled(name_ok, egui::Button::new("Save")).clicked()
-                    || (enter && name_ok)
-                {
-                    let name = name.trim().to_owned();
-                    actions.save_preset = Some(name.clone());
-                    window.preset = Some((program, name));
-                    window.saving = None;
-                } else if ui.button("Cancel").clicked() {
-                    window.saving = None;
-                }
-            }
-        }
-    });
+        );
+    let shown_name = match (&current, &working) {
+        (Some(super::tone_picker::PickerChoice::BuiltIn(name)), _)
+        | (Some(super::tone_picker::PickerChoice::Saved { name, .. }), _) => name.clone(),
+        (_, Some(name)) => format!("{name} (changed)"),
+        _ => "Unsaved tone".to_owned(),
+    };
+    let built_in = matches!(
+        (&current, default_tone),
+        (Some(super::tone_picker::PickerChoice::BuiltIn(name)), Some(default))
+            if name == default
+    );
     // Built-in tones by family, then the user's saved ones; compact here so the window
     // keeps its height (the track panel shows the full table).
     let mut chosen: Option<super::tone_picker::PickerChoice> = None;
-    let combo = egui::ComboBox::from_id_salt("sound_chain_tone")
-        .selected_text(if shown_name == "Changed" {
-            "Changed".to_owned()
-        } else {
-            shown_name.clone()
-        })
-        .show_ui(ui, |ui| {
-            if ui.selectable_label(false, "Built-in").clicked() {
-                window.preset = None;
-                actions.reset_tone = true;
-            }
-            // The user's saved tones first (the list is long), then the built-in ones.
-            if !presets.is_empty() {
-                ui.label(RichText::new("Saved").weak());
-                for preset in presets {
-                    let selected = preset.name == shown_name;
-                    if ui.selectable_label(selected, &preset.name).clicked() {
-                        chosen = Some(super::tone_picker::PickerChoice::Saved {
-                            kind: preset.kind.clone(),
-                            name: preset.name.clone(),
-                        });
+    ui.horizontal(|ui| {
+        let combo = egui::ComboBox::from_id_salt("sound_chain_tone")
+            .width(230.0)
+            .selected_text(shown_name.clone())
+            .show_ui(ui, |ui| {
+                if ui.selectable_label(false, "Built-in").clicked() {
+                    window.preset = None;
+                    actions.reset_tone = true;
+                }
+                // The user's saved tones first (the list is long), then the built-in ones.
+                if !presets.is_empty() {
+                    ui.label(RichText::new("Saved").weak());
+                    for preset in presets {
+                        let selected = preset.name == shown_name;
+                        if ui.selectable_label(selected, &preset.name).clicked() {
+                            chosen = Some(super::tone_picker::PickerChoice::Saved {
+                                kind: preset.kind.clone(),
+                                name: preset.name.clone(),
+                            });
+                        }
                     }
                 }
-            }
-            for family in crate::tone_library::ToneFamily::ALL {
-                ui.label(RichText::new(family.label()).weak());
-                for tone in crate::tone_library::all()
-                    .iter()
-                    .filter(|tone| tone.family == family)
-                {
-                    let selected = tone.name == shown_name;
-                    let response = ui
-                        .selectable_label(selected, &tone.name)
-                        .on_hover_text(&tone.description);
-                    if response.clicked() {
-                        chosen = Some(super::tone_picker::PickerChoice::BuiltIn(tone.name.clone()));
+                for family in crate::tone_library::ToneFamily::ALL {
+                    ui.label(RichText::new(family.label()).weak());
+                    for tone in crate::tone_library::all()
+                        .iter()
+                        .filter(|tone| tone.family == family)
+                    {
+                        let selected = tone.name == shown_name;
+                        let response = ui
+                            .selectable_label(selected, &tone.name)
+                            .on_hover_text(&tone.description);
+                        if response.clicked() {
+                            chosen =
+                                Some(super::tone_picker::PickerChoice::BuiltIn(tone.name.clone()));
+                        }
                     }
                 }
+            });
+        combo.response.clone().on_hover_text(format!(
+            "The tone this track's preset ({}: {}) plays; {}",
+            program,
+            gscore_model::program_name(program),
+            match default_tone {
+                Some(name) => format!("its built-in one is {name}"),
+                None => "it has no built-in one, so without a tone it plays its plain strings"
+                    .to_owned(),
             }
+        ));
+        ui.ctx().accesskit_node_builder(combo.response.id, |node| {
+            node.set_label("Tone");
+            node.set_value(shown_name.clone());
         });
-    combo.response.clone().on_hover_text(format!(
-        "The tone this track's preset ({}: {}) plays; {}",
-        program,
-        gscore_model::program_name(program),
-        match default_tone {
-            Some(name) => format!("its built-in one is {name}"),
-            None =>
-                "it has no built-in one, so without a tone it plays its plain strings".to_owned(),
-        }
-    ));
-    ui.ctx()
-        .accesskit_node_builder(combo.response.id, |node| node.set_label("Tone"));
+        tone_buttons(
+            ui, program, kind, changed, built_in, working, window, actions,
+        );
+        clip_buttons(ui, has_chain_clip, actions);
+    });
     if let Some(choice) = chosen {
         use super::tone_picker::PickerChoice;
         match choice {
@@ -651,10 +727,13 @@ fn parts_row(
             && dialed_in.contains(&part)
         {
             ui.add_space(6.0);
-            if ui
-                .button("Built-in")
-                .on_hover_text("Forget this part's own tone: the built-in one plays again")
-                .clicked()
+            if super::icons::button(
+                ui,
+                super::icons::Icon::Revert,
+                "Built-in tone",
+                "Back to the built-in tone (forgets this part's own tone)",
+            )
+            .clicked()
             {
                 actions.reset_part = true;
             }
@@ -736,6 +815,8 @@ pub(super) fn block_choices() -> [(BlockChoice, &'static str, &'static str); 9] 
 struct BoxFace<'a> {
     /// An empty place: just its "+".
     empty: bool,
+    /// The block's symbol, drawn above its name.
+    icon: Option<BlockChoice>,
     /// The block passes the sound unchanged: weak text and "off" in the corner.
     bypassed: bool,
     title: &'a str,
@@ -761,19 +842,39 @@ fn paint_box(
         tokens.text
     };
     let inside = painter.with_clip_rect(rect.shrink(3.0));
-    let title_size = if face.empty { 22.0 } else { 13.0 };
+    if face.empty {
+        inside.text(
+            rect.center(),
+            Align2::CENTER_CENTER,
+            short(face.title, 13),
+            FontId::proportional(22.0),
+            text,
+        );
+        return;
+    }
+    // The symbol at the top, then the name, then what it is set to.
+    let narrow = rect.width() < BOX.x;
+    let (title_y, detail_y) = match face.icon {
+        Some(choice) => {
+            let icon =
+                Rect::from_center_size(pos2(rect.center().x, rect.top() + 18.0), vec2(22.0, 22.0));
+            super::block_icons::paint(&inside, icon, choice, text);
+            (rect.top() + 41.0, rect.top() + 57.0)
+        }
+        None => (rect.center().y - 8.0, rect.center().y + 12.0),
+    };
     inside.text(
-        rect.center() - vec2(0.0, if face.empty { 0.0 } else { 8.0 }),
+        pos2(rect.center().x, title_y),
         Align2::CENTER_CENTER,
-        short(face.title, 13),
-        FontId::proportional(title_size),
+        short(face.title, if narrow { 5 } else { 12 }),
+        FontId::proportional(if narrow { 12.0 } else { 13.0 }),
         text,
     );
     if !face.detail.is_empty() {
         inside.text(
-            rect.center() + vec2(0.0, 12.0),
+            pos2(rect.center().x, detail_y),
             Align2::CENTER_CENTER,
-            short(face.detail, 12),
+            short(face.detail, if narrow { 7 } else { 12 }),
             FontId::proportional(10.0),
             tokens.text_weak,
         );
@@ -789,9 +890,64 @@ fn paint_box(
     }
 }
 
-/// The board: the boxes, the cables between them and, under each block, its mute. A block
-/// can be dragged to another place; the block follows the mouse and the place it would
-/// land in is outlined, until it is let go there.
+/// The levels at a track chain's two ends, shown as narrow boxes on its board: the input
+/// trim before the first block and the chain's output after the last.
+#[derive(Debug, Clone, Copy)]
+pub(super) struct ChainEnds {
+    pub(super) input_db: f32,
+    pub(super) output_db: f32,
+}
+
+/// What stands where on a board, left to right.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Slot {
+    /// A box: 0 the source, 1 to 5 a place.
+    Box(usize),
+    Input,
+    Output,
+}
+
+/// A small button with an icon, in a rect of its own (the trash can under a block).
+fn small_icon_button(
+    ui: &mut egui::Ui,
+    rect: Rect,
+    icon: super::icons::Icon,
+    label: &str,
+    tip: &str,
+) -> egui::Response {
+    let tokens = style::tokens(ui);
+    let response = ui
+        .interact(
+            rect,
+            ui.scope_id().with(("small_icon", label)),
+            Sense::click(),
+        )
+        .on_hover_text(tip);
+    let fill = if response.hovered() {
+        tokens.control_hover
+    } else {
+        tokens.control
+    };
+    ui.painter().rect_filled(rect, 3.0, fill);
+    let side = rect.height() - 4.0;
+    super::icons::paint(
+        ui.painter(),
+        Rect::from_center_size(rect.center(), vec2(side, side)),
+        tokens.text_weak,
+        icon,
+    );
+    ui.ctx().accesskit_node_builder(response.id, |node| {
+        node.set_label(label);
+        node.set_role(egui::Role::Button);
+    });
+    response
+}
+
+/// The board on a dark ground: the source, the input trim's narrow box, the five places
+/// and the output's narrow box, joined by cables; under each block its mute and a trash
+/// can. A block can be dragged to another place; the block follows the mouse and the
+/// place it would land in is outlined, until it is let go there. `ends` is `None` for a
+/// board without them (the master's).
 pub(super) fn board(
     ui: &mut egui::Ui,
     source: (&str, &str),
@@ -799,28 +955,117 @@ pub(super) fn board(
     selected: usize,
     origin: usize,
     clipboard: Option<&SoundClip>,
+    ends: Option<ChainEnds>,
 ) -> BoardActions {
     let tokens = style::tokens(ui);
     let (area, _) = ui.allocate_exact_size(vec2(WIDTH, BOARD_HEIGHT), Sense::hover());
     let count = BLOCKS.saturating_add(1);
-    let row = BOX.x * count as f32 + GAP * BLOCKS as f32;
-    let left = area.left() + (WIDTH - row) / 2.0;
-    let top = area.top() + 4.0;
-    let rect_of =
-        |index: usize| Rect::from_min_size(pos2(left + index as f32 * (BOX.x + GAP), top), BOX);
+    // The slots left to right, with their widths.
+    let mut slots = vec![(Slot::Box(0), BOX.x)];
+    if ends.is_some() {
+        slots.push((Slot::Input, END_WIDTH));
+    }
+    slots.extend((1..count).map(|index| (Slot::Box(index), BOX.x)));
+    if ends.is_some() {
+        slots.push((Slot::Output, END_WIDTH));
+    }
+    let boxes: f32 = slots.iter().map(|(_, width)| width).sum();
+    let gaps = slots.len().saturating_sub(1).max(1) as f32;
+    let gap = ((area.width() - 24.0 - boxes) / gaps).clamp(8.0, GAP);
+    let row = boxes + gap * gaps;
+    let top = area.top() + 10.0;
+    let mut x = area.left() + (area.width() - row) / 2.0;
+    let placed: Vec<(Slot, Rect)> = slots
+        .iter()
+        .map(|&(slot, width)| {
+            let rect = Rect::from_min_size(pos2(x, top), vec2(width, BOX.y));
+            x += width + gap;
+            (slot, rect)
+        })
+        .collect();
+    let rect_of = |index: usize| {
+        placed
+            .iter()
+            .find(|(slot, _)| *slot == Slot::Box(index))
+            .map_or(Rect::NOTHING, |(_, rect)| *rect)
+    };
     let painter = ui.painter_at(area);
+    // The dark ground the pedals stand on.
+    painter.rect_filled(area, 8.0, tokens.chrome);
     // Cables first, under the boxes: a straight line from one box's output jack to the next
     // box's input jack.
     let cable = Stroke::new(2.5, tokens.text_weak.gamma_multiply(0.8));
-    for index in 0..BLOCKS {
-        let from = rect_of(index).right_center();
-        let to = rect_of(index.saturating_add(1)).left_center();
+    for pair in placed.windows(2) {
+        let [(_, a), (_, b)] = pair else {
+            continue;
+        };
+        let (from, to) = (a.right_center(), b.left_center());
         painter.line_segment([from, to], cable);
         for end in [from, to] {
             painter.circle_filled(end, 3.5, tokens.text_weak);
         }
     }
     let mut actions = BoardActions::default();
+    // The input trim's and the output's boxes: a click shows their knob and meter.
+    if let Some(ends) = ends {
+        for (slot, rect) in &placed {
+            let (select, title, db, tip, label) = match slot {
+                Slot::Input => (
+                    SELECT_INPUT,
+                    "In",
+                    ends.input_db,
+                    "The input trim, before the first block: how hard the chain is fed",
+                    "Block in: input trim",
+                ),
+                Slot::Output => (
+                    SELECT_OUTPUT,
+                    "Out",
+                    ends.output_db,
+                    "The chain's output level, after every block and before the fader",
+                    "Block out: chain output",
+                ),
+                Slot::Box(_) => continue,
+            };
+            let response = ui
+                .interact(
+                    *rect,
+                    ui.scope_id().with(("chain_end", select)),
+                    Sense::click(),
+                )
+                .on_hover_text(tip);
+            ui.ctx().accesskit_node_builder(response.id, |node| {
+                node.set_label(label);
+                node.set_role(egui::Role::Button);
+            });
+            let fill = if response.hovered() {
+                tokens.control_hover
+            } else {
+                tokens.control
+            };
+            let outline = if selected == select {
+                Stroke::new(2.0, tokens.accent)
+            } else {
+                Stroke::new(1.0, tokens.line)
+            };
+            paint_box(
+                &painter,
+                *rect,
+                &BoxFace {
+                    empty: false,
+                    icon: None,
+                    bypassed: false,
+                    title,
+                    detail: &format!("{db:+.1}"),
+                },
+                fill,
+                outline,
+                tokens,
+            );
+            if response.clicked() {
+                actions.select = Some(select);
+            }
+        }
+    }
     // The block being dragged, while one is.
     let dragging = egui::DragAndDrop::payload::<DraggedBlock>(ui.ctx());
     for index in 0..count {
@@ -915,6 +1160,7 @@ pub(super) fn board(
             rect,
             &BoxFace {
                 empty,
+                icon: block.map(|block| block.choice),
                 bypassed,
                 title: &title,
                 detail: &detail,
@@ -943,27 +1189,6 @@ pub(super) fn board(
                     for (choice, label, tip) in block_choices() {
                         if ui.button(label).on_hover_text(tip).clicked() {
                             actions.fill = Some((place, choice));
-                            ui.close();
-                        }
-                    }
-                    if ui
-                        .button("Copy chain")
-                        .on_hover_text(
-                            "Keep every block of this chain to paste into another track or part",
-                        )
-                        .clicked()
-                    {
-                        actions.copy = Some(SoundClip::Chain(Box::new(chain.clone())));
-                        ui.close();
-                    }
-                    if let Some(SoundClip::Chain(_)) = clipboard {
-                        ui.separator();
-                        if ui
-                            .button("Paste chain")
-                            .on_hover_text("Replace every place of this chain with the copied one")
-                            .clicked()
-                        {
-                            actions.paste_chain = true;
                             ui.close();
                         }
                     }
@@ -1043,9 +1268,24 @@ pub(super) fn board(
                 continue;
             }
             let mute = Rect::from_center_size(
-                pos2(rect.center().x, rect.bottom() + 12.0),
-                vec2(26.0, 16.0),
+                pos2(rect.center().x - 13.0, rect.bottom() + 13.0),
+                vec2(24.0, 16.0),
             );
+            let trash = Rect::from_center_size(
+                pos2(rect.center().x + 13.0, rect.bottom() + 13.0),
+                vec2(24.0, 16.0),
+            );
+            if small_icon_button(
+                ui,
+                trash,
+                super::icons::Icon::Delete,
+                &format!("Remove block {}", place.saturating_add(1)),
+                "Remove this block (empty its place)",
+            )
+            .clicked()
+            {
+                actions.remove = Some(place);
+            }
             let response = ui
                 .put(mute, style::mute_button(bypassed))
                 .on_hover_text(if bypassed {
@@ -1075,6 +1315,7 @@ pub(super) fn board(
             Rect::from_center_size(pointer, BOX),
             &BoxFace {
                 empty: false,
+                icon: Some(drag.block.choice),
                 bypassed: drag.block.bypass,
                 title: &title,
                 detail: &detail,
@@ -1575,6 +1816,7 @@ impl GuitarScoreApp {
             })
             .unwrap_or_default();
         let clipboard = self.sound_clipboard.clone();
+        let has_chain_clip = matches!(clipboard, Some(SoundClip::Chain(_)));
         // The track's input trim and the level before its chain, for setting how hard an
         // amp or a compressor is driven.
         let trim_db = self
@@ -1638,8 +1880,7 @@ impl GuitarScoreApp {
                                     }
                                     ui.add_space(16.0);
                                     ui.label(
-                                        RichText::new("Room")
-                                            .color(style::tokens(ui).text_weak),
+                                        RichText::new("Room").color(style::tokens(ui).text_weak),
                                     );
                                     let mut room = part_room.unwrap_or(0);
                                     if ui
@@ -1652,6 +1893,7 @@ impl GuitarScoreApp {
                                     {
                                         actions.part_room = Some(room);
                                     }
+                                    clip_buttons(ui, has_chain_clip, &mut actions);
                                 });
                             } else {
                                 let default_tone = self.playback.track_default_tone_name(
@@ -1664,6 +1906,7 @@ impl GuitarScoreApp {
                                     ShownPreset {
                                         program: player.program,
                                         kind,
+                                        chain_clip: has_chain_clip,
                                     },
                                     default_tone.as_deref(),
                                     &tone,
@@ -1704,6 +1947,10 @@ impl GuitarScoreApp {
                             window.selected,
                             board_origin(window.track, window.part),
                             clipboard.as_ref(),
+                            Some(ChainEnds {
+                                input_db: trim_db,
+                                output_db: chain.output_db,
+                            }),
                         );
                         if let Some(index) = board.select {
                             window.selected = index;
@@ -1714,6 +1961,15 @@ impl GuitarScoreApp {
                         }
                         if let Some(clip) = board.copy {
                             actions.copy = Some(clip);
+                        }
+                        // The header's copy and paste buttons act on the whole chain shown.
+                        if actions.copy_chain {
+                            actions.copy = Some(SoundClip::Chain(Box::new(chain.clone())));
+                        }
+                        if actions.paste_chain
+                            && let Some(SoundClip::Chain(copied)) = &clipboard
+                        {
+                            actions.chain = Some(copied.as_ref().clone());
                         }
                         if let Some(place) = board.paste_block
                             && let Some(SoundClip::Block(block)) = &clipboard
@@ -1776,70 +2032,6 @@ impl GuitarScoreApp {
                                 window.selected = to.saturating_add(1);
                             }
                         }
-                        // The input trim and its meter (how hard the chain is fed) on the
-                        // left; the chain's output level on the right: the tone's own
-                        // loudness, after every block and before the mixer's fader.
-                        ui.add_space(2.0);
-                        ui.horizontal(|ui| {
-                            let mut trim = trim_db;
-                            if round_knob(
-                                ui,
-                                &mut trim,
-                                TRIM_RANGE,
-                                "Input trim",
-                                " dB",
-                                default_trim,
-                                false,
-                                "The track's input trim, before its chain's first block: turn it up \
-                                 to drive an amp or a compressor harder, or down to clean \
-                                 them up. It does not change the track's level.",
-                            )
-                            .changed
-                            {
-                                actions.trim = Some(trim);
-                            }
-                            let (rect, response) =
-                                ui.allocate_exact_size(vec2(10.0, 30.0), Sense::hover());
-                            strips::paint_meter(ui, rect, strips::Reading::measured(input));
-                            response.on_hover_text(
-                                "The level before the chain (after the input trim), left and \
-                                 right",
-                            );
-                            ui.with_layout(egui::Layout::right_to_left(egui::Align::TOP), |ui| {
-                                let mut output_db = chain.output_db;
-                                if round_knob(
-                                    ui,
-                                    &mut output_db,
-                                    knob_ranges::OUTPUT,
-                                    "Chain output",
-                                    " dB",
-                                    0.0,
-                                    false,
-                                    "The chain's output level, after every block and \
-                                         before the mixer's fader. It is the tone's own \
-                                         loudness: turning it does not change how hard an \
-                                         amp or a drive is fed.",
-                                )
-                                .changed
-                                {
-                                    let mut changed = chain.clone();
-                                    changed.output_db = output_db;
-                                    actions.chain = Some(changed);
-                                }
-                                // What leaves the chain, just left of the knob.
-                                let (rect, response) = ui
-                                    .allocate_exact_size(vec2(10.0, 30.0), Sense::hover());
-                                strips::paint_meter(
-                                    ui,
-                                    rect,
-                                    strips::Reading::measured(output),
-                                );
-                                response.on_hover_text(
-                                    "The level after the chain (with its output level), left \
-                                     and right, before the fader",
-                                );
-                            });
-                        });
                         ui.separator();
                         // The chosen box's knobs, in an area of one height for every box of
                         // the chain (taller only for a chain with an EQ, if the screen has
@@ -1861,6 +2053,78 @@ impl GuitarScoreApp {
                             .max_height(editor_height)
                             .show(ui, |ui| {
                                 ui.set_min_height(editor_height);
+                                if window.selected == SELECT_INPUT {
+                                    ui.label(RichText::new("Input trim").strong());
+                                    ui.horizontal(|ui| {
+                                        let mut trim = trim_db;
+                                        if round_knob(
+                                            ui,
+                                            &mut trim,
+                                            TRIM_RANGE,
+                                            "Input trim",
+                                            " dB",
+                                            default_trim,
+                                            false,
+                                            "The track's input trim, before its chain's first \
+                                             block: turn it up to drive an amp or a compressor \
+                                             harder, or down to clean them up. It does not \
+                                             change the track's level.",
+                                        )
+                                        .changed
+                                        {
+                                            actions.trim = Some(trim);
+                                        }
+                                        let (rect, response) = ui
+                                            .allocate_exact_size(vec2(10.0, 30.0), Sense::hover());
+                                        strips::paint_meter(
+                                            ui,
+                                            rect,
+                                            strips::Reading::measured(input),
+                                        );
+                                        response.on_hover_text(
+                                            "The level before the chain (after the input trim), \
+                                             left and right",
+                                        );
+                                    });
+                                    return;
+                                }
+                                if window.selected == SELECT_OUTPUT {
+                                    ui.label(RichText::new("Chain output").strong());
+                                    ui.horizontal(|ui| {
+                                        let mut output_db = chain.output_db;
+                                        if round_knob(
+                                            ui,
+                                            &mut output_db,
+                                            knob_ranges::OUTPUT,
+                                            "Chain output",
+                                            " dB",
+                                            0.0,
+                                            false,
+                                            "The chain's output level, after every block and \
+                                             before the mixer's fader. It is the tone's own \
+                                             loudness: turning it does not change how hard an \
+                                             amp or a drive is fed.",
+                                        )
+                                        .changed
+                                        {
+                                            let mut changed = chain.clone();
+                                            changed.output_db = output_db;
+                                            actions.chain = Some(changed);
+                                        }
+                                        let (rect, response) = ui
+                                            .allocate_exact_size(vec2(10.0, 30.0), Sense::hover());
+                                        strips::paint_meter(
+                                            ui,
+                                            rect,
+                                            strips::Reading::measured(output),
+                                        );
+                                        response.on_hover_text(
+                                            "The level after the chain (with its output level), \
+                                             left and right, before the fader",
+                                        );
+                                    });
+                                    return;
+                                }
                                 match window.selected.checked_sub(1) {
                                     None => {
                                         let mut sound = sound;

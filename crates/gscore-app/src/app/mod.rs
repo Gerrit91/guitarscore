@@ -10,6 +10,7 @@ mod alert;
 mod amp_knobs;
 mod bars;
 mod beat_text_editor;
+mod block_icons;
 mod chord_editor;
 mod chorus_bus_window;
 mod circle_of_fifths;

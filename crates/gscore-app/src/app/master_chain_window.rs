@@ -97,6 +97,7 @@ impl GuitarScoreApp {
                             window.selected,
                             MASTER_BOARD,
                             clipboard.as_ref(),
+                            None,
                         );
                         if let Some(index) = shown.select {
                             window.selected = index;
