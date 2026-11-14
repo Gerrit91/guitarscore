@@ -123,6 +123,36 @@ fn notes_at(
 }
 
 #[test]
+fn delete_takes_the_note_under_the_cursor_alone_or_the_whole_beat() {
+    let mut harness = app_with(&testdata("basic/advanced_ornaments.gp"));
+    // The first bar starts with a four-note chord.
+    let chord = notes_at(&harness, 0, 0);
+    assert_eq!(chord.len(), 4, "{chord:?}");
+    // On one of the chord's strings, Delete takes that note and leaves the others.
+    put_cursor(&mut harness, 0, 0, 3);
+    press(&mut harness, Key::Delete);
+    let after = notes_at(&harness, 0, 0);
+    assert_eq!(after.len(), 3, "{after:?}");
+    assert!(
+        !after.iter().any(|(string, _)| *string == 3),
+        "only string 3 went: {after:?}"
+    );
+    // Undo brings the note back (the model may list the notes in another order).
+    harness.key_press_modifiers(Modifiers::COMMAND, Key::Z);
+    harness.run();
+    let mut restored = notes_at(&harness, 0, 0);
+    restored.sort_unstable();
+    let mut original = chord.clone();
+    original.sort_unstable();
+    assert_eq!(restored, original);
+    // On a string the chord does not hold, there is no note to take: Delete removes the
+    // whole beat (the chord).
+    put_cursor(&mut harness, 0, 0, 6);
+    press(&mut harness, Key::Delete);
+    assert_ne!(notes_at(&harness, 0, 0), chord, "the chord went");
+}
+
+#[test]
 fn keys_move_the_cursor_enter_frets_and_undo() {
     let (dir, file) = scratch_copy("note_lengths.gp", "keys");
     let mut harness = app_with(&file);

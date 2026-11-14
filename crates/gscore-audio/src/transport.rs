@@ -74,6 +74,10 @@ pub(crate) enum Command {
     Trim(usize, f32),
     /// Gives a drum track its room's prepared chain (`None`: none).
     TrackRoom(usize, Option<Box<gscore_guitar::Chain>>),
+    /// New knob values for a drum track's room.
+    TrackRoomSettings(usize, ChainKnobs),
+    /// A drum kit's own send into its room (0-127).
+    TrackRoomSend(usize, u8),
     /// A drum part's send into its kit's room (0-127).
     PartRoom(usize, usize, u8),
 }
@@ -215,6 +219,8 @@ impl Transport {
             | Command::CompSend(..)
             | Command::Trim(..)
             | Command::TrackRoom(..)
+            | Command::TrackRoomSettings(..)
+            | Command::TrackRoomSend(..)
             | Command::PartRoom(..) => {}
         }
         None

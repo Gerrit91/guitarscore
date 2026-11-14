@@ -96,6 +96,8 @@ struct Actions {
     part_level: Option<u8>,
     /// A drum part's send into the kit's room (0-127), while its slider moves.
     part_room: Option<u8>,
+    /// Open the kit's room window.
+    open_room: bool,
     /// The track's input trim before its chain, in dB, while its knob turns.
     trim: Option<f32>,
     /// Save the sound and the chain under this name, or delete that preset (its kind of
@@ -654,6 +656,19 @@ fn parts_row(
             {
                 actions.reset_part = true;
             }
+        }
+        // The one room the whole kit shares (the parts' and the kit's Room knobs send into
+        // it), with its own knobs.
+        ui.add_space(8.0);
+        if ui
+            .button("Kit room…")
+            .on_hover_text(
+                "The one short room behind the whole kit: its size, decay and tone. The \
+                 parts' and the kit's Room knobs decide how much reaches it",
+            )
+            .clicked()
+        {
+            actions.open_room = true;
         }
     });
 }
@@ -1557,13 +1572,20 @@ impl GuitarScoreApp {
         let clipboard = self.sound_clipboard.clone();
         // The track's input trim and the level before its chain, for setting how hard an
         // amp or a compressor is driven.
-        let trim_db = self
-            .tabs
-            .get(self.active)
-            .map_or(0.0, |tab| tab.track_sound(window.track).trim_db);
+        let trim_db =
+            self.tabs
+                .get(self.active)
+                .map_or(crate::chain_settings::DEFAULT_TRIM_DB, |tab| {
+                    tab.track_sound(window.track)
+                        .trim_db
+                        .unwrap_or(crate::chain_settings::DEFAULT_TRIM_DB)
+                });
         let input = meters
             .as_ref()
             .map_or_else(Default::default, |meters| meters.input(window.track));
+        let output = meters
+            .as_ref()
+            .map_or_else(Default::default, |meters| meters.chain_output(window.track));
         egui::Window::new(&title)
             .title_bar(false)
             .collapsible(false)
@@ -1763,7 +1785,7 @@ impl GuitarScoreApp {
                                 TRIM_RANGE,
                                 "Input trim",
                                 " dB",
-                                0.0,
+                                crate::chain_settings::DEFAULT_TRIM_DB,
                                 false,
                                 "The track's input trim, before its chain's first block: turn it up \
                                  to drive an amp or a compressor harder, or down to clean \
@@ -1801,6 +1823,18 @@ impl GuitarScoreApp {
                                     changed.output_db = output_db;
                                     actions.chain = Some(changed);
                                 }
+                                // What leaves the chain, just left of the knob.
+                                let (rect, response) = ui
+                                    .allocate_exact_size(vec2(10.0, 30.0), Sense::hover());
+                                strips::paint_meter(
+                                    ui,
+                                    rect,
+                                    strips::Reading::measured(output),
+                                );
+                                response.on_hover_text(
+                                    "The level after the chain (with its output level), left \
+                                     and right, before the fader",
+                                );
                             });
                         });
                         ui.separator();
@@ -1961,6 +1995,10 @@ impl GuitarScoreApp {
         // The track's input trim, before whichever chain its sound goes through.
         if let Some(db) = actions.trim.take() {
             self.set_track_trim(track, db);
+        }
+        // The kit's room window (its own setting, unlike the parts' chains).
+        if actions.open_room {
+            self.open_kit_room(track);
         }
         // A room's length changes its prepared response, so the chain is built again now
         // that the knob has been let go (after the new value is stored).

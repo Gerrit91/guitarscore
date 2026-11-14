@@ -64,6 +64,27 @@ fn targets(sequence: &Sequence) -> Vec<ToneTarget> {
         .collect()
 }
 
+/// The chain of a kit's room: a reverb, always all wet (the parts' and the kit's sends
+/// decide how much reaches it).
+fn drum_room_chain(room: &BlockSetting) -> (ChainSpec, gscore_audio::ChainKnobs) {
+    let mut spec = ChainSpec::default();
+    spec.blocks[0] = Some(BlockKind::Reverb);
+    let mut settings = [BlockSettings::default(); BLOCKS];
+    if let Some(slot) = settings.first_mut() {
+        *slot = room.knobs();
+    }
+    if let Some(slot) = settings.first_mut() {
+        slot.reverb.mix = 1.0;
+    }
+    (
+        spec,
+        gscore_audio::ChainKnobs {
+            settings,
+            output_db: 0.0,
+        },
+    )
+}
+
 /// The tones to render an audio export with: the song's own, the programs' built-in ones
 /// and each kind's plain strings, resolved against the export's sequence once it is built.
 // Desktop only: the browser build has no audio export, MIDI out or tone tool.
@@ -430,6 +451,7 @@ impl Playback {
         self.tone_targets = targets(sequence);
         self.send_tones();
         self.send_drum_parts();
+        self.send_drum_rooms();
     }
 
     /// Sends each drum track of the loaded sequence what differs between its parts'
@@ -444,14 +466,9 @@ impl Playback {
         let mut prepare = Vec::new();
         let mut knobs = Vec::new();
         let mut levels = Vec::new();
-        let mut rooms = Vec::new();
         for target in self.tone_targets.clone() {
             if !target.drums {
                 continue;
-            }
-            // The kit's one short room, behind all its parts (once per synthesizer).
-            if self.sent_rooms.insert(target.track) {
-                rooms.push(target.track);
             }
             for part in crate::chain_settings::DrumPart::ALL {
                 let chain = self.track_drum_part_chain(target.track, part);
@@ -483,13 +500,6 @@ impl Playback {
             }
         }
         if let Some(player) = sound_player!(self) {
-            for track in rooms {
-                let spec = gscore_audio::drum_room_spec();
-                let knobs = gscore_audio::drum_room_knobs();
-                if let Err(error) = player.set_track_room(track, spec, knobs) {
-                    self.chain_notices.push(error.to_string());
-                }
-            }
             for ((track, part), spec, settings) in prepare {
                 if let Err(error) = player.set_part_chain(track, part, spec, settings) {
                     self.chain_notices.push(error.to_string());
@@ -513,6 +523,67 @@ impl Playback {
         self.sent_tones.clear();
         self.sent_parts.clear();
         self.sent_rooms.clear();
+    }
+
+    /// The drum kits' rooms and their own sends, heard at once.
+    pub(crate) fn set_drum_rooms(
+        &mut self,
+        rooms: std::collections::BTreeMap<usize, super::DrumRoomChoice>,
+    ) {
+        if self.drum_rooms == rooms {
+            return;
+        }
+        self.drum_rooms = rooms;
+        self.send_drum_rooms();
+    }
+
+    /// Gives the running synthesizer each kit's room and own send: a room it has not
+    /// received yet is prepared, a changed one only gets its new knobs (so its tail is not
+    /// cut while a knob turns).
+    pub(super) fn send_drum_rooms(&mut self) {
+        if !self.synth_running() {
+            return;
+        }
+        let rooms: Vec<(usize, super::DrumRoomChoice)> = self
+            .drum_rooms
+            .iter()
+            .map(|(&track, choice)| (track, choice.clone()))
+            .collect();
+        for (track, choice) in rooms {
+            let (spec, knobs) = drum_room_chain(&choice.room);
+            let sent = self.sent_rooms.get(&track).cloned();
+            let room_changed = sent.as_ref().map(|sent| &sent.room) != Some(&choice.room);
+            if room_changed {
+                let player = sound_player!(self);
+                if let Some(player) = player {
+                    let result = if sent.is_some() {
+                        player.set_track_room_settings(track, knobs)
+                    } else {
+                        player.set_track_room(track, spec, knobs)
+                    };
+                    if let Err(error) = result {
+                        self.chain_notices.push(error.to_string());
+                    }
+                }
+            }
+            if sent.as_ref().map(|sent| sent.send) != Some(choice.send)
+                && let Some(player) = sound_player!(self)
+            {
+                let _ = player.set_track_room_send(track, choice.send);
+            }
+            self.sent_rooms.insert(track, choice);
+        }
+    }
+
+    /// The drum kits' rooms to render audio export with.
+    pub fn export_rooms(&self) -> Vec<gscore_audio::RoomChoice> {
+        self.drum_rooms
+            .iter()
+            .map(|(&track, choice)| {
+                let (spec, knobs) = drum_room_chain(&choice.room);
+                (track, spec, knobs, choice.send)
+            })
+            .collect()
     }
 
     /// Sends each modelled track of the loaded sequence what differs between its tone and

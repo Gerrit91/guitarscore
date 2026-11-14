@@ -656,6 +656,9 @@ fn the_staff_dialogs_match_their_snapshots() {
     harness.run();
     harness.get_by_label("Tempo").click();
     harness.run();
+    // The value has a small split pair beside it, as the transposition does.
+    harness.get_by_label("One beat per minute slower");
+    harness.get_by_label("One beat per minute faster");
     harness.snapshot("staff_tempo_dialog");
 }
 
@@ -3525,6 +3528,77 @@ fn a_drum_tracks_window_edits_the_kits_parts() {
     harness.get_by_label("Kit").click();
     harness.run();
     harness.get_by_label("Block 1: +");
+    harness.get_by_label("Close").click();
+    harness.run();
+}
+
+/// The drum track's kit room in its sound payload (the sixth track).
+fn song_room(
+    harness: &Harness<'static, GuitarScoreApp>,
+) -> Option<gscore_app::chain_settings::BlockSetting> {
+    let document = harness.state().document()?;
+    let json = document
+        .song()
+        .track(gscore_model::TrackIndex::new(5))?
+        .sound_state()?;
+    let value: serde_json::Value = serde_json::from_str(json).ok()?;
+    serde_json::from_value(value.get("drum_room")?.clone()).ok()
+}
+
+#[test]
+fn the_kits_room_window_edits_the_room_and_the_default_brings_it_back() {
+    // A tall window: the track panel's Sound section (the stomp box) is below the mixer.
+    let mut harness = Harness::builder()
+        .with_size(egui::vec2(1400.0, 1100.0))
+        .build_eframe(|cc| {
+            GuitarScoreApp::new(&cc.egui_ctx, Some(testdata("basic/multi_staff.gp")))
+        });
+    let started = Instant::now();
+    while harness.state().is_busy() {
+        assert!(
+            started.elapsed() < Duration::from_secs(30),
+            "opening timed out"
+        );
+        harness.step();
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    harness.run();
+    harness.state_mut().set_shown_track(5);
+    harness.run();
+    harness.get_by_label("Sound chain").click();
+    harness.run();
+    harness.run();
+    // The kit's room has its own window, opened from the part row.
+    harness.get_by_label("Kit room…").click();
+    harness.run();
+    harness.get_by_label("Default");
+    let before = song_room(&harness);
+    assert!(before.is_none(), "the kit room starts as the built-in one");
+    let from = harness.get_by_label("Size").rect().center();
+    harness.hover_at(from);
+    harness.drag_at(from);
+    harness.run();
+    for step in 1..=4 {
+        harness.hover_at(from + egui::vec2(8.0 * step as f32, 0.0));
+        harness.run();
+    }
+    harness.drop_at(from + egui::vec2(32.0, 0.0));
+    harness.run();
+    let edited = song_room(&harness).expect("the song keeps the kit's room");
+    assert!(
+        (edited.size - 0.25).abs() > 1e-3,
+        "the Size knob turned: {edited:?}"
+    );
+    // Default puts the built-in short room back.
+    harness.get_by_label("Default").click();
+    harness.run();
+    let default = song_room(&harness).expect("the room is kept");
+    assert!((default.size - 0.25).abs() < 1e-6, "{default:?}");
+    assert!((default.decay - 0.6).abs() < 1e-6, "{default:?}");
+    // Escape closes the window, leaving the chain window open.
+    harness.key_press(egui::Key::Escape);
+    harness.run();
+    assert!(harness.query_by_label("Default").is_none());
     harness.get_by_label("Close").click();
     harness.run();
 }

@@ -308,6 +308,7 @@ impl GuitarScoreApp {
             engines: self.playback.track_engines(),
             tones: self.playback.export_tones(),
             trims: self.playback.trims().to_vec(),
+            rooms: self.playback.export_rooms(),
             parts: self.playback.export_parts(),
             buses: self.playback.export_buses(),
         }

@@ -499,6 +499,20 @@ impl SynthPlayer {
             .map_err(|_| PlayError::Device("the synthesizer is not keeping up".to_owned()))
     }
 
+    /// New knob values for the drum kit `track`'s room.
+    pub fn set_track_room_settings(
+        &self,
+        track: usize,
+        knobs: ChainKnobs,
+    ) -> Result<(), PlayError> {
+        self.send(Command::TrackRoomSettings(track, knobs))
+    }
+
+    /// The drum kit `track`'s own send into its room (0-127).
+    pub fn set_track_room_send(&self, track: usize, value: u8) -> Result<(), PlayError> {
+        self.send(Command::TrackRoomSend(track, value))
+    }
+
     /// A drum part's send into its kit's room (0-127).
     pub fn set_part_room(&self, track: usize, part: usize, value: u8) -> Result<(), PlayError> {
         self.send(Command::PartRoom(track, part, value))

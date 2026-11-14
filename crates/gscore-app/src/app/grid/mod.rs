@@ -115,6 +115,8 @@ pub(super) enum GridAction {
     },
     /// A track's send into the compressor bus (0-127), kept with the song.
     CompSend { track: usize, value: u8 },
+    /// A drum kit's own send into its room (0-127), kept with the song.
+    DrumRoomSend { track: usize, value: u8 },
     /// A block dropped on a track's (or part's) mixer strip: into its chain's first free
     /// place.
     PasteBlock {
@@ -159,6 +161,14 @@ impl GuitarScoreApp {
             .collect();
         let comp_sends: Vec<u8> = (0..rows.len())
             .map(|index| sound.tracks.get(index).map_or(0, |track| track.comp_send))
+            .collect();
+        let room_sends: Vec<u8> = (0..rows.len())
+            .map(|index| {
+                sound
+                    .tracks
+                    .get(index)
+                    .map_or(0, |track| track.drum_room_send)
+            })
             .collect();
         let reverb_bus = sound
             .buses
@@ -338,6 +348,7 @@ impl GuitarScoreApp {
             },
             &levels,
             &comp_sends,
+            &room_sends,
             &parts,
             &mut tab.mixer,
             &mut actions,
@@ -437,6 +448,9 @@ impl GuitarScoreApp {
             GridAction::ReverbBus { bus } => self.set_song_reverb_bus(bus),
             GridAction::OpenCompressorBus => self.open_compressor_bus_window(),
             GridAction::CompSend { track, value } => self.set_comp_send(track, value),
+            GridAction::DrumRoomSend { track, value } => {
+                self.set_track_drum_room_send(track, value)
+            }
             GridAction::CompressorBus { bus } => self.set_song_compressor_bus(bus),
             GridAction::OpenChorusBus => self.open_chorus_bus_window(),
             GridAction::ChorusBus { bus } => self.set_song_chorus_bus(bus),
@@ -679,6 +693,7 @@ fn draw(
     view: GridView,
     levels: &[f32],
     comp_sends: &[u8],
+    room_sends: &[u8],
     parts: &[Vec<strips::PartRow>],
     mixer_state: &mut MixerState,
     actions: &mut Vec<GridAction>,
@@ -692,6 +707,7 @@ fn draw(
             buses,
             readings,
             comp_sends,
+            room_sends,
             parts,
             view,
             mixer_state,

@@ -1100,6 +1100,8 @@ pub(crate) struct AudioExport {
     pub(crate) tones: crate::playback::ExportTones,
     /// Each track's input trim before its chain, in dB (only the tracks that have one).
     pub(crate) trims: Vec<(usize, f32)>,
+    /// Each drum kit's room, its knobs and the kit's own send.
+    pub(crate) rooms: Vec<gscore_audio::RoomChoice>,
     /// The drum parts' chains (the built-in part tones).
     pub(crate) parts: Vec<gscore_audio::PartChoice>,
     /// The mixer's buses (reverb and compressor), rendered as they are set.
@@ -1268,6 +1270,7 @@ fn write_stem(
                 track_models,
                 chains,
                 &audio.trims,
+                &audio.rooms,
                 &audio.parts,
                 buses,
                 part,
@@ -1329,6 +1332,7 @@ fn export_wav(song: &Song, path: &std::path::Path, audio: &AudioExport) -> Resul
                 &track_models,
                 &chains,
                 &audio.trims,
+                &audio.rooms,
                 &audio.parts,
                 &audio.buses,
             )

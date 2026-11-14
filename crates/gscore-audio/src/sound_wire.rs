@@ -56,8 +56,12 @@ pub enum SoundMessage {
     CompSend(usize, u8),
     /// A track's input trim before its chain, in dB (0: as recorded).
     Trim(usize, f32),
-    /// A drum track's room, built by the engine (one short room for the kit's parts).
-    DrumRoom(usize),
+    /// A drum track's room, to be prepared (one short room for the kit's parts).
+    DrumRoom(usize, ChainSpec, ChainKnobs),
+    /// New knob values for a drum track's room.
+    DrumRoomSettings(usize, ChainKnobs),
+    /// A drum kit's own send into its room (0-127).
+    TrackRoomSend(usize, u8),
     /// A drum part's send into its kit's room (0-127).
     PartRoom(usize, usize, u8),
 }
@@ -101,10 +105,14 @@ impl SynthEngine {
             }
             SoundMessage::CompSend(track, value) => self.set_comp_send(track, value),
             SoundMessage::Trim(track, db) => self.set_trim(track, db),
-            SoundMessage::DrumRoom(track) => {
-                let room = crate::chains::prepare_drum_room(self.sample_rate());
-                self.set_track_room(track, room);
+            SoundMessage::DrumRoom(track, spec, knobs) => {
+                let room = prepare_chain(&spec, &knobs, self.sample_rate());
+                drop(self.set_track_room(track, room));
             }
+            SoundMessage::DrumRoomSettings(track, knobs) => {
+                self.set_track_room_settings(track, knobs);
+            }
+            SoundMessage::TrackRoomSend(track, value) => self.set_track_room_send(track, value),
             SoundMessage::PartRoom(track, part, value) => self.set_part_room(track, part, value),
         }
     }
@@ -209,14 +217,26 @@ pub fn encode_sound(message: &SoundMessage) -> Vec<u8> {
             out.index(*track);
             out.f32(*db);
         }
-        SoundMessage::DrumRoom(track) => {
+        SoundMessage::DrumRoom(track, spec, knobs) => {
             out.u8(16);
             out.index(*track);
+            out.spec(spec);
+            out.knobs(knobs);
         }
         SoundMessage::PartRoom(track, part, value) => {
             out.u8(17);
             out.index(*track);
             out.index(*part);
+            out.u8(*value);
+        }
+        SoundMessage::DrumRoomSettings(track, knobs) => {
+            out.u8(18);
+            out.index(*track);
+            out.knobs(knobs);
+        }
+        SoundMessage::TrackRoomSend(track, value) => {
+            out.u8(19);
+            out.index(*track);
             out.u8(*value);
         }
     }
@@ -270,8 +290,10 @@ pub fn decode_sound(bytes: &[u8]) -> Result<SoundMessage, String> {
         ),
         14 => SoundMessage::CompSend(input.index()?, input.u8()?),
         15 => SoundMessage::Trim(input.index()?, input.f32()?),
-        16 => SoundMessage::DrumRoom(input.index()?),
+        16 => SoundMessage::DrumRoom(input.index()?, input.spec()?, input.knobs()?),
         17 => SoundMessage::PartRoom(input.index()?, input.index()?, input.u8()?),
+        18 => SoundMessage::DrumRoomSettings(input.index()?, input.knobs()?),
+        19 => SoundMessage::TrackRoomSend(input.index()?, input.u8()?),
         other => return Err(format!("unknown sound message {other}")),
     };
     if input.at != bytes.len() {
@@ -918,7 +940,13 @@ mod tests {
             SoundMessage::BusSettings(Bus::Compressor, knobs, 64, false),
             SoundMessage::CompSend(7, 33),
             SoundMessage::Trim(7, -6.5),
-            SoundMessage::DrumRoom(2),
+            SoundMessage::DrumRoom(
+                2,
+                crate::chains::drum_room_spec(),
+                crate::chains::drum_room_knobs(),
+            ),
+            SoundMessage::DrumRoomSettings(2, crate::chains::drum_room_knobs()),
+            SoundMessage::TrackRoomSend(2, 42),
             SoundMessage::PartRoom(2, 1, 64),
         ]
     }

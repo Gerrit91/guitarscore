@@ -151,6 +151,14 @@ pub struct TrackDrumPart {
     pub room: u8,
 }
 
+/// A drum kit's one shared room and the kit's own send into it.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct DrumRoomChoice {
+    pub room: crate::chain_settings::BlockSetting,
+    /// 0-127, 127 the whole kit (after the parts' levels).
+    pub send: u8,
+}
+
 /// What a drum part was last given: its chain, and its level, pan, mute, solo and room
 /// send.
 type SentPart = (
@@ -337,8 +345,10 @@ pub struct Playback {
     /// Each track's input trim before its chain, in dB, by the song's track index (only
     /// the tracks that have one).
     trims: Vec<(usize, f32)>,
-    /// The drum tracks the synthesizer was given a room for.
-    sent_rooms: std::collections::BTreeSet<usize>,
+    /// Each drum kit's room and the kit's own send into it, by the song's track index.
+    drum_rooms: std::collections::BTreeMap<usize, DrumRoomChoice>,
+    /// What the synthesizer was given of each kit's room, by the song's track index.
+    sent_rooms: std::collections::BTreeMap<usize, DrumRoomChoice>,
     /// The modelled tracks of the sequence the synthesizer has, and what each place of it
     /// was given (see `chains`).
     tone_targets: Vec<chains::ToneTarget>,
@@ -423,7 +433,8 @@ impl Default for Playback {
             rse_tones: std::collections::BTreeMap::new(),
             comp_sends: Vec::new(),
             trims: Vec::new(),
-            sent_rooms: std::collections::BTreeSet::new(),
+            drum_rooms: std::collections::BTreeMap::new(),
+            sent_rooms: std::collections::BTreeMap::new(),
             tone_targets: Vec::new(),
             sent_tones: std::collections::BTreeMap::new(),
             sent_parts: std::collections::BTreeMap::new(),

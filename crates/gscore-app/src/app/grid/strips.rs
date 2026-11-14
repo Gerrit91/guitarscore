@@ -81,6 +81,7 @@ pub(super) fn strips(
     buses: Buses,
     readings: &Readings,
     comp_sends: &[u8],
+    room_sends: &[u8],
     parts: &[Vec<PartRow>],
     view: GridView,
     state: &mut MixerState,
@@ -101,6 +102,11 @@ pub(super) fn strips(
                         index,
                         row,
                         comp_sends.get(index).copied().unwrap_or(0),
+                        if row.drums {
+                            Some(room_sends.get(index).copied().unwrap_or(0))
+                        } else {
+                            None
+                        },
                         readings.tracks.get(index).copied().unwrap_or_default(),
                         height,
                         view,
@@ -159,6 +165,7 @@ fn track_strip(
     index: usize,
     row: &TrackRow,
     comp_send: u8,
+    room_send: Option<u8>,
     level: Reading,
     height: f32,
     view: GridView,
@@ -215,6 +222,7 @@ fn track_strip(
         index,
         row.pan,
         Some((row.reverb, row.chorus, comp_send)),
+        room_send,
         &row.name,
         actions,
     );
@@ -326,6 +334,7 @@ fn master_strip(
         top,
         usize::MAX,
         master.pan,
+        None,
         None,
         "Master",
         actions,
@@ -1084,12 +1093,14 @@ fn parts_arrow(ui: &mut egui::Ui, rect: Rect, track: usize, open: bool) -> bool 
 
 /// The knob row: pan, and for a track its reverb and chorus sends (the master has only its
 /// pan). Each knob has a small caption underneath.
+#[allow(clippy::too_many_arguments)]
 fn knobs(
     ui: &mut egui::Ui,
     area: Rect,
     index: usize,
     pan: u8,
     sends: Option<(u8, u8, u8)>,
+    room: Option<u8>,
     name: &str,
     actions: &mut Vec<GridAction>,
 ) {
@@ -1109,12 +1120,17 @@ fn knobs(
             ui.visuals().weak_text_color(),
         );
     };
-    // Four knobs side by side (pan, reverb, chorus, comp); the captions fit under them.
-    let step = if sends.is_some() { 30.0 } else { KNOB_SPACING };
-    let pan_rect = if sends.is_some() {
-        at(-1.5 * step)
-    } else {
-        at(0.0)
+    // Four knobs side by side (pan, reverb, chorus, comp), or five for a drum kit (its own
+    // Room send beside them); the captions fit under them.
+    let step = match (sends.is_some(), room.is_some()) {
+        (true, true) => 24.5,
+        (true, false) => 30.0,
+        _ => KNOB_SPACING,
+    };
+    let pan_rect = match (sends.is_some(), room.is_some()) {
+        (true, true) => at(-2.0 * step),
+        (true, false) => at(-1.5 * step),
+        _ => at(0.0),
     };
     let knob = mixer::pan_knob(ui, pan_rect, pan, index, &format!("Pan {name}"));
     caption(ui, pan_rect, "Pan");
@@ -1141,7 +1157,33 @@ fn knobs(
         return;
     };
     let track = TrackIndex::new(index);
-    let reverb_rect = at(-0.5 * step);
+    if let Some(room) = room {
+        let room_rect = at(-step);
+        let knob = mixer::send_knob(
+            ui,
+            room_rect,
+            room,
+            ("room", index),
+            &format!("Room {name}"),
+            "Send the whole kit into its room (the parts' Room knobs are beside this)",
+            0,
+        );
+        caption(ui, room_rect, "Room");
+        if knob.boundary {
+            actions.push(GridAction::BreakMerge);
+        }
+        if let Some((value, _)) = knob.change {
+            actions.push(GridAction::DrumRoomSend {
+                track: index,
+                value,
+            });
+        }
+    }
+    let reverb_rect = if room.is_some() {
+        at(0.0)
+    } else {
+        at(-0.5 * step)
+    };
     let knob = mixer::send_knob(
         ui,
         reverb_rect,
@@ -1151,7 +1193,11 @@ fn knobs(
         "Reverb send (into the reverb bus, whatever plays the track)",
         0,
     );
-    caption(ui, reverb_rect, "Reverb");
+    caption(
+        ui,
+        reverb_rect,
+        if room.is_some() { "Rev" } else { "Reverb" },
+    );
     if knob.boundary {
         actions.push(GridAction::BreakMerge);
     }
@@ -1161,7 +1207,11 @@ fn knobs(
             merge,
         });
     }
-    let chorus_rect = at(0.5 * step);
+    let chorus_rect = if room.is_some() {
+        at(1.0 * step)
+    } else {
+        at(0.5 * step)
+    };
     let knob = mixer::send_knob(
         ui,
         chorus_rect,
@@ -1171,7 +1221,11 @@ fn knobs(
         "Chorus send (into the shared chorus bus)",
         0,
     );
-    caption(ui, chorus_rect, "Chorus");
+    caption(
+        ui,
+        chorus_rect,
+        if room.is_some() { "Cho" } else { "Chorus" },
+    );
     if knob.boundary {
         actions.push(GridAction::BreakMerge);
     }
@@ -1183,7 +1237,11 @@ fn knobs(
     }
     // The send into the mixer's compressor bus (parallel compression): it is the song's,
     // kept in its notes, so it is no undoable command.
-    let comp_rect = at(1.5 * step);
+    let comp_rect = if room.is_some() {
+        at(2.0 * step)
+    } else {
+        at(1.5 * step)
+    };
     let knob = mixer::send_knob(
         ui,
         comp_rect,

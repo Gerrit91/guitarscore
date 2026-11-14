@@ -60,7 +60,7 @@ ctrl+shift+Right = select_end
 - = duration_longer
 
 Insert = insert_beat
-Delete = delete_beat
+Delete = delete
 ctrl+Insert = insert_measure
 ctrl+Delete = delete_measure
 

@@ -76,6 +76,9 @@ pub struct Meters {
     tracks: Vec<Meter>,
     /// Each track's input, before its chain (and its trim): by the song's track index.
     inputs: Vec<Meter>,
+    /// Each track's chain output, after the chain (and its output level), before the
+    /// fader: by the song's track index.
+    outputs: Vec<Meter>,
     /// A drum track's parts, by the track's index and then the part's.
     parts: Vec<Meter>,
     reverb: Meter,
@@ -93,6 +96,7 @@ impl Default for Meters {
         Meters {
             tracks: (0..MAX_TONES).map(|_| Meter::default()).collect(),
             inputs: (0..MAX_TONES).map(|_| Meter::default()).collect(),
+            outputs: (0..MAX_TONES).map(|_| Meter::default()).collect(),
             parts: (0..MAX_TONES.saturating_mul(PARTS))
                 .map(|_| Meter::default())
                 .collect(),
@@ -127,6 +131,12 @@ impl Meters {
     /// setting how hard an amp or compressor is driven.
     pub fn input(&self, track: usize) -> Level {
         self.inputs.get(track).map_or(Level::default(), Meter::get)
+    }
+
+    /// The level of the song's track `track` after its chain (and its output level),
+    /// before the fader.
+    pub fn chain_output(&self, track: usize) -> Level {
+        self.outputs.get(track).map_or(Level::default(), Meter::get)
     }
 
     /// The level of the reverb bus after its fader.
@@ -285,6 +295,8 @@ pub(crate) enum Which {
     Track(usize),
     /// A track's sound before its chain (after its input trim).
     Input(usize),
+    /// A track's sound after its chain and its output level.
+    ChainOutput(usize),
     /// One part of a drum track.
     Part(usize, usize),
     Reverb,
@@ -299,6 +311,7 @@ impl Meters {
         let meter = match which {
             Which::Track(track) => self.tracks.get(track),
             Which::Input(track) => self.inputs.get(track),
+            Which::ChainOutput(track) => self.outputs.get(track),
             Which::Part(track, part) => track
                 .checked_mul(PARTS)
                 .and_then(|index| index.checked_add(part))

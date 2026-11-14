@@ -30,6 +30,7 @@ mod harmonic_editor;
 mod history;
 mod icons;
 mod instrument;
+mod kit_room;
 mod lyrics_editor;
 mod master_chain_window;
 mod metronome;
@@ -156,6 +157,8 @@ pub struct GuitarScoreApp {
     tuner: Option<tuner::TunerState>,
     /// The transpose window, while it is open.
     transpose: Option<transpose::TransposeWindow>,
+    /// A drum kit's room window, while it is open.
+    kit_room: Option<kit_room::KitRoomWindow>,
     /// The Sound chain window, while it is open.
     sound_chain: Option<sound_chain::SoundChainWindow>,
     /// A block or chain copied in a chain board, for pasting into a track, a drum part or
@@ -315,6 +318,7 @@ impl GuitarScoreApp {
             about: None,
             tuner: None,
             transpose: None,
+            kit_room: None,
             sound_chain: None,
             sound_clipboard: None,
             reverb_bus_window: None,
@@ -945,6 +949,7 @@ impl eframe::App for GuitarScoreApp {
         self.show_about(&ctx);
         self.show_tuner(&ctx);
         self.show_transpose(&ctx);
+        self.show_kit_room(&ctx);
         self.show_shape_editors(&ctx);
         self.show_staff_dialogs(&ctx);
         self.show_tuplet_dialog(&ctx);

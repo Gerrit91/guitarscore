@@ -5194,3 +5194,43 @@ from a sound's name to one of its tones, filled by the owner:
   `PartRoom`/`DrumRoom`/`Trim` wire round trips, the part Room knob as one undo step, and
   bus stems carrying only the bus. App snapshots regenerated for the trim row and the
   parts' Room knob.
+
+## 2026-11-14 — A kit room to edit and send the whole kit into, chain-output meters, safer deletes
+
+- **Soloing a drum part solos its track.** A part's solo is only useful when the rest of
+  the song falls silent with it, so the solo buttons of a kit's parts now set the drum
+  track's own solo too (one undo step, `Command::Batch` with the part's state). Un-soloing
+  the last soloed part un-solos the track; another part still soloed keeps it on. The
+  track's own Solo button is unchanged.
+- **A kit-wide Room send and an editable room.** The drum track's strip now has a Room
+  knob beside Reverb/Chorus/Comp (short captions on a kit's strip, five knobs in the same
+  width): the whole kit, after the parts' levels and before its chain, into the kit's
+  room. The parts' Room knobs and this one feed the same room. "Kit room…" in the Sound
+  chain window opens the room (the computed reverb's size, decay, pre-delay, damping,
+  modulation, width and cuts, always all wet), stored with the song
+  (`TrackSound::drum_room`/`drum_room_send`, default `default_drum_room`: size 0.25, decay
+  0.6 s). Knob changes are sent as settings, not rebuilt, so the short tail is not cut;
+  `DrumRoom`/`DrumRoomSettings`/`TrackRoomSend` join the wire (new message numbers 16, 18,
+  19). The WAV export and stems render the room and both sends (`RoomChoice`).
+- **The chain-output meter.** Next to "Input trim" there is now the same small stereo
+  meter beside "Chain output", showing what leaves the chain (after its output level,
+  before the fader): `Meters::chain_output`, `Which::ChainOutput`.
+- **Delete a note alone.** The Delete key now runs its own action (`delete`, "Delete note
+  or beat"): it clears the note under the cursor when the cursor's string holds one, and
+  removes the whole beat only when that string has no note, so a chord can be edited note
+  by note (the cursor on an empty string still deletes the beat). Rests do not count. The
+  menus' "Delete beat" (`delete_beat`) still removes the beat.
+- **The input trim starts at −6 dB.** The chain input meter showed the modelled strings'
+  plucks near −2..−6 dBFS (steel −1.9, electric −5.5, bass −6.1 at the old settings), so
+  it sat in the red on every tab. The trim is now stored as `Option<f32>` and defaults to
+  −6 dB: the meter is green, `xtask tones normalize` keeps working relative to it, and the
+  knob shows the pad and can be changed per song. (`tones normalize` also reports the
+  reference note's peak and the strings' input level now.) Turning the amp's or drive's
+  input down by 6 dB makes the built-in tones cleaner; the tone library's outputs were not
+  regenerated for this.
+- **The tempo and repeat dialogs** got the same small split −/+ pair as the transposition:
+  a beat per minute slower/faster, and one repeat fewer/more.
+- Tests: a kit room round trip (window, payload, Default), the kit Room knob as one undo
+  step, a part's solo soloing its track (and the last part un-soloing it), Delete on a
+  chord note vs. an empty string, and the input trim's new default. Snapshots updated for
+  the five-knob drum strip, the two chain meters, the trim value and the Kit room button.

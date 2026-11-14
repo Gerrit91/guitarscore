@@ -6,6 +6,7 @@ use egui::{RichText, vec2};
 use gscore_model::{Feel, Fermata, MAX_BARS_PER_SYSTEM, SystemBreak};
 
 use super::edit_staff::{Dialog, StaffState, Target};
+use super::icons;
 use super::staff_pickers;
 use super::staff_widgets::{choice, choice_with_sign, feel_detail, glyph_in, paint_feel};
 use super::tile_faces::{Face, paint_face};
@@ -156,6 +157,18 @@ pub(super) fn body(ui: &mut egui::Ui, state: &mut StaffState, target: Target) {
                     ui.ctx().accesskit_node_builder(response.id, |node| {
                         node.set_label("Repeat count");
                     });
+                    // A small split pair: one time fewer over one time more.
+                    let (down, up) = icons::step_pair(
+                        ui,
+                        ("One time fewer", "One time fewer", state.repeat_count > 1),
+                        ("One time more", "One time more", state.repeat_count < 127),
+                    );
+                    if down {
+                        state.repeat_count = state.repeat_count.saturating_sub(1).max(1);
+                    }
+                    if up {
+                        state.repeat_count = state.repeat_count.saturating_add(1).min(127);
+                    }
                 });
             });
         }

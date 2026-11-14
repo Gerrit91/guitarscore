@@ -459,6 +459,83 @@ fn a_drum_parts_room_knob_sends_it_into_the_kits_room_as_one_undo_step() {
     );
 }
 
+/// The drum kit's own Room send in the sixth track's sound payload (`0` when it has none).
+fn song_room_send(harness: &Harness<'static, GuitarScoreApp>) -> u8 {
+    let document = harness.state().document().unwrap();
+    let Some(json) = document
+        .song()
+        .track(gscore_model::TrackIndex::new(5))
+        .and_then(|track| track.sound_state())
+    else {
+        return 0;
+    };
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(json) else {
+        return 0;
+    };
+    value
+        .get("drum_room_send")
+        .and_then(serde_json::Value::as_u64)
+        .and_then(|value| u8::try_from(value).ok())
+        .unwrap_or(0)
+}
+
+/// Whether the drum kit's track (the sixth) is soloed.
+fn drum_track_soloed(harness: &Harness<'static, GuitarScoreApp>) -> bool {
+    harness
+        .state()
+        .document()
+        .unwrap()
+        .song()
+        .track(gscore_model::TrackIndex::new(5))
+        .unwrap()
+        .is_soloed()
+}
+
+#[test]
+fn a_drum_parts_solo_also_solos_its_track() {
+    let mut harness = app_with_mixer_view_at(1900.0);
+    harness.get_by_label("Show the drum parts").click();
+    harness.run();
+    assert!(!drum_track_soloed(&harness));
+    // Soloing a part is hearing that kit: the rest of the song falls silent with it.
+    harness.get_by_label("Solo Kick").click();
+    harness.run();
+    assert!(drum_track_soloed(&harness), "the kit's track is soloed");
+    // Another part's solo keeps it; the last one un-soloed brings the song back.
+    harness.get_by_label("Solo Snare").click();
+    harness.run();
+    assert!(drum_track_soloed(&harness));
+    harness.get_by_label("Solo Kick").click();
+    harness.run();
+    assert!(
+        drum_track_soloed(&harness),
+        "the snare is still soloed, so the kit is"
+    );
+    harness.get_by_label("Solo Snare").click();
+    harness.run();
+    assert!(!drum_track_soloed(&harness), "the song plays again");
+}
+
+#[test]
+fn a_drum_kits_room_knob_sends_the_whole_kit_as_one_undo_step() {
+    let mut harness = app_with_mixer_view_at(1900.0);
+    assert_eq!(song_room_send(&harness), 0, "dry to begin with");
+    let depth = harness.state().document().unwrap().editor().undo_depth();
+    let start = harness.get_by_label("Room Drumkit").rect().center();
+    harness.hover_at(start);
+    harness.drag_at(start);
+    harness.run();
+    for step in 1..=4 {
+        harness.hover_at(start + egui::vec2(8.0 * step as f32, 0.0));
+        harness.run();
+    }
+    harness.drop_at(start + egui::vec2(32.0, 0.0));
+    harness.run();
+    assert!(song_room_send(&harness) > 0, "the whole kit is sent");
+    let editor = harness.state().document().unwrap().editor();
+    assert_eq!(editor.undo_depth(), depth + 1, "one drag, one undo step");
+}
+
 /// Snapshot options for a wide mixer with many thin meters and needles, whose edge pixels
 /// the GitHub runner's software GPU anti-aliases a little differently (11 and 13 pixels
 /// past 0.6, none past 1.5): a colour tolerance of 2 (YIQ distance) per pixel, as for the

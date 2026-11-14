@@ -51,6 +51,7 @@ pub fn write_wav_at(
         &[],
         &[],
         &[],
+        &[],
         &BusChoices::default(),
     )
 }
@@ -63,6 +64,10 @@ pub type ChainChoice = (usize, ChainSpec, ChainKnobs);
 /// (0-127, 127 unity), its pan (0 left, 64 centre, 127 right), its room send (0-127), its
 /// blocks and their knobs.
 pub type PartChoice = (usize, usize, u8, u8, u8, ChainSpec, ChainKnobs);
+
+/// One drum kit's room to render with: the track, the room's chain and knobs, and the
+/// kit's own send into it (0-127).
+pub type RoomChoice = (usize, ChainSpec, ChainKnobs, u8);
 
 /// A mixer bus to render with: its chain, its knob values and its level.
 #[derive(Debug, Clone)]
@@ -116,6 +121,7 @@ pub fn write_wav_with(
     track_models: &[(usize, StringModel)],
     chains: &[ChainChoice],
     trims: &[(usize, f32)],
+    rooms: &[RoomChoice],
     parts: &[PartChoice],
     buses: &BusChoices,
 ) -> Result<WavInfo, PlayError> {
@@ -128,6 +134,7 @@ pub fn write_wav_with(
         track_models,
         chains,
         trims,
+        rooms,
         parts,
         buses,
         StemPart::Tracks,
@@ -147,6 +154,7 @@ pub fn write_wav_part_with(
     track_models: &[(usize, StringModel)],
     chains: &[ChainChoice],
     trims: &[(usize, f32)],
+    rooms: &[RoomChoice],
     parts: &[PartChoice],
     buses: &BusChoices,
     part: StemPart,
@@ -174,15 +182,13 @@ pub fn write_wav_part_with(
     for &(track, db) in trims {
         engine.set_trim(track, db);
     }
-    // Each kit's one short shared room, behind its parts' Room sends.
-    let mut room_tracks: Vec<usize> = Vec::new();
-    for (track, _, _, _, room, _, _) in parts {
-        if *room > 0 && !room_tracks.contains(track) {
-            room_tracks.push(*track);
+    // Each kit's one short shared room, and the kit's own send into it.
+    for (track, spec, knobs, send) in rooms {
+        if let Some(chain) = prepare_chain(spec, knobs, sample_rate) {
+            let _ = engine.set_track_room(*track, Some(chain));
         }
-    }
-    for track in room_tracks {
-        let _ = engine.set_track_room(track, crate::chains::prepare_drum_room(sample_rate));
+        engine.set_track_room_settings(*track, *knobs);
+        engine.set_track_room_send(*track, *send);
     }
     for (track, part, level, pan, room, spec, knobs) in parts {
         if let Some(chain) = prepare_chain(spec, knobs, sample_rate) {
@@ -360,6 +366,7 @@ mod tests {
                 &sequence,
                 &bank,
                 16_000,
+                &[],
                 &[],
                 &[],
                 &[],

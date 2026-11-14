@@ -342,6 +342,66 @@ impl GuitarScoreApp {
         }
     }
 
+    /// The kit's room as the song has it (its own, or the built-in short one).
+    pub(super) fn drum_room(&self, track: usize) -> crate::chain_settings::BlockSetting {
+        self.open_track_sound(track)
+            .and_then(|sound| sound.drum_room)
+            .unwrap_or_else(crate::chain_settings::default_drum_room)
+    }
+
+    /// Gives the kit `track` its room (a reverb, always all wet), heard at once and kept
+    /// with the song.
+    pub(super) fn set_track_drum_room(
+        &mut self,
+        track: usize,
+        room: crate::chain_settings::BlockSetting,
+        merge: bool,
+    ) {
+        let Some(mut sound) = self.open_track_sound(track) else {
+            return;
+        };
+        sound.drum_room = Some(room);
+        self.set_track_sound(track, sound, merge);
+    }
+
+    /// Sets the kit `track`'s own send into its room (0-127), heard at once.
+    pub(super) fn set_track_drum_room_send(&mut self, track: usize, value: u8) {
+        let Some(mut sound) = self.open_track_sound(track) else {
+            return;
+        };
+        sound.drum_room_send = value.min(127);
+        // One slider drag is one undo step.
+        self.set_track_sound(track, sound, true);
+    }
+
+    /// Hands the open document's kits' rooms and own sends to playback.
+    pub(super) fn sync_drum_rooms(&mut self) {
+        let Some(tab) = self.tabs.get(self.active) else {
+            return;
+        };
+        let song = tab.document.song();
+        let rooms: std::collections::BTreeMap<usize, crate::playback::DrumRoomChoice> = (0..song
+            .track_count())
+            .filter(|&track| {
+                song.track(TrackIndex::new(track))
+                    .is_some_and(|view| view.is_percussion())
+            })
+            .map(|track| {
+                let sound = tab.track_sound(track);
+                (
+                    track,
+                    crate::playback::DrumRoomChoice {
+                        room: sound
+                            .drum_room
+                            .unwrap_or_else(crate::chain_settings::default_drum_room),
+                        send: sound.drum_room_send,
+                    },
+                )
+            })
+            .collect();
+        self.playback.set_drum_rooms(rooms);
+    }
+
     /// Forgets the tone that came with the song for `track`, so it plays its program's
     /// default again.
     pub(super) fn reset_track_tone(&mut self, track: usize) {
@@ -370,11 +430,11 @@ impl GuitarScoreApp {
         let Some(mut sound) = self.open_track_sound(track) else {
             return;
         };
-        sound.trim_db = if db.is_finite() {
+        sound.trim_db = Some(if db.is_finite() {
             db.clamp(-24.0, 24.0)
         } else {
-            0.0
-        };
+            crate::chain_settings::DEFAULT_TRIM_DB
+        });
         // One slider drag is one undo step.
         self.set_track_sound(track, sound, true);
     }
@@ -389,7 +449,14 @@ impl GuitarScoreApp {
             .tracks
             .iter()
             .enumerate()
-            .map(|(track, sound)| (track, sound.trim_db))
+            .map(|(track, sound)| {
+                (
+                    track,
+                    sound
+                        .trim_db
+                        .unwrap_or(crate::chain_settings::DEFAULT_TRIM_DB),
+                )
+            })
             .collect();
         self.playback.set_trims(trims);
     }
@@ -488,6 +555,7 @@ impl GuitarScoreApp {
         self.sync_comp_sends();
         self.sync_trims();
         self.sync_track_drum_parts();
+        self.sync_drum_rooms();
         self.sync_song_buses();
         self.sound_synced = self.sound_key();
     }
@@ -554,6 +622,12 @@ impl GuitarScoreApp {
         let Some(mut sound) = self.open_track_sound(track) else {
             return;
         };
+        let was_soloed = sound
+            .drum_parts
+            .iter()
+            .find(|entry| entry.part() == Some(part))
+            .is_some_and(|entry| entry.soloed);
+        let now_soloed = own.as_ref().is_some_and(|own| own.soloed);
         sound.drum_parts.retain(|entry| entry.part() != Some(part));
         if let Some(own) = own {
             sound
@@ -564,7 +638,39 @@ impl GuitarScoreApp {
         sound
             .drum_parts
             .sort_by_key(|entry| entry.part().map_or(usize::MAX, DrumPart::index));
-        self.set_track_sound(track, sound, merge);
+        // Soloing a part of a kit means hearing that kit: the track is soloed with it, so
+        // the rest of the song falls silent. Un-soloing the last part un-soloes the track
+        // again. One step with the part's own change.
+        let any_soloed = sound
+            .drum_parts
+            .iter()
+            .any(|entry| entry.soloed && entry.part().is_some());
+        let track_soloed = self
+            .tabs
+            .get(self.active)
+            .and_then(|tab| tab.document.song().track(TrackIndex::new(track)))
+            .is_some_and(|view| view.is_soloed());
+        if now_soloed != was_soloed && any_soloed != track_soloed {
+            let state = sound.json();
+            let merge = self.sound_merge(merge);
+            self.apply_command(
+                Command::Batch {
+                    commands: vec![
+                        Command::SetTrackSound {
+                            track: TrackIndex::new(track),
+                            state,
+                        },
+                        Command::SetTrackSolo {
+                            track: TrackIndex::new(track),
+                            solo: any_soloed,
+                        },
+                    ],
+                },
+                merge,
+            );
+        } else {
+            self.set_track_sound(track, sound, merge);
+        }
     }
 
     /// Hands the drum parts the open document gives its tracks to playback.

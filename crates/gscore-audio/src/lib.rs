@@ -63,8 +63,8 @@ pub use tuner::TunerPlayer;
 #[cfg(target_arch = "wasm32")]
 pub use tuner_web::TunerPlayer;
 pub use wav::{
-    BusChoice, BusChoices, ChainChoice, PartChoice, StemPart, WAV_SAMPLE_RATE, WavInfo, write_wav,
-    write_wav_at, write_wav_part_with, write_wav_with,
+    BusChoice, BusChoices, ChainChoice, PartChoice, RoomChoice, StemPart, WAV_SAMPLE_RATE, WavInfo,
+    write_wav, write_wav_at, write_wav_part_with, write_wav_with,
 };
 
 /// The preset string model of `kind`, before the user turns any knob.

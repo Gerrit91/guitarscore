@@ -30,6 +30,12 @@ pub(super) const SILENT_DB: f32 = -100.0;
 pub(super) struct Measurement {
     /// RMS of the chain's output, dBFS.
     pub(super) rms_db: f32,
+    /// The loudest sample of the measured stretch, dBFS: how close the note comes to the
+    /// meter's red.
+    pub(super) peak_db: f32,
+    /// The loudest sample of the strings alone (before the chain), dBFS: what the mixer's
+    /// input meter sees.
+    pub(super) input_db: f32,
     /// The note had died away before the usual stretch (a muted, short string), so its
     /// first [`FROM`] seconds were measured instead.
     pub(super) short: bool,
@@ -57,6 +63,13 @@ pub(super) fn measure(
     let mut mono = vec![0.0_f32; frames];
     voice.render(&mut mono);
 
+    let loudest = |window: &[f32]| {
+        let loudest = window
+            .iter()
+            .fold(0.0_f32, |loudest, sample| loudest.max(sample.abs()));
+        20.0 * loudest.max(1e-9).log10()
+    };
+    let input_db = loudest(&mono);
     let (spec, settings, skipped) = chain_spec(&tone.chain, impulses);
     let mut chain = spec.prepare(RATE).instance(&settings, tone.chain.output_db);
     let mut left = mono.clone();
@@ -75,15 +88,20 @@ pub(super) fn measure(
         20.0 * rms.max(1e-9).log10()
     };
     let mut rms_db = level(window);
+    let mut peak_db = loudest(window);
     // A string that is over before the stretch begins (a muted tone) is measured where it
     // sounds: its first moments. A tone silent there too has no level to match; the
     // caller decides what to do with it.
     let short = rms_db < SILENT_DB;
     if short {
-        rms_db = level(left.get(..from).unwrap_or_default());
+        let first = left.get(..from).unwrap_or_default();
+        rms_db = level(first);
+        peak_db = loudest(first);
     }
     Ok(Measurement {
         rms_db,
+        peak_db,
+        input_db,
         short,
         skipped,
     })

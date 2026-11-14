@@ -42,6 +42,9 @@ pub enum ActionId {
     DurationLonger,
     /// Insert a rest beat before the cursor.
     InsertBeat,
+    /// Delete what the cursor is on: the note on its string, or the whole beat when that
+    /// string has none.
+    Delete,
     /// Remove the beat at the cursor.
     DeleteBeat,
     /// Insert a measure before the cursor's measure, in every track.
@@ -387,6 +390,7 @@ pub const ACTIONS: &[ActionInfo] = &[
     ),
     info(ActionId::DurationLonger, "duration_longer", "Longer note"),
     info(ActionId::InsertBeat, "insert_beat", "Insert beat"),
+    info(ActionId::Delete, "delete", "Delete note or beat"),
     info(ActionId::DeleteBeat, "delete_beat", "Delete beat"),
     info(ActionId::InsertMeasure, "insert_measure", "Insert measure"),
     info(ActionId::DeleteMeasure, "delete_measure", "Delete measure"),
@@ -753,6 +757,6 @@ mod tests {
             );
         }
         assert_eq!(ActionId::from_id("no_such_action"), None);
-        assert_eq!(ACTIONS.len(), 122, "one entry per ActionId variant");
+        assert_eq!(ACTIONS.len(), 123, "one entry per ActionId variant");
     }
 }

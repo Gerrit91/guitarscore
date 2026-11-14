@@ -10,7 +10,7 @@ has the overview.
 | Arrows | Move between beats and strings (click a note to jump there) |
 | `0`–`9` | Type a fret; two digits typed quickly make one number (`1` `2` is fret 12) |
 | `+` / `-` | Shorter / longer note |
-| Insert / Delete | Add / remove a beat; with Ctrl: a bar |
+| Insert / Delete | Add a beat; Delete removes the note under the cursor, or the whole beat when that string has none; with Ctrl: a bar |
 | Right at the end of a bar | Fill it with rests, then start a new bar |
 | Shift+arrows | Select beats |
 | `b` / `w` | Bend / whammy bar editor |
@@ -82,11 +82,13 @@ synthesis)", on by default). Every other instrument, and the drums, stay on the 
   Room, Reverb, Comp, EQ, Chorus and Delay. The Amp plays direct; put a Cab block after it
   for its speaker (a built-in cabinet, or an impulse response from a WAV file). "Save
   tone" and "Save as…" keep the sound under a name for other tracks and songs.
-- **Input trim and meter.** Under the chain's board, the "Input trim" knob sets how hard
-  the first block is fed (−24 to +24 dB) and the small meter beside it shows that level
-  before the chain (after the trim), left and right. Turn it up to drive an amp or a
-  compressor harder, down to clean them up; the track's own level does not change. The
-  trim is saved with the song.
+- **Input trim and meters.** Under the chain's board, the "Input trim" knob sets how hard
+  the first block is fed (−24 to +24 dB, starting at −6 dB so the strings do not pin it)
+  and the small meter beside it shows that level before the chain (after the trim), left
+  and right. The meter beside "Chain output" shows what leaves the chain; turn the
+  "Chain output" knob to set it. Turn the trim up to drive an amp or a compressor harder,
+  down to clean them up; the track's own level does not change. The trim is saved with the
+  song.
 - **With the song.** A tone you change on a track is saved with the song (inside the
   Guitar Pro 7 file, in a block of the song's notes that Guitar Pro leaves alone). A track
   you never touched keeps following its program's built-in tone. A bass always plays its
@@ -100,9 +102,11 @@ The grid's "Mixer view" shows one strip per track: fader and pan after the track
 sends into the reverb, compressor and chorus buses, mute and solo, and a level meter
 measured in the engine. Each drum track can be split into its kit parts with a chain and
 a level of their own; the "Room" knob on every part sends it into one short room the whole
-kit shares (as a room's overheads glue a kit together), and the kit's own strip is the
-drum bus. The buses have their own windows; the master strip has a chain too. There is no
-limiter yet: a mix that is too loud clips.
+kit shares (as a room's overheads glue a kit together), the drum strip's own "Room" knob
+sends the whole kit, and the Sound chain window's "Kit room…" button opens that room's
+size, decay, damping and tone. The kit's own strip is the drum bus. The buses have their
+own windows; the master strip has a chain too. There is no limiter yet: a mix that is too
+loud clips.
 
 ```bash
 gscore-cli play testdata/basic/note_lengths.gp                        # built-in synthesizer

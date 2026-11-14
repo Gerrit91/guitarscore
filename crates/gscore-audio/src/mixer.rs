@@ -94,6 +94,8 @@ struct Strip {
     peak: Peak,
     /// The peak before the chain (after the trim), for the input meter.
     input_peak: Peak,
+    /// The peak after the chain (and its output level), for the chain's output meter.
+    output_peak: Peak,
 }
 
 impl Default for Strip {
@@ -108,6 +110,7 @@ impl Default for Strip {
             chorus: 0,
             peak: Peak::default(),
             input_peak: Peak::default(),
+            output_peak: Peak::default(),
         }
     }
 }
@@ -220,6 +223,8 @@ pub(crate) struct Mixer {
     room_input: [[[f32; BLOCK]; 2]; MAX_TONES],
     /// Each drum part's send into its kit's room (0-127), by the song's track index.
     part_rooms: [[u8; PARTS]; MAX_TONES],
+    /// Each drum kit's own send into its room (0-127), by the song's track index.
+    room_sends: [u8; MAX_TONES],
     /// Each track's gain-reduction needle, by the song's track index.
     needles: [Needle; MAX_TONES],
     /// Whether the strips' own signal goes to the output. A stem render (a track stem or a
@@ -284,6 +289,7 @@ impl Mixer {
             rooms: std::array::from_fn(|_| None),
             room_input: [[[0.0; BLOCK]; 2]; MAX_TONES],
             part_rooms: [[0; PARTS]; MAX_TONES],
+            room_sends: [0; MAX_TONES],
             needles: [Needle::default(); MAX_TONES],
             dry: true,
             master_chain: None,
@@ -344,6 +350,7 @@ impl Mixer {
                     chorus: track.sound.chorus,
                     peak: Peak::default(),
                     input_peak: Peak::default(),
+                    output_peak: Peak::default(),
                 },
             };
             if let Some(owner) = self.channel_strip.get_mut(channel)
@@ -619,6 +626,21 @@ impl Mixer {
             .and_then(|slot| std::mem::replace(slot, chain))
     }
 
+    /// The song's drum kit `track` sends `value` (0-127) of the whole kit into its room.
+    pub(crate) fn set_track_room_send(&mut self, track: usize, value: u8) {
+        if let Some(send) = self.room_sends.get_mut(track) {
+            *send = value.min(127);
+        }
+    }
+
+    /// New knob values for the song's drum kit `track`'s room, heard at once.
+    pub(crate) fn set_track_room_settings(&mut self, track: usize, knobs: ChainKnobs) {
+        if let Some(chain) = self.rooms.get_mut(track).and_then(Option::as_mut) {
+            chain.set_settings(&knobs.settings);
+            chain.set_output_db(knobs.output_db);
+        }
+    }
+
     /// The song's drum part `part` of track `track` sends `value` (0-127) into the kit's
     /// room.
     pub(crate) fn set_part_room(&mut self, track: usize, part: usize, value: u8) {
@@ -859,6 +881,27 @@ impl Mixer {
             }
             work_left.copy_from_slice(sum_left);
             work_right.copy_from_slice(sum_right);
+            // The kit's own Room knob: the whole kit (after the parts' levels, before the
+            // track's chain) into the same room.
+            let kit_send = self
+                .room_sends
+                .get(strip.song_track)
+                .copied()
+                .unwrap_or(0)
+                .min(127);
+            if kit_send > 0
+                && let Some([room_left, room_right]) = self.room_input.get_mut(strip.song_track)
+            {
+                let send = f32::from(kit_send) / 127.0;
+                for (index, (l, r)) in work_left.iter().zip(work_right.iter()).enumerate() {
+                    if let (Some(into_l), Some(into_r)) =
+                        (room_left.get_mut(index), room_right.get_mut(index))
+                    {
+                        *into_l += l * send;
+                        *into_r += r * send;
+                    }
+                }
+            }
             // The kit's room: the parts' sends through one short shared room, its return
             // part of the kit (before the track's own chain and fader, so the kit's
             // processing and its sends hear it; a bus stem leaves only the dry sound out).
@@ -945,6 +988,7 @@ impl Mixer {
         let ringing = chain.as_ref().is_some_and(|chain| chain.ringing());
         if !sounding && !ringing {
             self.settle_meter(position, 0.0, 0.0, 0.0);
+            self.settle_chain_output(position);
             return;
         }
         let reduction = match chain {
@@ -959,6 +1003,20 @@ impl Mixer {
                 part_reduction
             }
         };
+        // What leaves the chain (and its output level), before the fader and pan: its own
+        // meter, for setting the chain's output.
+        let (chain_peak, track) = match self.strips.get_mut(position) {
+            Some(strip) => {
+                strip
+                    .output_peak
+                    .update(peak_of(work_left), peak_of(work_right), self.ballistics);
+                (strip.output_peak, strip.song_track)
+            }
+            None => (Peak::default(), usize::MAX),
+        };
+        if track < MAX_TONES {
+            self.meters.publish(Which::ChainOutput(track), chain_peak);
+        }
         // The fader and the pan (a balance once the signal is stereo), then the sends.
         let gain = volume_gain(strip.volume);
         let (to_left, to_right) = pan_gains(strip.pan);
@@ -1016,6 +1074,19 @@ impl Mixer {
             }
         }
         self.settle_meter(position, peak_left, peak_right, reduction);
+    }
+
+    /// Silences the chain-output meter of strip `position` (its chain is not running).
+    fn settle_chain_output(&mut self, position: usize) {
+        let fall = self.ballistics;
+        if let Some(strip) = self.strips.get_mut(position) {
+            strip.output_peak.update(0.0, 0.0, fall);
+            let peak = strip.output_peak;
+            let track = strip.song_track;
+            if track < MAX_TONES {
+                self.meters.publish(Which::ChainOutput(track), peak);
+            }
+        }
     }
 
     /// The meter of strip `position` after a block with these peaks and its chain's

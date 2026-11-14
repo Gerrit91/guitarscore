@@ -461,18 +461,26 @@ fn the_input_trim_sets_how_hard_the_chain_is_fed() {
         engine.set_trim(0, trim);
         let (left, _) = render(&mut engine, 1.0);
         let meters = engine.meters();
-        (rms(steady(&left)), meters.input(0).left)
+        (
+            rms(steady(&left)),
+            meters.input(0).left,
+            meters.chain_output(0).left,
+        )
     };
-    let (plain, plain_input) = level(0.0);
-    let (down, down_input) = level(-12.0);
+    let (plain, plain_input, plain_output) = level(0.0);
+    let (down, down_input, down_output) = level(-12.0);
     assert!((down / plain - 0.251).abs() < 0.02, "{down} {plain}");
     assert!(
         (down_input / plain_input - 0.251).abs() < 0.05,
         "{down_input} {plain_input}"
     );
-    let (up, up_input) = level(6.0);
+    // A track without a chain: what leaves it is what came in, so both meters agree.
+    assert!((plain_output / plain_input - 1.0).abs() < 0.01);
+    assert!((down_output / down_input - 1.0).abs() < 0.01);
+    let (up, up_input, up_output) = level(6.0);
     assert!(up > plain * 1.8, "{up} {plain}");
     assert!(up_input > plain_input * 1.8, "{up_input} {plain_input}");
+    assert!(up_output > plain_output * 1.8, "{up_output} {plain_output}");
 }
 
 #[test]
@@ -485,14 +493,15 @@ fn a_kits_room_carries_its_parts_sends() {
         .expect("a drum track");
     let sequence = Sequence::new(&song, None).unwrap();
     let channel = sequence.tracks[0].channel;
-    let tail = |send: u8| {
+    let tail = |part_send: u8, kit_send: u8| {
         let bytes = gscore_audio::testing::sine_drum_soundfont("Test Drums");
         let bank = SoundBank::read(&mut bytes.as_slice()).unwrap();
         let mut engine = SynthEngine::new(&bank, RATE).unwrap();
         engine.load(Arc::new(sequence.clone()));
         engine.play();
         engine.set_track_room(0, gscore_audio::prepare_drum_room(RATE));
-        engine.set_part_room(0, 0, send);
+        engine.set_part_room(0, 0, part_send);
+        engine.set_track_room_send(0, kit_send);
         engine.send_event(MidiEvent::NoteOn {
             channel,
             key: 36,
@@ -504,10 +513,13 @@ fn a_kits_room_carries_its_parts_sends() {
         // The hit has died away after half a second; what is left is the room's tail.
         rms(&left[RATE as usize / 2..])
     };
-    let dry = tail(0);
-    let half = tail(64);
-    let wet = tail(127);
+    let dry = tail(0, 0);
+    let half = tail(64, 0);
+    let wet = tail(127, 0);
     assert!(wet > half && half > dry * 3.0, "{dry} {half} {wet}");
+    // The kit's own send reaches the same room too.
+    let via_kit = tail(0, 127);
+    assert!(via_kit > dry * 3.0, "{dry} {via_kit}");
 }
 
 #[test]

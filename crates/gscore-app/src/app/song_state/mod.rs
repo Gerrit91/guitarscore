@@ -25,7 +25,9 @@ use gscore_model::{Song, TrackIndex};
 use gscore_play::{StringKind, TrackEngine};
 use serde::{Deserialize, Serialize};
 
-use crate::chain_settings::{ChainSetting, DrumPart};
+use crate::chain_settings::{
+    BlockChoice, BlockSetting, ChainSetting, DEFAULT_TRIM_DB, DrumPart, default_drum_room,
+};
 use crate::playback::{MidiOutRoute, TrackDrumPart};
 use crate::settings::{ChorusBus, CompressorBus, PresetTone, ReverbBus};
 
@@ -142,10 +144,16 @@ pub(crate) struct TrackSound {
     /// stay as they are.
     #[serde(default, skip_serializing_if = "is_zero_i32")]
     pub transpose: i32,
-    /// Its input trim before the effect chain, in dB (0: as it comes): how hard an amp or
-    /// a compressor is driven.
-    #[serde(default, skip_serializing_if = "is_zero_f32")]
-    pub trim_db: f32,
+    /// Its input trim before the effect chain, in dB (unset: the starting -6 dB): how hard
+    /// an amp or a compressor is driven.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub trim_db: Option<f32>,
+    /// A drum kit's one shared room, when it is not the built-in short one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub drum_room: Option<BlockSetting>,
+    /// The kit's own send into that room (0-127, 0: dry).
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub drum_room_send: u8,
 }
 
 /// One drum part's own tone in a song: its chain and its mixing level in the drum track.
@@ -241,10 +249,6 @@ fn is_zero(value: &u8) -> bool {
     *value == 0
 }
 
-fn is_zero_f32(value: &f32) -> bool {
-    *value == 0.0
-}
-
 /// What plays a track, as the block writes it: a plain word, not an enum's variant name.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -315,11 +319,21 @@ impl TrackSound {
         self.transpose = self
             .transpose
             .clamp(-gscore_model::MAX_TRANSPOSE, gscore_model::MAX_TRANSPOSE);
-        self.trim_db = if self.trim_db.is_finite() {
-            self.trim_db.clamp(-24.0, 24.0)
-        } else {
-            0.0
-        };
+        self.trim_db = self.trim_db.map(|db| {
+            if db.is_finite() {
+                db.clamp(-24.0, 24.0)
+            } else {
+                DEFAULT_TRIM_DB
+            }
+        });
+        // A kit's room is a reverb, always all wet (the sends decide how much reaches it).
+        if let Some(room) = &mut self.drum_room {
+            if room.choice != BlockChoice::Reverb {
+                *room = default_drum_room();
+            }
+            room.mix = 1.0;
+        }
+        self.drum_room_send = self.drum_room_send.min(127);
         for part in &mut self.drum_parts {
             part.level = part.level.min(127);
         }
