@@ -5572,3 +5572,18 @@ regenerated.
 - Tests: the bracket's bar and wings, Ctrl+wheel over a panel, a block added to a
   MIDI-synth track. `dismissing_an_open_error_shows_the_empty_workspace` fails when the
   checkout's path is very long (also on `main`); not changed here.
+
+## 2026-11-14 — A click on a mark of the page opens its dialog
+
+- Clicking a **tempo mark** (the header's, or a bar's), a **section name**, a **time
+  signature** or a bar's **key signature** opens the staff dialog that edits it, on that
+  bar: the cursor moves there first, since the dialogs edit the cursor's bar. Clicking a
+  **tuning** in the header opens that track's tuning dialog (and shows the track). The
+  pointer turns into a hand over these marks, with a tooltip.
+- `gscore-layout` reports the marks with their boxes (`Layout::marks`, `ScoreMark`,
+  `ScoreMarkKind`, `Layout::mark_at`), next to the header texts. Nothing is drawn
+  differently, so no golden or snapshot changed.
+- Not clickable: a tempo change inside a bar (it belongs to a beat, not the bar), the key
+  signature repeated at a system's start, and the clef. Design mode keeps its own handles.
+- Tests: the layout's marks and `mark_at`; in the app, the header's tempo, a time
+  signature, a section name and a tuning each open their dialog.

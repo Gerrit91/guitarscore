@@ -338,3 +338,37 @@ fn a_single_line_layout_is_wider_than_the_page() {
         broken.width
     );
 }
+
+/// The layout reports the marks a click can open an editor for: the header's tempo and
+/// tunings, the section names and the first bar's time signature.
+#[test]
+fn the_layout_reports_its_clickable_marks() {
+    use gscore_layout::ScoreMarkKind;
+
+    let song = common::open("basic/multi_staff.gp");
+    let fonts = Fonts::bundled().unwrap();
+    let layout =
+        layout_track(&song, TrackIndex::new(0), &LayoutOptions::default(), &fonts).unwrap();
+    let has = |kind: ScoreMarkKind| layout.marks.iter().any(|mark| mark.kind == kind);
+    let first = MeasureIndex::new(0);
+    assert!(has(ScoreMarkKind::Tempo { measure: first }));
+    assert!(has(ScoreMarkKind::Section { measure: first }));
+    assert!(has(ScoreMarkKind::Section {
+        measure: MeasureIndex::new(4)
+    }));
+    assert!(has(ScoreMarkKind::TimeSignature { measure: first }));
+    assert!(has(ScoreMarkKind::Tuning {
+        track: TrackIndex::new(0)
+    }));
+    // Every mark has a box, and a point in it finds the mark again.
+    for mark in &layout.marks {
+        assert!(mark.rect.width > 0.0 && mark.rect.height > 0.0, "{mark:?}");
+        let middle = Point::new(
+            mark.rect.origin.x + mark.rect.width / 2.0,
+            mark.rect.origin.y + mark.rect.height / 2.0,
+        );
+        assert!(layout.mark_at(middle).is_some());
+    }
+    // A point beside the page's marks finds none.
+    assert_eq!(layout.mark_at(Point::new(-5.0, -5.0)), None);
+}

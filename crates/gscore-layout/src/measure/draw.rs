@@ -270,6 +270,50 @@ impl MeasureLayout {
         }
     }
 
+    /// Where [`Self::draw`] writes the measure's key signature and its time signature when
+    /// the measure starts at `x`: each one's left and right edge and the top and bottom
+    /// line of the staff that carries it (`None` for a signature the measure does not show).
+    pub(crate) fn signature_boxes(
+        &self,
+        x: f32,
+        tops: Tops,
+        first_in_system: bool,
+        ctx: &Context<'_>,
+    ) -> [Option<(f32, f32, f32, f32)>; 2] {
+        let notation_height = notation::staff().height();
+        let mut signature_x = x;
+        if self.clef_change && !first_in_system && tops.notation.is_some() {
+            signature_x += self.clef_width;
+        }
+        let slash_only = tops.notation.is_none() && !tops.show_tab;
+        let key = self
+            .key_signature
+            .as_ref()
+            .filter(|_| !slash_only)
+            .map(|_| {
+                let (top, height) = match tops.notation {
+                    Some(top) => (top, notation_height),
+                    None => (tops.tab, ctx.staff.height()),
+                };
+                (
+                    signature_x,
+                    top,
+                    signature_x + self.key_width(),
+                    top + height,
+                )
+            });
+        signature_x += self.key_width();
+        signature_x += self.signature_pad;
+        let time = self.time_signature.as_ref().map(|time| {
+            let (top, height) = match tops.notation.or(tops.slash.filter(|_| slash_only)) {
+                Some(top) => (top, notation_height),
+                None => (tops.tab, ctx.staff.height()),
+            };
+            (signature_x, top, signature_x + time.width, top + height)
+        });
+        [key, time]
+    }
+
     /// Draws the measure's content (not the staff lines or barline) starting at `x`, on
     /// the notation staff and the tab staff below it, each if shown.
     pub(crate) fn draw(

@@ -37,6 +37,7 @@ mod pages;
 mod pdf;
 mod place;
 mod score;
+mod score_mark;
 mod staff;
 mod svg;
 mod system;
@@ -61,6 +62,7 @@ pub use metrics::{EngravingDefaults, GlyphBox, MusicFont, TextMetrics};
 pub use options::{EmptyStaves, LayoutOptions, Spacing};
 pub use pdf::{PdfFonts, to_pdf};
 pub use place::{BeatPlace, Hit, MeasurePlace, Places, SystemPlace};
+pub use score_mark::{ScoreMark, ScoreMarkKind};
 pub use svg::to_svg;
 pub use theme::{Rgb, Theme};
 
@@ -116,6 +118,9 @@ pub struct Layout {
     /// The song texts the header shows (title, artist, credits), with where they are, so a
     /// click can edit one in place.
     pub header_texts: Vec<HeaderText>,
+    /// The marks a click can open an editor for (tempo marks, section names, time and key
+    /// signatures, the header's tuning), with where they are.
+    pub marks: Vec<ScoreMark>,
 }
 
 /// Where one staff's systems, measures and beats are.
@@ -160,6 +165,14 @@ impl Layout {
                     && point.y <= text.rect.origin.y + text.rect.height
             })
             .map(|text| text.field)
+    }
+
+    /// The mark under `point` that a click can open an editor for, if any.
+    pub fn mark_at(&self, point: Point) -> Option<ScoreMarkKind> {
+        self.marks
+            .iter()
+            .find(|mark| mark.contains(point))
+            .map(|mark| mark.kind)
     }
 
     /// Like [`Layout::hit`], but within `track` only and among beats of `voice` (a drag

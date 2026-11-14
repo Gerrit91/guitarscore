@@ -13,6 +13,7 @@ use crate::metrics::MusicFont;
 use crate::notation;
 use crate::ornaments;
 use crate::place::{Places, SystemPlace};
+use crate::score_mark::{ScoreMark, ScoreMarkKind};
 use crate::staff::Staff;
 use crate::{Fonts, MEASURE_NUMBER_RISE, REPEAT_COUNT_GAP};
 use gscore_model::SimileMark;
@@ -48,6 +49,8 @@ pub(super) struct Drawn {
     pub(super) measure_x: Vec<f32>,
     pub(super) measure_stretch: Vec<f32>,
     pub(super) measure_tops: Vec<Option<Tops>>,
+    /// The marks a click can open an editor for.
+    pub(super) marks: Vec<ScoreMark>,
 }
 
 impl Drawn {
@@ -68,6 +71,7 @@ impl Drawn {
             measure_x: vec![0.0; count],
             measure_stretch: vec![1.0; count],
             measure_tops: vec![None; count],
+            marks: Vec::new(),
         }
     }
 }
@@ -174,6 +178,25 @@ pub(super) fn draw_part(
             ctx,
             &mut content,
         );
+        // The bar's key and time signature can be clicked.
+        let boxes = measure.signature_boxes(content_x, tops, offset == 0, ctx);
+        let kinds = [
+            ScoreMarkKind::KeySignature {
+                measure: measure.index(),
+            },
+            ScoreMarkKind::TimeSignature {
+                measure: measure.index(),
+            },
+        ];
+        for (kind, (left, top, right, bottom)) in kinds
+            .into_iter()
+            .zip(boxes)
+            .filter_map(|(kind, found)| Some((kind, found?)))
+        {
+            drawn
+                .marks
+                .push(ScoreMark::new(kind, left, top, right, bottom));
+        }
         if let Some(syllables) = part.lyrics.get(index)
             && !syllables.is_empty()
         {
@@ -211,6 +234,7 @@ pub(super) fn draw_part(
             tops,
             ctx,
             &mut content,
+            &mut drawn.marks,
         );
         let is_final = system
             .plan_measures

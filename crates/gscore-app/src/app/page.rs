@@ -4,13 +4,15 @@
 use egui::{Align, Rect, ScrollArea, Sense, Vec2};
 use gscore_edit::Command;
 use gscore_edit::{BeatSpot, Cursor, Selection};
-use gscore_layout::{Places, Point};
+use gscore_layout::{Places, Point, ScoreMarkKind};
 use gscore_model::{
     BeatIndex, MAX_SONG_TEXT_CHARS, MeasureIndex, Song, SongTextField, TrackIndex, VoiceIndex,
 };
 use gscore_play::PlayState;
 
 use super::GuitarScoreApp;
+use super::edit_palette::PaletteSnapshot;
+use super::edit_staff::Dialog;
 use super::page_menu::{self, MenuChoice};
 use crate::canvas::{self, Arrangement, POINTS_PER_SPACE};
 use crate::state::ScoreView;
@@ -36,6 +38,24 @@ pub(super) struct SongTextEdit {
     /// Whether the field has taken the keyboard yet (it takes it as soon as it opens, so
     /// typing continues without a click).
     focused: bool,
+}
+
+/// What a clickable mark of the page is called in its tooltip and accessible name.
+fn mark_name(kind: ScoreMarkKind) -> String {
+    let bar = |measure: MeasureIndex| measure.get().saturating_add(1);
+    match kind {
+        ScoreMarkKind::Tempo { measure } => format!("tempo of bar {}", bar(measure)),
+        ScoreMarkKind::Section { measure } => format!("section of bar {}", bar(measure)),
+        ScoreMarkKind::TimeSignature { measure } => {
+            format!("time signature of bar {}", bar(measure))
+        }
+        ScoreMarkKind::KeySignature { measure } => {
+            format!("key signature of bar {}", bar(measure))
+        }
+        ScoreMarkKind::Tuning { track } => {
+            format!("tuning of track {}", track.get().saturating_add(1))
+        }
+    }
 }
 
 /// How the view scrolls to the cursor's column `column` when `visible` is shown. While
@@ -208,6 +228,9 @@ impl GuitarScoreApp {
         let mut text_commit: Option<(SongTextField, String)> = None;
         let mut text_cancel = false;
         let mut text_opened = false;
+        // A mark of the page that was clicked (a tempo, a section name, a signature, a
+        // tuning): its editor opens once the page's borrows are done.
+        let mut mark_clicked: Option<ScoreMarkKind> = None;
         // A trackpad pinch (or Ctrl+wheel) over the page zooms the score, not the app.
         let mut zoom_gesture = 1.0_f32;
         // Guitar Pro's design mode: the commands its handles and buttons made this frame.
@@ -354,6 +377,29 @@ impl GuitarScoreApp {
                         focused: false,
                     });
                     text_opened = true;
+                }
+            }
+            // The marks with an editor of their own (tempo marks, section names, time and
+            // key signatures, the header's tunings) open it on a click. Design mode keeps
+            // its handles to itself.
+            if !design_mode {
+                for (index, mark) in layout.marks.iter().enumerate() {
+                    let what = mark_name(mark.kind);
+                    let response = ui
+                        .interact(
+                            to_screen(mark.rect),
+                            ui.scope_id().with(("score_mark", index)),
+                            Sense::click(),
+                        )
+                        .on_hover_cursor(egui::CursorIcon::PointingHand)
+                        .on_hover_text(format!("Click to edit the {what}"));
+                    ui.ctx().accesskit_node_builder(response.id, |node| {
+                        node.set_role(egui::Role::Button);
+                        node.set_label(format!("Edit the {what}"));
+                    });
+                    if response.clicked() {
+                        mark_clicked = Some(mark.kind);
+                    }
                 }
             }
             // The text being typed: a field over the text it replaces, in its size.
@@ -646,8 +692,41 @@ impl GuitarScoreApp {
                 tab.song_text = None;
             }
         }
+        if let Some(kind) = mark_clicked {
+            self.open_score_mark(kind);
+        }
         let ctx = ui.ctx().clone();
         self.run_menu_choices(choices, &ctx);
+    }
+
+    /// Opens the editor of a mark that was clicked on the page: the bar's staff dialog
+    /// (tempo, section, time or key signature) with the cursor moved to that bar, since the
+    /// dialog edits the cursor's bar, or the track's tuning dialog.
+    fn open_score_mark(&mut self, kind: ScoreMarkKind) {
+        let (dialog, measure) = match kind {
+            ScoreMarkKind::Tuning { track } => {
+                self.open_tuning_dialog(track.get());
+                return;
+            }
+            ScoreMarkKind::Tempo { measure } => (Dialog::Tempo, measure),
+            ScoreMarkKind::Section { measure } => (Dialog::Section, measure),
+            ScoreMarkKind::TimeSignature { measure } => (Dialog::Time, measure),
+            ScoreMarkKind::KeySignature { measure } => (Dialog::Key, measure),
+        };
+        let Some(tab) = self.tabs.get_mut(self.active) else {
+            return;
+        };
+        let mut cursor = tab.document.editor().cursor();
+        if cursor.measure != measure {
+            cursor.measure = measure;
+            cursor.beat = BeatIndex::new(0);
+            tab.document.editor_mut().set_cursor(cursor);
+            tab.document.editor_mut().set_selection(None);
+            tab.selection = None;
+            cursor = tab.document.editor().cursor();
+        }
+        let snapshot = PaletteSnapshot::of(tab.document.song(), cursor, None);
+        tab.edit_palette.staff.open_dialog(dialog, &snapshot);
     }
 
     /// What the page shows with no song open: the way to start a new score or open a file,

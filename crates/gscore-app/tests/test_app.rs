@@ -414,6 +414,71 @@ fn the_track_panel_can_also_be_made_wider_after_shrinking() {
     );
 }
 
+/// The marks of the page open their editor on a click: the header's tempo and a bar's time
+/// signature open the staff dialogs on that bar.
+#[test]
+fn a_click_on_the_tempo_or_the_time_signature_opens_its_dialog() {
+    let mut harness = app_with(Some(testdata("basic/note_lengths.gp")));
+    cursor_to_measure(&mut harness, 2);
+    harness.run();
+    assert!(harness.query_by_label("Cancel").is_none());
+    let tempo = harness
+        .query_all_by_label("Edit the tempo of bar 1")
+        .next()
+        .expect("the header's tempo can be clicked");
+    tempo.click();
+    harness.run();
+    // The tempo dialog is open, on the first bar (the cursor went there).
+    harness.get_by_label("One beat per minute slower");
+    let measure = |harness: &Harness<'static, GuitarScoreApp>| {
+        let document = harness.state().document().unwrap();
+        document.editor().cursor().measure.get()
+    };
+    assert_eq!(measure(&harness), 0);
+    harness.get_by_label("Cancel").click();
+    harness.run();
+    assert!(harness.query_by_label("Cancel").is_none());
+
+    harness
+        .get_by_label("Edit the time signature of bar 1")
+        .click();
+    harness.run();
+    assert!(
+        harness.query_by_label("Cancel").is_some(),
+        "the time signature dialog is open"
+    );
+    assert!(
+        harness
+            .query_by_label("One beat per minute slower")
+            .is_none()
+    );
+}
+
+/// A section name opens the section dialog of its bar, and a tuning in the header the
+/// tuning dialog of its track.
+#[test]
+fn a_click_on_a_section_or_a_tuning_opens_its_dialog() {
+    let mut harness = app_with(Some(testdata("basic/multi_staff.gp")));
+    harness
+        .get_by_label("Edit the section of bar 5")
+        .scroll_to_me();
+    harness.run();
+    harness.get_by_label("Edit the section of bar 5").click();
+    harness.run();
+    harness.get_by_label("Section title");
+    let document = harness.state().document().unwrap();
+    assert_eq!(document.editor().cursor().measure.get(), 4);
+    harness.get_by_label("Cancel").click();
+    harness.run();
+
+    let mut harness = app_with(Some(testdata("basic/steel_guitar_dadgad.gp")));
+    assert!(harness.query_by_label("Cancel").is_none());
+    harness.get_by_label("Edit the tuning of track 1").click();
+    harness.run();
+    // The tuning dialog is open, with its strings.
+    harness.get_by_label("String 1 note");
+}
+
 #[test]
 fn a_click_on_the_score_title_edits_it_in_place() {
     let mut harness = app_with(Some(testdata("basic/note_lengths.gp")));

@@ -1,11 +1,12 @@
 //! The top of the first page: title block, credits, tuning and tempo.
 
-use gscore_model::{Song, SongTextField, TrackView};
+use gscore_model::{MeasureIndex, Song, SongTextField, TrackView};
 
 use crate::Context;
 use crate::draw::{ColorToken, DrawOp, Point, Rect, TextAnchor, TextFont};
 use crate::error::LayoutError;
 use crate::glyph::Glyph;
+use crate::score_mark::{ScoreMark, ScoreMarkKind};
 
 /// A text of the score's header that can be clicked to edit it in place: which song field
 /// it shows, and where it lies on the page.
@@ -70,6 +71,8 @@ struct Lines<'o> {
     ops: &'o mut Vec<DrawOp>,
     /// The editable texts written so far, and where they are.
     texts: &'o mut Vec<HeaderText>,
+    /// The marks a click opens an editor for (the tunings and the tempo).
+    marks: &'o mut Vec<ScoreMark>,
 }
 
 impl Lines<'_> {
@@ -109,24 +112,26 @@ impl Lines<'_> {
 /// Gap between two tracks' blocks of name and tuning.
 const BLOCK_GAP: f32 = 3.0;
 
-/// Draws the header for `tracks` of `song` and returns where it ends (y) and the texts a
-/// click can edit. One track gets its tuning on one line; several get a block each (name,
+/// Draws the header for `tracks` of `song` and returns where it ends (y), the texts a
+/// click can edit and the marks a click opens an editor for (each tuning, the tempo). One track gets its tuning on one line; several get a block each (name,
 /// then tuning), side by side.
 pub(crate) fn draw(
     song: &Song,
     tracks: &[TrackView<'_>],
     ctx: &Context<'_>,
     ops: &mut Vec<DrawOp>,
-) -> Result<(f32, Vec<HeaderText>), LayoutError> {
+) -> Result<(f32, Vec<HeaderText>, Vec<ScoreMark>), LayoutError> {
     let options = ctx.options;
     let left = options.margin_left;
     let right = options.page_width - options.margin_right;
     let center = (left + right) / 2.0;
     let mut texts = Vec::new();
+    let mut marks = Vec::new();
     let mut lines = Lines {
         y: options.margin_top,
         ops,
         texts: &mut texts,
+        marks: &mut marks,
     };
 
     if !song.title().is_empty() {
@@ -153,6 +158,16 @@ pub(crate) fn draw(
         [track] => {
             if let Some(tuning) = tuning_text(*track)? {
                 lines.push(&tuning, left, &INFO);
+                let width = ctx.fonts.text.width(&tuning, INFO.size);
+                lines.marks.push(ScoreMark::new(
+                    ScoreMarkKind::Tuning {
+                        track: track.index(),
+                    },
+                    left,
+                    lines.y - INFO.size,
+                    left + width,
+                    lines.y - INFO.size + INFO.size * LINE_HEIGHT,
+                ));
             }
         }
         _ => track_blocks(tracks, &mut lines, left, right, ctx)?,
@@ -165,15 +180,26 @@ pub(crate) fn draw(
     let stem = font.bbox(note).y_max * TEMPO_NOTE_SCALE;
     lines.y += stem.max(TEMPO.size * LINE_HEIGHT) - TEMPO.size * LINE_HEIGHT + 0.5;
     let text_x = left + font.advance(note) * TEMPO_NOTE_SCALE + TEMPO_NOTE_GAP;
-    lines.push(&format!("= {}", song.tempo()), text_x, &TEMPO);
+    let tempo = format!("= {}", song.tempo());
+    lines.push(&tempo, text_x, &TEMPO);
     let y = lines.y;
+    // The header's tempo is the one the first bar starts at.
+    lines.marks.push(ScoreMark::new(
+        ScoreMarkKind::Tempo {
+            measure: MeasureIndex::new(0),
+        },
+        left,
+        y - stem.max(TEMPO.size),
+        text_x + ctx.fonts.text.width(&tempo, TEMPO.size) * 1.08,
+        y + 0.3,
+    ));
     ops.push(DrawOp::Glyph {
         glyph: note,
         at: Point::new(left, y),
         scale: TEMPO_NOTE_SCALE,
         color: ColorToken::Annotation,
     });
-    Ok((y, texts))
+    Ok((y, texts, marks))
 }
 
 /// Each track's name with its tuning below, in blocks from left to right that wrap onto
@@ -188,21 +214,25 @@ fn track_blocks(
     let mut blocks = Vec::with_capacity(tracks.len());
     for track in tracks {
         let mut block = vec![track.name().trim().to_owned()];
-        if let Some(tuning) = block_tuning(*track)? {
-            block.push(tuning);
-        }
+        let tuned = match block_tuning(*track)? {
+            Some(tuning) => {
+                block.push(tuning);
+                true
+            }
+            None => false,
+        };
         let width = block
             .iter()
             .map(|line| ctx.fonts.text.width(line, INFO.size))
             .fold(0.0_f32, f32::max);
-        blocks.push((block, width));
+        blocks.push((block, width, tuned.then(|| track.index())));
     }
     let line_height = INFO.size * LINE_HEIGHT;
     let row_top = lines.y;
     let mut x = left;
     let mut top = row_top;
     let mut tallest = 0_usize;
-    for (block, width) in blocks {
+    for (block, width, tuned) in blocks {
         if x > left && x + width > right {
             top += tallest as f32 * line_height;
             x = left;
@@ -217,6 +247,16 @@ fn track_blocks(
                 anchor: INFO.anchor,
                 color: INFO.color,
             });
+        }
+        // The tuning is the block's second line.
+        if let Some(track) = tuned {
+            lines.marks.push(ScoreMark::new(
+                ScoreMarkKind::Tuning { track },
+                x,
+                top + 2.0 * line_height - INFO.size,
+                x + width,
+                top + 2.0 * line_height + 0.3,
+            ));
         }
         tallest = tallest.max(block.len());
         x += width + BLOCK_GAP;

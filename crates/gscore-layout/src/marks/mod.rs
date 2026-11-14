@@ -18,6 +18,7 @@ use crate::Context;
 use crate::draw::{ColorToken, DrawOp, Point, TextAnchor, TextFont};
 use crate::glyph::Glyph;
 use crate::measure::{MeasureLayout, Tops};
+use crate::score_mark::{ScoreMark, ScoreMarkKind};
 use crate::staff::Staff;
 
 /// Distance from the top staff line up to the baseline of the first row of marks.
@@ -328,9 +329,11 @@ pub(crate) fn draw(
     tops: Tops,
     ctx: &Context<'_>,
     ops: &mut Vec<DrawOp>,
+    clickable: &mut Vec<ScoreMark>,
 ) {
     let marks = placed.marks;
     let top = tops.top_line();
+    let measure = placed.layout.index();
     let (xs, _) = placed
         .layout
         .column_positions(placed.content, placed.stretch);
@@ -398,13 +401,27 @@ pub(crate) fn draw(
     }
     // The feel mark follows a tempo mark at the measure start.
     let mut feel_x = start;
+    // The bar's own tempo mark can be clicked (a change inside the bar belongs to a beat).
+    let mut bar_tempo = |width: f32| {
+        clickable.push(ScoreMark::new(
+            ScoreMarkKind::Tempo { measure },
+            start,
+            tempo_y - text::tempo_height(ctx),
+            start + width,
+            tempo_y + 0.3,
+        ));
+    };
     if let Some(tempo) = marks.tempo {
-        feel_x += text::draw_tempo(start, tempo_y, tempo, ctx, ops) + FEEL_GAP;
+        let width = text::draw_tempo(start, tempo_y, tempo, ctx, ops);
+        bar_tempo(width);
+        feel_x += width + FEEL_GAP;
     }
     for &(column, tempo) in &marks.column_tempos {
         // A beat's change at the measure start is written where a measure's would be.
         if column == 0 && marks.tempo.is_none() {
-            feel_x += text::draw_tempo(start, tempo_y, tempo, ctx, ops) + FEEL_GAP;
+            let width = text::draw_tempo(start, tempo_y, tempo, ctx, ops);
+            bar_tempo(width);
+            feel_x += width + FEEL_GAP;
         } else {
             let x = xs.get(column).copied().unwrap_or(placed.left) - 0.5;
             text::draw_tempo(x, tempo_y, tempo, ctx, ops);
@@ -414,13 +431,20 @@ pub(crate) fn draw(
         feel::draw_feel(feel_x, tempo_y, feel, ctx, ops);
     }
     if let Some(title) = &marks.section {
-        text::draw_section(
+        let (left, frame_top, right, frame_bottom) = text::draw_section(
             placed.left,
             rows.baseline(rows.section_row(), top),
             title,
             ctx,
             ops,
         );
+        clickable.push(ScoreMark::new(
+            ScoreMarkKind::Section { measure },
+            left,
+            frame_top,
+            right,
+            frame_bottom,
+        ));
     }
     draw_dynamics(placed, &xs, tops, ctx, ops);
 }

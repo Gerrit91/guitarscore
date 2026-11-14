@@ -257,6 +257,25 @@ impl GuitarScoreApp {
         }
     }
 
+    /// Opens the tuning dialog of `index` (a click on its tuning in the score's header) and
+    /// shows that track, as the panel's tuning button does. Nothing for a track without a
+    /// tuning (a drum kit, a piano).
+    pub(super) fn open_tuning_dialog(&mut self, index: usize) {
+        let Some(tab) = self.tabs.get_mut(self.active) else {
+            return;
+        };
+        let song = tab.document.song();
+        let Some(track) = song.track(TrackIndex::new(index)) else {
+            return;
+        };
+        let snapshot = TrackPanel::of(song, &track);
+        if snapshot.kind != InstrumentKind::Strings || snapshot.percussion {
+            return;
+        }
+        tab.track = index;
+        tab.track_panel.tuning = Some(tuning::TuningDialog::of(index, &snapshot));
+    }
+
     /// The tuning dialog, while it is open.
     pub(super) fn show_tuning_dialog(&mut self, ctx: &egui::Context) {
         let Some(tab) = self.tabs.get_mut(self.active) else {

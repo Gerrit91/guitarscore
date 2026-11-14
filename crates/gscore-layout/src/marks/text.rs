@@ -51,14 +51,15 @@ pub(super) fn draw_tempo(
     text_x + text_width - x
 }
 
-/// A section name in bold, framed, starting at `x`.
+/// A section name in bold, framed, starting at `x`; returns the frame's left, top, right
+/// and bottom.
 pub(super) fn draw_section(
     x: f32,
     baseline: f32,
     title: &str,
     ctx: &Context<'_>,
     ops: &mut Vec<DrawOp>,
-) {
+) -> (f32, f32, f32, f32) {
     // Bold runs a little wider than the regular face the metrics are for.
     let width = ctx.fonts.text.width(title, SECTION_SIZE) * 1.08 + 2.0 * SECTION_PAD;
     let frame_top = baseline - SECTION_SIZE * 0.72 - SECTION_PAD;
@@ -85,6 +86,12 @@ pub(super) fn draw_section(
         anchor: TextAnchor::Start,
         color: ColorToken::Title,
     });
+    (x, frame_top, right, frame_bottom)
+}
+
+/// How far a tempo mark's quarter note reaches above its baseline.
+pub(super) fn tempo_height(ctx: &Context<'_>) -> f32 {
+    (ctx.fonts.music.bbox(Glyph::MetronomeQuarter).y_max * TEMPO_NOTE_SCALE).max(TEMPO_SIZE)
 }
 
 /// An ending bracket from `left` to `right`, its line at the top of the row.
