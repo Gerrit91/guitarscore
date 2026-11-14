@@ -25,9 +25,7 @@ use gscore_model::{Song, TrackIndex};
 use gscore_play::{StringKind, TrackEngine};
 use serde::{Deserialize, Serialize};
 
-use crate::chain_settings::{
-    BlockChoice, BlockSetting, ChainSetting, DEFAULT_TRIM_DB, DrumPart, default_drum_room,
-};
+use crate::chain_settings::{BlockChoice, BlockSetting, ChainSetting, DrumPart, default_drum_room};
 use crate::playback::{MidiOutRoute, TrackDrumPart};
 use crate::settings::{ChorusBus, CompressorBus, PresetTone, ReverbBus};
 
@@ -144,7 +142,8 @@ pub(crate) struct TrackSound {
     /// stay as they are.
     #[serde(default, skip_serializing_if = "is_zero_i32")]
     pub transpose: i32,
-    /// Its input trim before the effect chain, in dB (unset: the starting -6 dB): how hard
+    /// Its input trim before the effect chain, in dB (unset: where its player starts, see
+    /// [`crate::chain_settings::default_trim_db`]): how hard
     /// an amp or a compressor is driven.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub trim_db: Option<f32>,
@@ -319,13 +318,11 @@ impl TrackSound {
         self.transpose = self
             .transpose
             .clamp(-gscore_model::MAX_TRANSPOSE, gscore_model::MAX_TRANSPOSE);
-        self.trim_db = self.trim_db.map(|db| {
-            if db.is_finite() {
-                db.clamp(-24.0, 24.0)
-            } else {
-                DEFAULT_TRIM_DB
-            }
-        });
+        // A broken value falls back to where the track's player starts.
+        self.trim_db = self
+            .trim_db
+            .filter(|db| db.is_finite())
+            .map(|db| db.clamp(-24.0, 24.0));
         // A kit's room is a reverb, always all wet (the sends decide how much reaches it).
         if let Some(room) = &mut self.drum_room {
             if room.choice != BlockChoice::Reverb {

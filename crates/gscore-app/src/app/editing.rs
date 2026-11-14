@@ -846,6 +846,8 @@ impl GuitarScoreApp {
         {
             self.notice = Some(error);
         }
+        // A track's starting trim follows what plays it.
+        self.sync_trims();
     }
 
     /// Slows down or speeds up playback (0.5 to 1.2 of the written tempo).

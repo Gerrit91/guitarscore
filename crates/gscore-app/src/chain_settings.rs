@@ -877,10 +877,21 @@ pub fn default_drum_bus_chain() -> ChainSetting {
     ChainSetting::default()
 }
 
-/// The input trim a track starts with, before its chain: -6 dB, so the modelled strings'
-/// plucks do not pin the input meter at red and an amp or compressor is driven the way its
-/// tone was measured. The trim is a per-song setting; this is only where it starts.
-pub const DEFAULT_TRIM_DB: f32 = -6.0;
+/// The input trim a track played by the modelled strings starts with, before its chain:
+/// -6 dB, so their plucks do not pin the input meter at red and an amp or compressor is
+/// driven the way its tone was measured.
+pub const MODELLED_TRIM_DB: f32 = -6.0;
+
+/// The input trim a track starts with, before its chain, when the song sets none: the
+/// modelled strings' [`MODELLED_TRIM_DB`]; a SoundFont or MIDI-out track (a drum kit
+/// among them) is already at its level and starts at 0 dB, so it is not quieter than
+/// before. The trim is a per-song setting; this is only where it starts.
+pub fn default_trim_db(engine: gscore_play::TrackEngine) -> f32 {
+    match engine {
+        gscore_play::TrackEngine::Modelled(_) => MODELLED_TRIM_DB,
+        gscore_play::TrackEngine::SoundFont | gscore_play::TrackEngine::MidiOut => 0.0,
+    }
+}
 
 /// The built-in room every drum kit's parts can send into: one short room behind the whole
 /// kit (as a room's overheads glue a kit together), all wet. Its knobs are the kit's own to

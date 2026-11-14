@@ -433,7 +433,7 @@ impl GuitarScoreApp {
         sound.trim_db = Some(if db.is_finite() {
             db.clamp(-24.0, 24.0)
         } else {
-            crate::chain_settings::DEFAULT_TRIM_DB
+            self.default_trim_db(track)
         });
         // One slider drag is one undo step.
         self.set_track_sound(track, sound, true);
@@ -444,21 +444,32 @@ impl GuitarScoreApp {
         let Some(tab) = self.tabs.get(self.active) else {
             return;
         };
-        let trims: Vec<(usize, f32)> = tab
-            .sound()
-            .tracks
-            .iter()
-            .enumerate()
-            .map(|(track, sound)| {
-                (
-                    track,
-                    sound
-                        .trim_db
-                        .unwrap_or(crate::chain_settings::DEFAULT_TRIM_DB),
-                )
-            })
+        let trims: Vec<(usize, f32)> = (0..tab.sound().tracks.len())
+            .map(|track| (track, self.track_trim_db_in(tab, track)))
             .collect();
         self.playback.set_trims(trims);
+    }
+
+    /// The input trim `track` of `tab`'s document plays with: the song's own, else where
+    /// its player starts (the modelled strings lower than a SoundFont or MIDI-out track).
+    pub(super) fn track_trim_db_in(&self, tab: &Tab, track: usize) -> f32 {
+        tab.track_sound(track)
+            .trim_db
+            .unwrap_or_else(|| self.default_trim_db_in(tab, track))
+    }
+
+    /// Where `track` of the open document's input trim starts, for what plays it now.
+    pub(super) fn default_trim_db(&self, track: usize) -> f32 {
+        self.tabs
+            .get(self.active)
+            .map_or(0.0, |tab| self.default_trim_db_in(tab, track))
+    }
+
+    /// The same for `tab`'s document.
+    fn default_trim_db_in(&self, tab: &Tab, track: usize) -> f32 {
+        self.track_player_in(tab, track).map_or(0.0, |player| {
+            crate::chain_settings::default_trim_db(player.engine)
+        })
     }
 
     /// Hands the open document's comp sends to playback, so they are heard.
