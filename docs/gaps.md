@@ -97,6 +97,14 @@ in AGENTS.md section 9.
     native printing (print from the PDF). Beat text can collide with high notes in the
     notation ("Bend", "Slides" in `ornaments.gp`). Text widths are estimated for
     non-digits.
+11a. **Design mode (2026-11-14).** Bar widths and moved beat columns are live
+    (`set_measure_scale`, `set_beat_spacing`, the palette's design switch). Not yet: what
+    Guitar Pro 8 stores for a moved beat (checked only in alphaTab's GPIF reader, which
+    reads no beat-level x offset; GuitarScore keeps its own `GuitarScoreSpacing` property
+    until a real GP8 file shows the format's field), only horizontal moving (as in Guitar
+    Pro), and saving to GP3-5 reports the widths and offsets it cannot keep. The buttons
+    widen or narrow the line's bars by 10 % per press; Guitar Pro may use its own step.
+    Dragging a barline in a multi-track view edits the song's width, not one track's.
 
 ## Editing and the app
 

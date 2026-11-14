@@ -5315,3 +5315,43 @@ Fixed from a review of the branch:
 Icons: the gear is drawn like the ⚙️ emoji (solid body, small hole, broad teeth); the trash
 can has a handle, a tapered body and visible ribs. 45 app snapshots changed by those icons
 only (71–99 pixels each).
+
+## 2026-11-14 — Design mode: bar widths and moved beat columns
+
+Guitar Pro's design mode (its "Design mode", GP7's bar sizing and GP8's beat moving) is
+live on a branch, `feature/design-mode`, in four steps:
+
+- **Format.** GP7/8 keep a resized bar as opaque `<XProperty>` pairs on `<Bar>` and
+  `<MasterBar>`; the reader dropped them and the writer never wrote them, so a save from
+  GuitarScore reset every resized bar. `Measure` and `MeasureHeader` now keep every
+  property verbatim (bounded to 64, unknown value types skipped) and write them back, and
+  read the width scale (ids `1124139520` / `1124073984`) as `display_scale`, clamped to
+  0.25-4. A moved beat has no id alphaTab's GPIF reader knows; it travels in GuitarScore's
+  own `GuitarScoreSpacing` beat property (staff spaces, -4 to 4). Tests:
+  `gpif_import/design_tests.rs` (read, save, hostile values, setting a scale in the model).
+- **Model.** `Song::measure_scale(track, staff, measure)` resolves a bar's width (the
+  staff's own bar, else the song's master bar, else 1);
+  `set_measure_scale(ScaleScope::Song | Staff { .. })` and `set_beat_spacing(at, ..)` are
+  checked, transactional and undoable (offsets rounded to 1/1000 of a staff space). The
+  safe-save comparison now reports a lost bar width (settings) or beat offset (music).
+- **Layout.** A bar's scale multiplies its columns' natural space (never below what the
+  notes need), so a resized bar breaks lines and justifies like any other; a column's
+  offset is added after justification (a dragged beat stays put) and takes the columns
+  after it and the barline with it; offsets are fixed room, never squeezed, and cannot
+  cross the previous column. The layout cache keys the scale, so a song-wide (header)
+  scale is laid out again. New: `tests/test_design.rs` (6 tests). Goldens unchanged
+  (scale 1, no offsets).
+- **Commands and app.** `set_measure_scale` (`width=` in percent or `auto`, `track`
+  omitted for the song's) and `set_beat_spacing` (`offset=` in hundredths), with
+  round-trip, `panic_hunt` and undo tests. The palette's design switch (a grid icon under
+  the voices, as in Guitar Pro) shows dashed guides and drag handles; a barline drag sets
+  the bar's width, a column drag moves the beat, both merged into one undo step; a yellow
+  guide snaps to a nearby bar line; `+`/`-` widen/narrow the line's bars by 10 % per press
+  (one fewer/one more bar on the line, reflowed), `x` clears the line's widths and
+  offsets as one batch. Handles take the pointer, so no beat is selected while designing.
+  Unit tests for the drag maths, the snap and the reset. 39 app snapshots changed by the
+  new palette button only (checked by eye); `cargo xtask ci` green.
+
+Open: what GP8 itself writes for a moved beat (needs a GP8-saved file), only horizontal
+movement (as in Guitar Pro), the exact width step of `+`/`-` (ours is 10 %), and native
+printing of the result.
