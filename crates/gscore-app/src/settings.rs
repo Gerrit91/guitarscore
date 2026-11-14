@@ -648,6 +648,8 @@ pub struct Settings {
     pub show_track_grid: bool,
     /// Whether the bottom panel shows the mixer instead of the measure grid.
     pub grid_mixer: bool,
+    /// How wide the song grid's measures are drawn (1 is normal).
+    pub grid_zoom: f32,
     /// Whether the track panel (right panel) is shown.
     pub show_track_panel: bool,
     /// Whether the edit palette (left panel) is shown.
@@ -763,6 +765,7 @@ impl Default for Settings {
             interface_zoom: 1.0,
             show_track_grid: true,
             grid_mixer: false,
+            grid_zoom: 1.0,
             show_track_panel: true,
             show_edit_panel: true,
             score_view: crate::state::ScoreView::PageVertical,
@@ -830,6 +833,7 @@ impl Settings {
         self.interface_zoom = view.interface_zoom();
         self.show_track_grid = view.show_track_grid;
         self.grid_mixer = view.grid_mixer;
+        self.grid_zoom = view.grid_zoom;
         self.show_track_panel = view.show_track_panel;
         self.show_edit_panel = view.show_edit_panel;
         self.score_view = view.score_view;
@@ -844,6 +848,7 @@ impl Settings {
         view.set_interface_zoom(self.interface_zoom);
         view.show_track_grid = self.show_track_grid;
         view.grid_mixer = self.grid_mixer;
+        view.set_grid_zoom(self.grid_zoom);
         view.show_track_panel = self.show_track_panel;
         view.show_edit_panel = self.show_edit_panel;
         view.score_view = match self.legacy_page_view {
@@ -931,6 +936,13 @@ impl Settings {
             self.zoom = 1.0;
         }
         self.zoom = self.zoom.clamp(ZOOM_RANGE.0, ZOOM_RANGE.1);
+        if !self.grid_zoom.is_finite() {
+            self.grid_zoom = 1.0;
+        }
+        self.grid_zoom = self.grid_zoom.clamp(
+            crate::state::GRID_ZOOM_RANGE.0,
+            crate::state::GRID_ZOOM_RANGE.1,
+        );
         let mut view = ViewState::default();
         view.set_interface_zoom(self.interface_zoom);
         self.interface_zoom = view.interface_zoom();

@@ -536,6 +536,31 @@ fn a_drum_kits_room_knob_sends_the_whole_kit_as_one_undo_step() {
     assert_eq!(editor.undo_depth(), depth + 1, "one drag, one undo step");
 }
 
+#[test]
+fn the_grid_header_deletes_the_shown_track_and_zooms_the_song() {
+    let mut harness = app_with_multi_staff();
+    // The grid starts at 100 %; a step smaller is a step the whole song can use.
+    assert!((harness.state().view().grid_zoom - 1.0).abs() < 1e-6);
+    harness.get_by_label("Zoom the grid out").click();
+    harness.run();
+    let zoom = harness.state().view().grid_zoom;
+    assert!(zoom < 1.0, "{zoom}");
+    harness.snapshot("grid_zoomed_out");
+    // The value button is the way back to 100 %.
+    let label = format!("Grid zoom: {:.0} %", zoom * 100.0);
+    harness.get_by_label(&label).click();
+    harness.run();
+    assert!((harness.state().view().grid_zoom - 1.0).abs() < 1e-6);
+    // The trash can in the header deletes the shown track.
+    let before = harness.state().document().unwrap().song().track_count();
+    harness.get_by_label("Delete the shown track").click();
+    harness.run();
+    assert_eq!(
+        harness.state().document().unwrap().song().track_count(),
+        before.saturating_sub(1)
+    );
+}
+
 /// Snapshot options for a wide mixer with many thin meters and needles, whose edge pixels
 /// the GitHub runner's software GPU anti-aliases a little differently (11 and 13 pixels
 /// past 0.6, none past 1.5): a colour tolerance of 2 (YIQ distance) per pixel, as for the

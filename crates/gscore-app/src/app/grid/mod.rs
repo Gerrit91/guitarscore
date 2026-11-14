@@ -83,6 +83,8 @@ pub(super) enum GridAction {
     ShowTrack { track: usize },
     /// Set the metronome's click volume (0 to 1).
     SetMetronomeVolume(f32),
+    /// Set the measure columns' width factor (the zoom buttons).
+    SetGridZoom(f32),
     /// Open the window of the mixer's reverb bus.
     OpenReverbBus,
     /// Set the mixer's reverb bus (an edit of the song, heard at once).
@@ -341,6 +343,7 @@ impl GuitarScoreApp {
                 selection_color: crate::canvas::color(self.view.theme.palette().selection),
                 shown_track: tab.track,
                 mixer: self.view.grid_mixer,
+                zoom: self.view.grid_zoom,
                 metronome: (
                     self.playback.metronome_volume(),
                     self.playback.metronome_level(),
@@ -444,6 +447,10 @@ impl GuitarScoreApp {
                 self.view.show_track_panel = true;
             }
             GridAction::SetMetronomeVolume(volume) => self.set_metronome_volume(volume),
+            GridAction::SetGridZoom(zoom) => {
+                self.view.set_grid_zoom(zoom);
+                self.save_settings();
+            }
             GridAction::OpenReverbBus => self.open_reverb_bus_window(),
             GridAction::ReverbBus { bus } => self.set_song_reverb_bus(bus),
             GridAction::OpenCompressorBus => self.open_compressor_bus_window(),
@@ -678,6 +685,8 @@ pub(super) struct GridView {
     selection_color: Color32,
     shown_track: usize,
     mixer: bool,
+    /// The width of one measure column, relative to a square cell (0.2 to 3).
+    zoom: f32,
     /// The metronome's volume and how loud it sounds right now (both 0 to 1).
     metronome: (f32, f32),
 }

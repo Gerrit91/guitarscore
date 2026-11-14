@@ -3,7 +3,7 @@
 //! tracks together). The mute/solo buttons and the master controls line up with the track
 //! rows' own.
 
-use egui::{Align2, FontId, Rect, Sense, pos2, vec2};
+use egui::{Align2, FontId, Rect, RichText, Sense, pos2, vec2};
 use gscore_edit::Command;
 use gscore_model::{MASTER_UNITY, MasterMix, TrackIndex};
 
@@ -87,6 +87,79 @@ pub(super) fn header(
             }
         });
     });
+    // Delete the shown track.
+    bar.scope_builder(egui::UiBuilder::new().max_rect(button_at(4.0)), |ui| {
+        ui.add_enabled_ui(rows.len() > 1, |ui| {
+            if icons::button(
+                ui,
+                Icon::Delete,
+                "Delete the shown track",
+                "Delete the shown track",
+            )
+            .clicked()
+            {
+                actions.push(GridAction::Command {
+                    command: Command::DeleteTrack {
+                        track: TrackIndex::new(shown),
+                    },
+                    merge: false,
+                });
+            }
+        });
+    });
+    // The song grid's zoom: the same magnifier buttons as the score's, with its value
+    // (click it for 100 %). Only the measure columns change width; the squares stretch.
+    if !view.mixer {
+        let left = rect.left() + 2.0 + 5.0 * 27.0 + 8.0;
+        let group = Rect::from_min_size(pos2(left, rect.center().y - 11.0), vec2(126.0, 22.0));
+        bar.scope_builder(
+            egui::UiBuilder::new()
+                .max_rect(group)
+                .layout(egui::Layout::left_to_right(egui::Align::Center)),
+            |ui| {
+                let step = crate::state::GRID_ZOOM_STEP;
+                let (min, max) = crate::state::GRID_ZOOM_RANGE;
+                ui.add_enabled_ui(view.zoom < max, |ui| {
+                    if icons::button(
+                        ui,
+                        Icon::ZoomIn,
+                        "Zoom the grid in",
+                        "Larger measure squares",
+                    )
+                    .clicked()
+                    {
+                        actions.push(GridAction::SetGridZoom(view.zoom * step));
+                    }
+                });
+                let text = format!("{:.0} %", view.zoom * 100.0);
+                let reset = ui
+                    .add_enabled(
+                        view.zoom != 1.0,
+                        egui::Button::new(RichText::new(&text).size(11.0))
+                            .min_size(vec2(46.0, 22.0)),
+                    )
+                    .on_hover_text("Back to 100 %");
+                ui.ctx().accesskit_node_builder(reset.id, |node| {
+                    node.set_label(format!("Grid zoom: {text}"));
+                });
+                if reset.clicked() {
+                    actions.push(GridAction::SetGridZoom(1.0));
+                }
+                ui.add_enabled_ui(view.zoom > min, |ui| {
+                    if icons::button(
+                        ui,
+                        Icon::ZoomOut,
+                        "Zoom the grid out",
+                        "Smaller measure squares, to see the whole song",
+                    )
+                    .clicked()
+                    {
+                        actions.push(GridAction::SetGridZoom(view.zoom / step));
+                    }
+                });
+            },
+        );
+    }
 }
 
 /// A small mute or solo toggle like a row's; true when clicked.

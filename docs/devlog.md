@@ -5257,3 +5257,23 @@ from a sound's name to one of its tones, filled by the owner:
   of a thin bar; the master keeps its pan and the chain bar. The drum part strips keep
   their pan and Room knobs and the same bar, aligned with the tracks. The mixer snapshots
   were regenerated.
+
+## 2026-11-14 — The sound chain stomp box in the sends' row; grid zoom and a delete button
+
+- **Mixer:** the full-width "Sound chain" bar is gone. The stomp box (no text) sits in the
+  second send-knob row, beside the compressor send (and a kit's Room send): pan, reverb
+  and chorus above; comp, room and the chain below. The send knobs are back to 20 points.
+  A drum part's strip has pan, room and the stomp in its single row; the master has its pan
+  and the stomp; a bus strip has no knobs, so its (slightly larger) stomp sits at the top
+  center.
+- **Note input:** the voice selector (1-4) moved to the top of the section, centered.
+- **Grid zoom and delete:** the song grid's header gained a trash can (delete the shown
+  track) and the score's magnifier buttons with the "100 %" reset. They scale only the
+  measure columns (0.2-3.0, saved with the view), so a zoomed-out grid shows the whole song;
+  the row heights and track controls stay legible. `ViewState::grid_zoom`,
+  `GridAction::SetGridZoom`, `Icon::Delete`.
+- **Settings gear:** drawn like the ⚙️ emoji: a thick body with a hole and eight filled
+  teeth, instead of a thin circle with radial spokes.
+- Tests: grid zoom out and the 100 % reset (a zoomed-out snapshot), the header's delete
+  button, plus the existing voice and mixer tests; snapshots regenerated for the moved
+  voice row, the new header buttons, the mixer and the gear.

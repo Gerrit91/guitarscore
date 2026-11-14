@@ -52,6 +52,8 @@ pub(crate) enum Icon {
     Settings,
     /// Add (a plus).
     Add,
+    /// Delete (a trash can).
+    Delete,
     /// Move up (an arrow pointing up).
     MoveUp,
     /// Move down (an arrow pointing down).
@@ -581,23 +583,76 @@ pub(crate) fn paint(painter: &Painter, rect: Rect, color: Color32, icon: Icon) {
             }
         }
         Icon::Settings => {
-            painter.circle_stroke(center, size * 0.24, stroke);
-            for step in 0..8 {
-                let angle = std::f32::consts::TAU * (step as f32) / 8.0;
+            // A gear as the emoji draws it: a thick body with a hole, and eight stubby
+            // teeth around it.
+            let ring = Stroke::new((size * 0.13).max(1.4), stroke.color);
+            painter.circle_stroke(center, size * 0.27, ring);
+            let teeth = 8;
+            for step in 0..teeth {
+                let angle = std::f32::consts::TAU * (step as f32) / (teeth as f32);
                 let direction = Vec2::angled(angle);
-                painter.line_segment(
-                    [
-                        center + direction * (size * 0.34),
-                        center + direction * (size * 0.48),
+                let across = Vec2::angled(angle + std::f32::consts::FRAC_PI_2) * (size * 0.07);
+                let tip_across = across * 0.7;
+                let inner = center + direction * (size * 0.30);
+                let outer = center + direction * (size * 0.46);
+                painter.add(Shape::convex_polygon(
+                    vec![
+                        inner - across,
+                        inner + across,
+                        outer + tip_across,
+                        outer - tip_across,
                     ],
-                    stroke,
-                );
+                    stroke.color,
+                    Stroke::NONE,
+                ));
             }
         }
         Icon::Add => {
             let half = size * 0.42;
             painter.line_segment([center - vec2(half, 0.0), center + vec2(half, 0.0)], stroke);
             painter.line_segment([center - vec2(0.0, half), center + vec2(0.0, half)], stroke);
+        }
+        Icon::Delete => {
+            // A trash can: its lid and handle, the tapered body and two ribs.
+            let top = center.y - size * 0.20;
+            let bottom = center.y + size * 0.34;
+            let half = size * 0.30;
+            painter.line_segment(
+                [pos2(center.x - half, top), pos2(center.x + half, top)],
+                stroke,
+            );
+            painter.line_segment(
+                [
+                    pos2(center.x - half * 0.42, top - size * 0.09),
+                    pos2(center.x + half * 0.42, top - size * 0.09),
+                ],
+                stroke,
+            );
+            for (from, to) in [(0.82, 0.64), (-0.82, -0.64)] {
+                painter.line_segment(
+                    [
+                        pos2(center.x + half * from, top),
+                        pos2(center.x + half * to, bottom),
+                    ],
+                    stroke,
+                );
+            }
+            painter.line_segment(
+                [
+                    pos2(center.x - half * 0.64, bottom),
+                    pos2(center.x + half * 0.64, bottom),
+                ],
+                stroke,
+            );
+            for side in [-0.20, 0.20] {
+                painter.line_segment(
+                    [
+                        pos2(center.x + size * side, top + size * 0.08),
+                        pos2(center.x + size * side, bottom - size * 0.08),
+                    ],
+                    Stroke::new(1.0, stroke.color),
+                );
+            }
         }
         Icon::Rename => {
             // A pencil: a thin body from the lower left to the upper right, and its tip.

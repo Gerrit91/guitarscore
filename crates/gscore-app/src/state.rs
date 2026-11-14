@@ -93,6 +93,10 @@ impl ScoreView {
 pub const ZOOM_RANGE: (f32, f32) = (0.25, 4.0);
 /// Factor of one zoom step.
 const ZOOM_STEP: f32 = 1.25;
+/// Smallest and largest width of a song-grid measure (the squares' zoom).
+pub(crate) const GRID_ZOOM_RANGE: (f32, f32) = (0.2, 3.0);
+/// Factor of one song-grid zoom step.
+pub(crate) const GRID_ZOOM_STEP: f32 = 1.25;
 /// Smallest and largest size of the whole interface (menus, panels, icons), and one step.
 pub(crate) const INTERFACE_ZOOM_RANGE: (f32, f32) = (0.5, 2.0);
 const INTERFACE_ZOOM_STEP: f32 = 1.1;
@@ -167,6 +171,9 @@ pub struct ViewState {
     pub show_track_grid: bool,
     /// Whether the bottom panel shows the mixer instead of the measure grid.
     pub grid_mixer: bool,
+    /// How wide the song grid's measure columns are drawn: 1 is normal, smaller fits more
+    /// of the song (the squares shrink), larger reads a bar more closely.
+    pub grid_zoom: f32,
     /// Whether the track panel (the right panel) is shown.
     pub show_track_panel: bool,
     /// Whether the edit palette (the left panel) is shown.
@@ -186,6 +193,7 @@ impl Default for ViewState {
             interface_zoom: 1.0,
             show_track_grid: true,
             grid_mixer: false,
+            grid_zoom: 1.0,
             show_track_panel: true,
             show_edit_panel: true,
             score_view: ScoreView::PageVertical,
@@ -242,6 +250,16 @@ impl ViewState {
     /// One step smaller.
     pub fn zoom_out(&mut self) {
         self.set_zoom(self.zoom / ZOOM_STEP);
+    }
+
+    /// Sets the song grid's measure width factor, clamped to [`GRID_ZOOM_RANGE`];
+    /// nonsense values reset it to 1.
+    pub fn set_grid_zoom(&mut self, zoom: f32) {
+        self.grid_zoom = if zoom.is_finite() {
+            zoom.clamp(GRID_ZOOM_RANGE.0, GRID_ZOOM_RANGE.1)
+        } else {
+            1.0
+        };
     }
 }
 
