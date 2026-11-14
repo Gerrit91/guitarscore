@@ -63,7 +63,7 @@
 <line x1="39.46" y1="36.78" x2="39.46" y2="40.78" stroke="#b0b4ba" stroke-width="0.16"/>
 <line x1="40.19" y1="36.78" x2="40.19" y2="40.78" stroke="#b0b4ba" stroke-width="0.5"/>
 <line x1="8.08" y1="36.78" x2="8.08" y2="56.28" stroke="#b0b4ba" stroke-width="0.16"/>
-<line x1="7.25" y1="36.78" x2="7.25" y2="56.28" stroke="#b0b4ba" stroke-width="0.22"/>
-<line x1="7.25" y1="36.78" x2="7.85" y2="36.78" stroke="#b0b4ba" stroke-width="0.22"/>
-<line x1="7.25" y1="56.28" x2="7.85" y2="56.28" stroke="#b0b4ba" stroke-width="0.22"/>
+<line x1="7.5" y1="36.78" x2="7.5" y2="56.28" stroke="#b0b4ba" stroke-width="0.5"/>
+<text x="7.25" y="36.78" font-family="Bravura" font-size="4" fill="#b0b4ba" data-glyph="bracketTop">&#xE003;</text>
+<text x="7.25" y="56.28" font-family="Bravura" font-size="4" fill="#b0b4ba" data-glyph="bracketBottom">&#xE004;</text>
 </svg>

@@ -308,9 +308,9 @@
 <line x1="111.92" y1="46.44" x2="111.92" y2="53.94" stroke="#303030" stroke-width="0.16"/>
 <line x1="111.92" y1="34.44" x2="111.92" y2="38.44" stroke="#303030" stroke-width="0.16"/>
 <line x1="8.08" y1="34.44" x2="8.08" y2="53.94" stroke="#303030" stroke-width="0.16"/>
-<line x1="7.25" y1="34.44" x2="7.25" y2="53.94" stroke="#303030" stroke-width="0.22"/>
-<line x1="7.25" y1="34.44" x2="7.85" y2="34.44" stroke="#303030" stroke-width="0.22"/>
-<line x1="7.25" y1="53.94" x2="7.85" y2="53.94" stroke="#303030" stroke-width="0.22"/>
+<line x1="7.5" y1="34.44" x2="7.5" y2="53.94" stroke="#303030" stroke-width="0.5"/>
+<text x="7.25" y="34.44" font-family="Bravura" font-size="4" fill="#303030" data-glyph="bracketTop">&#xE003;</text>
+<text x="7.25" y="53.94" font-family="Bravura" font-size="4" fill="#303030" data-glyph="bracketBottom">&#xE004;</text>
 <line x1="8" y1="75.94" x2="112" y2="75.94" stroke="#707070" stroke-width="0.13"/>
 <line x1="8" y1="77.44" x2="112" y2="77.44" stroke="#707070" stroke-width="0.13"/>
 <line x1="8" y1="78.94" x2="112" y2="78.94" stroke="#707070" stroke-width="0.13"/>
@@ -368,9 +368,9 @@
 <line x1="111.92" y1="75.94" x2="111.92" y2="83.44" stroke="#303030" stroke-width="0.16"/>
 <line x1="111.92" y1="63.94" x2="111.92" y2="67.94" stroke="#303030" stroke-width="0.16"/>
 <line x1="8.08" y1="63.94" x2="8.08" y2="83.44" stroke="#303030" stroke-width="0.16"/>
-<line x1="7.25" y1="63.94" x2="7.25" y2="83.44" stroke="#303030" stroke-width="0.22"/>
-<line x1="7.25" y1="63.94" x2="7.85" y2="63.94" stroke="#303030" stroke-width="0.22"/>
-<line x1="7.25" y1="83.44" x2="7.85" y2="83.44" stroke="#303030" stroke-width="0.22"/>
+<line x1="7.5" y1="63.94" x2="7.5" y2="83.44" stroke="#303030" stroke-width="0.5"/>
+<text x="7.25" y="63.94" font-family="Bravura" font-size="4" fill="#303030" data-glyph="bracketTop">&#xE003;</text>
+<text x="7.25" y="83.44" font-family="Bravura" font-size="4" fill="#303030" data-glyph="bracketBottom">&#xE004;</text>
 <line x1="8" y1="105.44" x2="85.42" y2="105.44" stroke="#707070" stroke-width="0.13"/>
 <line x1="8" y1="106.94" x2="85.42" y2="106.94" stroke="#707070" stroke-width="0.13"/>
 <line x1="8" y1="108.44" x2="85.42" y2="108.44" stroke="#707070" stroke-width="0.13"/>
@@ -553,7 +553,7 @@
 <line x1="84.44" y1="93.44" x2="84.44" y2="97.44" stroke="#303030" stroke-width="0.16"/>
 <line x1="85.17" y1="93.44" x2="85.17" y2="97.44" stroke="#303030" stroke-width="0.5"/>
 <line x1="8.08" y1="93.44" x2="8.08" y2="112.94" stroke="#303030" stroke-width="0.16"/>
-<line x1="7.25" y1="93.44" x2="7.25" y2="112.94" stroke="#303030" stroke-width="0.22"/>
-<line x1="7.25" y1="93.44" x2="7.85" y2="93.44" stroke="#303030" stroke-width="0.22"/>
-<line x1="7.25" y1="112.94" x2="7.85" y2="112.94" stroke="#303030" stroke-width="0.22"/>
+<line x1="7.5" y1="93.44" x2="7.5" y2="112.94" stroke="#303030" stroke-width="0.5"/>
+<text x="7.25" y="93.44" font-family="Bravura" font-size="4" fill="#303030" data-glyph="bracketTop">&#xE003;</text>
+<text x="7.25" y="112.94" font-family="Bravura" font-size="4" fill="#303030" data-glyph="bracketBottom">&#xE004;</text>
 </svg>

@@ -1004,6 +1004,47 @@ fn a_chain_block_is_muted_removed_and_added_from_the_sound_section() {
     );
 }
 
+/// The MIDI synth's track has no chain until the song gives it one: a block added from the
+/// Sound section is then the only one (the program's default tone, which is the modelled
+/// strings', does not come along).
+#[test]
+fn a_block_added_to_a_midi_synth_track_is_its_only_block() {
+    use gscore_app::chain_settings::BlockChoice;
+    use gscore_play::StringKind;
+
+    let mut harness = app_with("basic/note_lengths.gp");
+    harness.get_by_label("MIDI synth").scroll_to_me();
+    harness.run();
+    harness.get_by_label("MIDI synth").click();
+    harness.run();
+    assert!(
+        harness
+            .query_all_by_label_contains("Chain block")
+            .next()
+            .is_none(),
+        "the MIDI synth's chain starts empty"
+    );
+    harness
+        .get_by_label("Add a sound chain block")
+        .scroll_to_me();
+    harness.run();
+    harness.get_by_label("Add a sound chain block").click();
+    harness.run();
+    harness.get_by_label("Reverb").click();
+    harness.run_steps(8);
+    let blocks: Vec<BlockChoice> = harness
+        .state()
+        .playback()
+        .tone(0, 26, StringKind::Electric)
+        .chain
+        .blocks
+        .iter()
+        .map(|block| block.choice)
+        .filter(|choice| *choice != BlockChoice::Empty)
+        .collect();
+    assert_eq!(blocks, [BlockChoice::Reverb]);
+}
+
 #[test]
 fn escape_closes_the_sound_chain_window() {
     let mut harness = app_with("basic/note_lengths.gp");

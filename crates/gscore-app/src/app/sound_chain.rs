@@ -1543,16 +1543,9 @@ impl GuitarScoreApp {
         // program); the saved tones are the list at the bottom.
         let title = format!("Sound chain — {}", self.track_name(window.track));
         // This track's tone: its song's, or its program's default.
-        let mut tone = self.track_tone(window.track, kind);
         // On the SoundFont only a tone the song carries brings a chain (the defaults are
         // the modelled strings'); a drum track's own chain is its bus.
-        let song_tone = self
-            .tabs
-            .get(self.active)
-            .is_some_and(|tab| tab.track_sound(window.track).tone.is_some());
-        if !modelled && !player.drums && !song_tone {
-            tone.chain = ChainSetting::default();
-        }
+        let tone = self.track_chain_tone(window.track, &player, kind);
         // How far the track's compressors work, for the block's meter (and a repaint while
         // the needle moves).
         let meters = self.playback.meters();

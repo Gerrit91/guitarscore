@@ -240,13 +240,14 @@ fn repeats_and_endings_are_drawn() {
     assert!(width(&laid_out, 0) > width(&plain, 0));
     assert!(laid_out.places.measures[0].content > laid_out.places.measures[0].left);
     // Thick barlines: one per staff for the start, one per staff for the end, plus the
-    // final barline's.
+    // final barline's. (The bracket's bar is as thick, but stands left of the measures.)
+    let first_left = laid_out.places.measures[0].left;
     let thick = laid_out
         .ops
         .iter()
         .filter(|op| {
-            matches!(op, DrawOp::Line { thickness, color: ColorToken::Barline, .. }
-                if (*thickness - 0.5).abs() < 1e-4)
+            matches!(op, DrawOp::Line { from, thickness, color: ColorToken::Barline, .. }
+                if (*thickness - 0.5).abs() < 1e-4 && from.x >= first_left)
         })
         .count();
     assert_eq!(thick, 6);

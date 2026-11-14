@@ -108,17 +108,7 @@ impl GuitarScoreApp {
                 player.preset_kind.unwrap_or(StringKind::Steel)
             }
         };
-        let mut tone = self.track_tone(track, kind);
-        // Only a modelled track (or a track whose song carries a tone) has effects: the
-        // MIDI synth's preset has none until the song gives it one.
-        let modelled = matches!(player.engine, TrackEngine::Modelled(_));
-        let song_tone = self
-            .tabs
-            .get(self.active)
-            .is_some_and(|tab| tab.track_sound(track).tone.is_some());
-        if !modelled && !player.drums && !song_tone {
-            tone.chain = ChainSetting::default();
-        }
+        let tone = self.track_chain_tone(track, &player, kind);
         let default_tone = self
             .playback
             .track_default_tone_name(track, player.program, kind);
@@ -248,6 +238,29 @@ impl GuitarScoreApp {
         }
     }
 
+    /// [`Self::track_tone`] with the chain `track` really runs, which is what the chain's
+    /// editors show and change. Only a modelled track (or a track whose song carries a
+    /// tone) has effects: on the MIDI synth the program's default tone is the modelled
+    /// strings', so its chain is empty until the song gives the track one. (A drum track's
+    /// own chain is its bus.)
+    pub(super) fn track_chain_tone(
+        &self,
+        track: usize,
+        player: &TrackPlayer,
+        kind: StringKind,
+    ) -> Tone {
+        let mut tone = self.track_tone(track, kind);
+        let modelled = matches!(player.engine, TrackEngine::Modelled(_));
+        let song_tone = self
+            .tabs
+            .get(self.active)
+            .is_some_and(|tab| tab.track_sound(track).tone.is_some());
+        if !modelled && !player.drums && !song_tone {
+            tone.chain = ChainSetting::default();
+        }
+        tone
+    }
+
     /// [`Self::track_tone`] for `track` of `tab`'s document.
     pub(super) fn track_tone_in(&self, tab: &Tab, track: usize, kind: StringKind) -> Tone {
         // A bass track always plays its program's built-in tone (see `Playback::tone`), so
@@ -317,7 +330,7 @@ impl GuitarScoreApp {
                 player.preset_kind.unwrap_or(StringKind::Steel)
             }
         };
-        let mut tone = self.track_tone(track, kind);
+        let mut tone = self.track_chain_tone(track, &player, kind);
         if let Some(place) = super::sound_chain::first_empty(&tone.chain) {
             if let Some(slot) = tone.chain.blocks.get_mut(place) {
                 *slot = block;
