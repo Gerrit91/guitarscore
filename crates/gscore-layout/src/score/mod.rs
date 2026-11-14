@@ -136,9 +136,10 @@ pub(crate) fn layout_with(
         .map(|(m, marks)| {
             let (before, after) = marks.extra_width(&top.ctx);
             MeasureWidth {
-                fixed: m.fixed_width() + before + after,
+                // Guitar Pro's design mode: a moved column's room is fixed, not squeezed.
+                fixed: m.fixed_width() + m.spacing_width() + before + after,
                 stretchable: m.stretchable_width(),
-                floor: m.floor_width(),
+                floor: m.floor_width() + m.spacing_floor(),
             }
         })
         .collect();

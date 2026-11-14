@@ -6,7 +6,9 @@
 use gscore_model::{BeatIndex, Dynamic};
 
 use super::effects::LANE_CLEARANCE;
-use super::{Column, DEAD_SLAP_HALF, Item, MEASURE_NUMBER_RISE, MeasureLayout, Tops};
+use super::{
+    Column, DEAD_SLAP_HALF, Item, MEASURE_NUMBER_RISE, MIN_COLUMN_GAP, MeasureLayout, Tops,
+};
 
 use crate::Context;
 use crate::draw::{ColorToken, DrawOp, Point, TextAnchor, TextFont};
@@ -199,12 +201,22 @@ fn last_fret(measure: &MeasureLayout, line: usize) -> Option<(usize, &Fret)> {
 impl MeasureLayout {
     /// Where each column's center lies when the measure starts at `x` and its columns are
     /// stretched by `stretch`, and where the measure ends.
+    ///
+    /// A column moved in Guitar Pro's design mode keeps its offset here, so everything that
+    /// follows it (and the barline) moves with it. A hostile offset cannot move a column
+    /// back over its neighbour or the signature at the bar's start.
     pub(crate) fn column_positions(&self, x: f32, stretch: f32) -> (Vec<f32>, f32) {
-        let mut cursor = x + self.fixed_width();
+        let first = x + self.fixed_width();
+        let mut cursor = first;
         let mut xs = Vec::with_capacity(self.columns.len());
         for column in &self.columns {
-            xs.push(cursor);
-            cursor += column.advance(stretch);
+            let mut at = cursor + column.spacing;
+            at = match xs.last() {
+                Some(&previous) => at.max(previous + MIN_COLUMN_GAP),
+                None => at.max(first),
+            };
+            xs.push(at);
+            cursor = at + column.advance(stretch);
         }
         (xs, cursor)
     }

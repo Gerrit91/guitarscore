@@ -32,6 +32,9 @@ use graces::Grace;
 
 /// Space before and after a time signature.
 const TIME_SIG_PAD: (f32, f32) = (0.8, 0.6);
+/// How close a column moved in Guitar Pro's design mode may come to the one before it, in
+/// staff spaces: a safety net for odd values, never reached by dragging.
+const MIN_COLUMN_GAP: f32 = 0.2;
 /// Extra room on each side for the parentheses of a free-time signature.
 const FREE_TIME_PAD: f32 = 0.55;
 /// How much of the staff height a time signature covers.
@@ -155,6 +158,9 @@ struct Column {
     beats: Vec<(VoiceIndex, BeatIndex)>,
     /// Guitar Pro's beat text, written above the staff at this column.
     text: Option<String>,
+    /// Guitar Pro's design mode: extra room before this column, in staff spaces (negative
+    /// moves it left). Not stretched with the line, so a moved column stays put.
+    spacing: f32,
     /// The dynamic of the first voice's beat (else another voice's), if it has notes.
     dynamic: Option<Dynamic>,
     /// A tempo change on one of the beats (GP3-5 store tempo changes on beats).
@@ -176,6 +182,9 @@ struct ColumnData {
     chord: Option<gscore_model::ChordDiagram>,
     beats: Vec<(VoiceIndex, BeatIndex)>,
     text: Option<String>,
+    /// Guitar Pro's design mode: how far the column is moved from its natural place, in
+    /// staff spaces (0 when it is not moved).
+    spacing: Option<f32>,
 }
 
 /// One thing drawn in a column.
@@ -227,6 +236,7 @@ impl MeasureLayout {
         previous_key: Option<i8>,
         clef: notation::Clef,
         previous_clef: Option<notation::Clef>,
+        scale: f32,
         ctx: &Context<'_>,
     ) -> Result<Self, LayoutError> {
         // The staff's items and key signature are laid out in this measure's clef.
@@ -355,6 +365,7 @@ impl MeasureLayout {
                     chord: None,
                     beats: Vec::new(),
                     text: None,
+                    spacing: None,
                 },
                 ctx.options.spacing.after(as_f64(starts.end)),
                 None,
@@ -506,10 +517,15 @@ impl MeasureLayout {
                     (Some(own), Some(next)) => gaps::distance(own, next, min_gap),
                     _ => extents.get(i).map_or(0.0, |(_, _, right)| *right) + edge_padding,
                 };
+                // Guitar Pro's design mode: a bar's width scale stretches or squeezes its
+                // columns (never below the room its notes need), keeping its lead and
+                // signatures as they are.
+                let natural = (space.max(room) * scale).max(0.0);
+                let room = room.min(natural).max(0.0);
                 Column {
                     onset: onsets.get(i).copied().unwrap_or(starts.end),
-                    space: space.max(room),
-                    floor: room.min(space.max(room)).max(0.0),
+                    space: natural,
+                    floor: room,
                     items: data.items,
                     marks: data.marks,
                     notation: data.notation,
@@ -524,6 +540,7 @@ impl MeasureLayout {
                     chord: data.chord,
                     beats: data.beats,
                     text: data.text,
+                    spacing: data.spacing.unwrap_or(0.0),
                     dynamic,
                     tempo,
                 }
@@ -644,9 +661,27 @@ impl MeasureLayout {
         self.columns.iter().map(|c| c.floor).sum()
     }
 
-    /// The width with the columns stretched by `stretch`.
+    /// The width with the columns stretched by `stretch`, the design mode's offsets
+    /// included.
     pub(crate) fn width(&self, stretch: f32) -> f32 {
-        self.fixed_width() + self.columns.iter().map(|c| c.advance(stretch)).sum::<f32>()
+        self.column_positions(0.0, stretch).1
+    }
+
+    /// The width Guitar Pro's design mode adds to the measure at a natural stretch (room
+    /// its columns move right, or negative), which no squeezing takes away.
+    pub(crate) fn spacing_width(&self) -> f32 {
+        self.spacing_span(1.0)
+    }
+
+    /// The same at a fully squeezed line.
+    pub(crate) fn spacing_floor(&self) -> f32 {
+        self.spacing_span(0.0)
+    }
+
+    /// Where the design mode's offsets leave the measure, beyond what its columns take.
+    fn spacing_span(&self, stretch: f32) -> f32 {
+        let advance: f32 = self.columns.iter().map(|c| c.advance(stretch)).sum();
+        self.column_positions(0.0, stretch).1 - (self.fixed_width() + advance)
     }
 }
 
