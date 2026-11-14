@@ -552,4 +552,39 @@ impl WebPlayer {
     pub fn set_comp_send(&self, track: usize, value: u8) -> Result<(), PlayError> {
         self.sound(&SoundMessage::CompSend(track, value))
     }
+
+    /// Sets the input trim of the song's track `track`, in dB, before its chain.
+    pub fn set_trim(&self, track: usize, db: f32) -> Result<(), PlayError> {
+        self.sound(&SoundMessage::Trim(track, db))
+    }
+
+    /// Gives the drum kit `track` its room (the engine builds the same short room the
+    /// desktop's does; `spec` and `knobs` are ignored).
+    pub fn set_track_room(
+        &self,
+        track: usize,
+        spec: ChainSpec,
+        knobs: ChainKnobs,
+    ) -> Result<(), PlayError> {
+        self.sound(&SoundMessage::DrumRoom(track, spec, knobs))
+    }
+
+    /// New knob values for the drum kit `track`'s room.
+    pub fn set_track_room_settings(
+        &self,
+        track: usize,
+        knobs: ChainKnobs,
+    ) -> Result<(), PlayError> {
+        self.sound(&SoundMessage::DrumRoomSettings(track, knobs))
+    }
+
+    /// The drum kit `track`'s own send into its room (0-127).
+    pub fn set_track_room_send(&self, track: usize, value: u8) -> Result<(), PlayError> {
+        self.sound(&SoundMessage::TrackRoomSend(track, value))
+    }
+
+    /// A drum part's send into its kit's room (0-127).
+    pub fn set_part_room(&self, track: usize, part: usize, value: u8) -> Result<(), PlayError> {
+        self.sound(&SoundMessage::PartRoom(track, part, value))
+    }
 }

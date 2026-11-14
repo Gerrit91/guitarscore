@@ -61,7 +61,7 @@ pub(super) fn from_note(note: NoteView<'_>, ctx: &Context<'_>, key: i8) -> Optio
         if notation.clef == notation::Clef::Percussion {
             return None;
         }
-        let pitch = notation.track.sounding_pitch(&note).ok()?;
+        let pitch = notation.track.written_pitch(&note).ok()?;
         Some(
             notation
                 .clef
@@ -100,8 +100,8 @@ pub(super) fn from_effect(
         }
         let pitch = notation
             .track
-            .pitch_at(string, effect.fret)
-            .or_else(|_| notation.track.sounding_pitch(&note))
+            .written_pitch_at(string, effect.fret)
+            .or_else(|_| notation.track.written_pitch(&note))
             .ok()?;
         Some(
             notation

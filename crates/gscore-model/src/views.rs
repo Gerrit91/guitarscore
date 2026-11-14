@@ -31,7 +31,13 @@ pub struct TrackView<'a> {
     pub(crate) inner: &'a gscore_gp::Track,
     /// The staff seen; always one the track has.
     staff: usize,
+    /// Whether the song's transposition is switched on (the toolbar's A/B switch).
+    transpose_active: bool,
 }
+
+/// How far a file may transpose a track: four octaves either way. GuitarScore's own
+/// transpose stays within one octave, but a file may store more, and playback follows it.
+pub(crate) const MAX_TRACK_TRANSPOSE: i32 = 48;
 
 /// What a staff has of its own.
 pub(crate) struct StaffData<'a> {
@@ -50,12 +56,32 @@ pub fn track_name_in_binary_formats(name: &str) -> String {
 }
 
 impl<'a> TrackView<'a> {
-    pub(crate) fn new(index: TrackIndex, inner: &'a gscore_gp::Track) -> Self {
+    pub(crate) fn new(
+        index: TrackIndex,
+        inner: &'a gscore_gp::Track,
+        transpose_active: bool,
+    ) -> Self {
         TrackView {
             index,
             inner,
             staff: 0,
+            transpose_active,
         }
+    }
+
+    /// What the track sounds like relative to what is written, whatever the on/off switch
+    /// says: positive is higher, 0 when it is not transposed. GuitarScore's own setting
+    /// (the Guitar Pro format's `<Transpose>` is the instrument's notation octave and is
+    /// kept as it is).
+    pub fn transposition(&self) -> i32 {
+        self.inner
+            .transpose_sound
+            .clamp(-MAX_TRACK_TRANSPOSE, MAX_TRACK_TRANSPOSE)
+    }
+
+    /// Whether the song's transposition is switched on (see [`crate::Song::transpose_active`]).
+    pub fn transpose_active(&self) -> bool {
+        self.transpose_active
     }
 
     /// The same track seen through staff `staff` (its measures, strings, tuning and capo),

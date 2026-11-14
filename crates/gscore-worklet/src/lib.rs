@@ -279,6 +279,11 @@ fn remember(sounds: &mut Vec<SoundMessage>, message: SoundMessage) {
             M::Bus(bus, ..) => (12, *bus as usize, 0),
             M::BusSettings(bus, ..) => (13, *bus as usize, 0),
             M::CompSend(track, _) => (14, *track, 0),
+            M::Trim(track, _) => (15, *track, 0),
+            M::DrumRoom(track, ..) => (16, *track, 0),
+            M::PartRoom(track, part, _) => (17, *track, *part),
+            M::DrumRoomSettings(track, _) => (18, *track, 0),
+            M::TrackRoomSend(track, _) => (19, *track, 0),
         }
     }
     let new = key(&message);
@@ -288,6 +293,7 @@ fn remember(sounds: &mut Vec<SoundMessage>, message: SoundMessage) {
         4 => Some(5),
         10 => Some(11),
         12 => Some(13),
+        16 => Some(18),
         _ => None,
     };
     sounds.retain(|old| {

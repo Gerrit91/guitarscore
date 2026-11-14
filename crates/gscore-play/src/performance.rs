@@ -251,7 +251,7 @@ impl PerformanceTrack {
                 .map_while(|number| {
                     let string = StringNumber::new(u8::try_from(number).ok()?).ok()?;
                     Some(
-                        view.pitch_at(string, Fret::OPEN)
+                        view.sounding_pitch_at(string, Fret::OPEN)
                             .map_or(0, |pitch| pitch.get()),
                     )
                 })

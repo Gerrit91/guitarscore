@@ -80,6 +80,7 @@ impl GuitarScoreApp {
                     self.save_as_active(ui.ctx());
                 }
                 let mut export = None;
+                let mut stems = false;
                 ui.add_enabled_ui(has_document, |ui| {
                     ui.menu_button("Export", |ui| {
                         for format in crate::export::ExportFormat::ALL {
@@ -92,8 +93,23 @@ impl GuitarScoreApp {
                                 ui.close();
                             }
                         }
+                        ui.separator();
+                        if ui
+                            .button("Stems (WAV)…")
+                            .on_hover_text(
+                                "One WAV per track (through its chain and fader) and one per mixer \
+                                 bus, into a folder, for mixing elsewhere",
+                            )
+                            .clicked()
+                        {
+                            stems = true;
+                            ui.close();
+                        }
                     });
                 });
+                if stems {
+                    self.ask_export_stems(ui.ctx());
+                }
                 if let Some(format) = export {
                     self.ask_export(format, ui.ctx());
                 }
@@ -240,6 +256,29 @@ impl GuitarScoreApp {
                     });
                 });
             }
+            ui.menu_button("Tools", |ui| {
+                let has_document = self.document().is_some();
+                if ui
+                    .add_enabled(has_document, egui::Button::new("Transpose…"))
+                    .on_hover_text(
+                        "Transpose the whole song or the shown track, its sound or the notes \
+                         themselves",
+                    )
+                    .clicked()
+                {
+                    self.open_transpose();
+                    ui.close();
+                }
+                ui.separator();
+                if ui
+                    .button("Tuner…")
+                    .on_hover_text("A reference tone for tuning by ear")
+                    .clicked()
+                {
+                    self.open_tuner();
+                    ui.close();
+                }
+            });
             ui.menu_button("Help", |ui| {
                 #[cfg(not(target_arch = "wasm32"))]
                 {
@@ -336,6 +375,11 @@ impl GuitarScoreApp {
                             notice_in_status(ui, notice);
                         }
                     }
+                    if self.playback.is_loading()
+                        && sounds_loading(ui, self.playback.load_progress())
+                    {
+                        self.playback.cancel_loading();
+                    }
                 }
             }
             // The audio load in the corner, then the open document's counts, page and
@@ -417,6 +461,33 @@ impl GuitarScoreApp {
 
 /// How long a notice stays before it goes away by itself, in seconds.
 const NOTICE_SECONDS: f64 = 15.0;
+
+/// The SoundFont loading progress, while the built-in synthesizer loads: "Loading
+/// sounds…", a slim progress bar (a spinner until the size is known) and a Cancel link.
+/// Returns whether Cancel was clicked.
+fn sounds_loading(ui: &mut egui::Ui, progress: Option<(u64, u64)>) -> bool {
+    ui.separator();
+    ui.label("Loading sounds…");
+    let (fraction, text) = match progress {
+        Some((done, total)) if total > 0 => {
+            let percent = u16::try_from(done.saturating_mul(100).checked_div(total).unwrap_or(0))
+                .unwrap_or(0)
+                .min(100);
+            (f32::from(percent) / 100.0, format!("{percent}%"))
+        }
+        _ => (0.0, String::new()),
+    };
+    ui.add(
+        egui::ProgressBar::new(fraction)
+            .text(text)
+            .animate(fraction <= 0.0)
+            .desired_width(80.0)
+            .desired_height(12.0),
+    );
+    ui.ctx()
+        .request_repaint_after(std::time::Duration::from_millis(100));
+    ui.link("Cancel").clicked()
+}
 
 /// A notice in the status bar, beside the working spinner and the file name: red, kept to
 /// one line (hover for the whole text).

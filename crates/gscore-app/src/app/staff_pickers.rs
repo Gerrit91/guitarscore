@@ -8,6 +8,7 @@ use gscore_model::{MAX_SECTION_TITLE_CHARS, MAX_TEMPO, TrackColor};
 use super::circle_of_fifths;
 use super::edit_staff::StaffState;
 use super::edit_staff_dialogs::hint;
+use super::icons;
 use super::metronome;
 use super::staff_widgets::stepper;
 use super::style;
@@ -43,6 +44,26 @@ pub(super) fn tempo(ui: &mut egui::Ui, state: &mut StaffState) {
                 );
                 ui.ctx()
                     .accesskit_node_builder(response.id, |node| node.set_label("Tempo value"));
+                // A small split pair: a beat slower over a beat faster.
+                let (down, up) = icons::step_pair(
+                    ui,
+                    (
+                        "One beat per minute slower",
+                        "One beat per minute slower",
+                        state.tempo > 1,
+                    ),
+                    (
+                        "One beat per minute faster",
+                        "One beat per minute faster",
+                        state.tempo < MAX_TEMPO,
+                    ),
+                );
+                if down {
+                    state.tempo = state.tempo.saturating_sub(1).max(1);
+                }
+                if up {
+                    state.tempo = state.tempo.saturating_add(1).min(MAX_TEMPO);
+                }
             });
             ui.label(
                 RichText::new(metronome::tempo_name(state.tempo))

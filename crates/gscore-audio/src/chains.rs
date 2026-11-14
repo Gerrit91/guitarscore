@@ -9,7 +9,7 @@
 //! [`MAX_TONES`] tracks can have a tone of their own (the room for them is made with the
 //! engine, so nothing allocates here).
 
-use gscore_guitar::{BLOCKS, BlockSettings, Chain, ChainSpec};
+use gscore_guitar::{BLOCKS, BlockKind, BlockSettings, Chain, ChainSpec};
 
 /// The tracks that can have a tone of their own: those with an index below this. A track
 /// past it plays its kind's sound, dry.
@@ -26,6 +26,43 @@ pub struct ChainKnobs {
 /// Whether `spec` does nothing (every place empty): then it need not be run at all.
 pub fn chain_is_empty(spec: &ChainSpec) -> bool {
     spec.blocks.iter().all(Option::is_none)
+}
+
+/// The room a drum kit's parts share: one short room behind the whole kit, fed by each
+/// part's Room send, so a kit sounds like one kit in one place (as a real room's
+/// overheads glue it together).
+pub fn drum_room_spec() -> ChainSpec {
+    ChainSpec {
+        blocks: [Some(BlockKind::Reverb), None, None, None, None],
+    }
+}
+
+/// The knob values of [`drum_room_spec`]: small and short, all wet (it is a send: the
+/// parts' Room knobs decide how much reaches it).
+pub fn drum_room_knobs() -> ChainKnobs {
+    let mut settings = BlockSettings::default();
+    settings.reverb.size = 0.25;
+    settings.reverb.decay = 0.6;
+    settings.reverb.pre_delay = 5.0;
+    settings.reverb.damping = 0.5;
+    settings.reverb.modulation = 0.3;
+    settings.reverb.width = 0.6;
+    settings.reverb.mix = 1.0;
+    settings.reverb.low_cut = 120.0;
+    settings.reverb.high_cut = 9000.0;
+    let mut blocks = [BlockSettings::default(); BLOCKS];
+    if let Some(slot) = blocks.first_mut() {
+        *slot = settings;
+    }
+    ChainKnobs {
+        settings: blocks,
+        output_db: 0.0,
+    }
+}
+
+/// A drum kit's room, prepared for `sample_rate`.
+pub fn prepare_drum_room(sample_rate: u32) -> Option<Box<Chain>> {
+    prepare_chain(&drum_room_spec(), &drum_room_knobs(), sample_rate)
 }
 
 /// `spec` prepared at `sample_rate` with `knobs`, ready to run for one track, or `None`

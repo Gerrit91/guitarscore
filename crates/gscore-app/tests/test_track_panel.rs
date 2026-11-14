@@ -143,8 +143,8 @@ fn strings_are_tuned_by_note_name() {
     harness.get_by_label("Tuning: DADGAD…").click();
     harness.run();
     harness.get_by_label("String 1 note");
-    // The first "+" is string 1's: a semitone up.
-    harness.get_all_by_label("+").next().unwrap().click();
+    // String 1's step-up button (the toolbar's small split pair is used here too).
+    harness.get_by_label("String 1 a semitone higher").click();
     harness.run();
     harness.get_by_label("OK").click();
     harness.run();

@@ -22,7 +22,7 @@ mod bar;
 mod matrix;
 pub(super) mod mixer;
 mod rows;
-mod strips;
+pub(super) mod strips;
 
 pub(crate) use strips::MixerState;
 
@@ -83,6 +83,8 @@ pub(super) enum GridAction {
     ShowTrack { track: usize },
     /// Set the metronome's click volume (0 to 1).
     SetMetronomeVolume(f32),
+    /// Set the measure columns' width factor (the zoom buttons).
+    SetGridZoom(f32),
     /// Open the window of the mixer's reverb bus.
     OpenReverbBus,
     /// Set the mixer's reverb bus (an edit of the song, heard at once).
@@ -101,12 +103,13 @@ pub(super) enum GridAction {
     OpenSoundChain { track: usize },
     /// Open the sound chain of `part` of a drum track.
     OpenSoundChainPart { track: usize, part: DrumPart },
-    /// A drum part's level, pan, mute or solo, kept with the song.
+    /// A drum part's level, pan, room send, mute or solo, kept with the song.
     DrumPart {
         track: usize,
         part: DrumPart,
         level: u8,
         pan: u8,
+        room: u8,
         muted: bool,
         soloed: bool,
         /// A fader drag continues the previous undo step.
@@ -114,6 +117,8 @@ pub(super) enum GridAction {
     },
     /// A track's send into the compressor bus (0-127), kept with the song.
     CompSend { track: usize, value: u8 },
+    /// A drum kit's own send into its room (0-127), kept with the song.
+    DrumRoomSend { track: usize, value: u8 },
     /// A block dropped on a track's (or part's) mixer strip: into its chain's first free
     /// place.
     PasteBlock {
@@ -159,6 +164,14 @@ impl GuitarScoreApp {
         let comp_sends: Vec<u8> = (0..rows.len())
             .map(|index| sound.tracks.get(index).map_or(0, |track| track.comp_send))
             .collect();
+        let room_sends: Vec<u8> = (0..rows.len())
+            .map(|index| {
+                sound
+                    .tracks
+                    .get(index)
+                    .map_or(0, |track| track.drum_room_send)
+            })
+            .collect();
         let reverb_bus = sound
             .buses
             .reverb
@@ -197,6 +210,7 @@ impl GuitarScoreApp {
                             part,
                             level: entry.map_or(127, |entry| entry.level.min(127)),
                             pan: entry.map_or(64, |entry| entry.pan.min(127)),
+                            room: entry.map_or(0, |entry| entry.room.min(127)),
                             muted: entry.is_some_and(|entry| entry.muted),
                             soloed: entry.is_some_and(|entry| entry.soloed),
                             any_soloed,
@@ -329,6 +343,7 @@ impl GuitarScoreApp {
                 selection_color: crate::canvas::color(self.view.theme.palette().selection),
                 shown_track: tab.track,
                 mixer: self.view.grid_mixer,
+                zoom: self.view.grid_zoom,
                 metronome: (
                     self.playback.metronome_volume(),
                     self.playback.metronome_level(),
@@ -336,6 +351,7 @@ impl GuitarScoreApp {
             },
             &levels,
             &comp_sends,
+            &room_sends,
             &parts,
             &mut tab.mixer,
             &mut actions,
@@ -431,10 +447,17 @@ impl GuitarScoreApp {
                 self.view.show_track_panel = true;
             }
             GridAction::SetMetronomeVolume(volume) => self.set_metronome_volume(volume),
+            GridAction::SetGridZoom(zoom) => {
+                self.view.set_grid_zoom(zoom);
+                self.save_settings();
+            }
             GridAction::OpenReverbBus => self.open_reverb_bus_window(),
             GridAction::ReverbBus { bus } => self.set_song_reverb_bus(bus),
             GridAction::OpenCompressorBus => self.open_compressor_bus_window(),
             GridAction::CompSend { track, value } => self.set_comp_send(track, value),
+            GridAction::DrumRoomSend { track, value } => {
+                self.set_track_drum_room_send(track, value)
+            }
             GridAction::CompressorBus { bus } => self.set_song_compressor_bus(bus),
             GridAction::OpenChorusBus => self.open_chorus_bus_window(),
             GridAction::ChorusBus { bus } => self.set_song_chorus_bus(bus),
@@ -452,6 +475,7 @@ impl GuitarScoreApp {
                 part,
                 level,
                 pan,
+                room,
                 muted,
                 soloed,
                 merge,
@@ -459,6 +483,7 @@ impl GuitarScoreApp {
                 let mut own = self.track_drum_part(track, part);
                 own.level = level.min(127);
                 own.pan = pan.min(127);
+                own.room = room.min(127);
                 own.muted = muted;
                 own.soloed = soloed;
                 self.set_track_drum_part(track, part, Some(own), merge);
@@ -660,6 +685,8 @@ pub(super) struct GridView {
     selection_color: Color32,
     shown_track: usize,
     mixer: bool,
+    /// The width of one measure column, relative to a square cell (0.2 to 3).
+    zoom: f32,
     /// The metronome's volume and how loud it sounds right now (both 0 to 1).
     metronome: (f32, f32),
 }
@@ -675,6 +702,7 @@ fn draw(
     view: GridView,
     levels: &[f32],
     comp_sends: &[u8],
+    room_sends: &[u8],
     parts: &[Vec<strips::PartRow>],
     mixer_state: &mut MixerState,
     actions: &mut Vec<GridAction>,
@@ -688,6 +716,7 @@ fn draw(
             buses,
             readings,
             comp_sends,
+            room_sends,
             parts,
             view,
             mixer_state,

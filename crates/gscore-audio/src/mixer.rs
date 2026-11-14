@@ -92,6 +92,10 @@ struct Strip {
     reverb: u8,
     chorus: u8,
     peak: Peak,
+    /// The peak before the chain (after the trim), for the input meter.
+    input_peak: Peak,
+    /// The peak after the chain (and its output level), for the chain's output meter.
+    output_peak: Peak,
 }
 
 impl Default for Strip {
@@ -105,6 +109,8 @@ impl Default for Strip {
             reverb: 0,
             chorus: 0,
             peak: Peak::default(),
+            input_peak: Peak::default(),
+            output_peak: Peak::default(),
         }
     }
 }
@@ -208,8 +214,22 @@ pub(crate) struct Mixer {
     buses: [BusState; 3],
     /// Each track's send into the compressor bus (0-127), by the song's track index.
     comp_sends: [u8; MAX_TONES],
+    /// Each track's input trim before its chain, in dB, by the song's track index.
+    trim_db: [f32; MAX_TONES],
+    /// Each drum track's room (one short shared room for its parts), by the song's track
+    /// index.
+    rooms: [Option<Box<Chain>>; MAX_TONES],
+    /// What the parts sent into each drum track's room this block, by the song's index.
+    room_input: [[[f32; BLOCK]; 2]; MAX_TONES],
+    /// Each drum part's send into its kit's room (0-127), by the song's track index.
+    part_rooms: [[u8; PARTS]; MAX_TONES],
+    /// Each drum kit's own send into its room (0-127), by the song's track index.
+    room_sends: [u8; MAX_TONES],
     /// Each track's gain-reduction needle, by the song's track index.
     needles: [Needle; MAX_TONES],
+    /// Whether the strips' own signal goes to the output. A stem render (a track stem or a
+    /// bus stem) turns it off, so only what the caller wants is written.
+    dry: bool,
     /// The master's chain, after the tracks and buses and before its fader.
     master_chain: Option<Box<Chain>>,
     master_peak: Peak,
@@ -265,7 +285,13 @@ impl Mixer {
             part_peaks: [[Peak::default(); PARTS]; MAX_TONES],
             buses: [BusState::new(), BusState::new(), BusState::new()],
             comp_sends: [0; MAX_TONES],
+            trim_db: [0.0; MAX_TONES],
+            rooms: std::array::from_fn(|_| None),
+            room_input: [[[0.0; BLOCK]; 2]; MAX_TONES],
+            part_rooms: [[0; PARTS]; MAX_TONES],
+            room_sends: [0; MAX_TONES],
             needles: [Needle::default(); MAX_TONES],
+            dry: true,
             master_chain: None,
             master_peak: Peak::default(),
             work: [[0.0; BLOCK]; 2],
@@ -323,6 +349,8 @@ impl Mixer {
                     reverb: track.sound.reverb,
                     chorus: track.sound.chorus,
                     peak: Peak::default(),
+                    input_peak: Peak::default(),
+                    output_peak: Peak::default(),
                 },
             };
             if let Some(owner) = self.channel_strip.get_mut(channel)
@@ -579,6 +607,64 @@ impl Mixer {
         }
     }
 
+    /// Whether the strips' own sound goes to the output (`true`, a mix) or is left out so
+    /// only the buses' returns are written (`false`, a bus stem). The sends and the meters
+    /// work either way.
+    pub(crate) fn set_dry(&mut self, dry: bool) {
+        self.dry = dry;
+    }
+
+    /// Gives the song's drum track `track` its room (`None`: no room). Returns the chain it
+    /// replaces, to be freed off the audio thread.
+    pub(crate) fn set_track_room(
+        &mut self,
+        track: usize,
+        chain: Option<Box<Chain>>,
+    ) -> Option<Box<Chain>> {
+        self.rooms
+            .get_mut(track)
+            .and_then(|slot| std::mem::replace(slot, chain))
+    }
+
+    /// The song's drum kit `track` sends `value` (0-127) of the whole kit into its room.
+    pub(crate) fn set_track_room_send(&mut self, track: usize, value: u8) {
+        if let Some(send) = self.room_sends.get_mut(track) {
+            *send = value.min(127);
+        }
+    }
+
+    /// New knob values for the song's drum kit `track`'s room, heard at once.
+    pub(crate) fn set_track_room_settings(&mut self, track: usize, knobs: ChainKnobs) {
+        if let Some(chain) = self.rooms.get_mut(track).and_then(Option::as_mut) {
+            chain.set_settings(&knobs.settings);
+            chain.set_output_db(knobs.output_db);
+        }
+    }
+
+    /// The song's drum part `part` of track `track` sends `value` (0-127) into the kit's
+    /// room.
+    pub(crate) fn set_part_room(&mut self, track: usize, part: usize, value: u8) {
+        if let Some(slot) = self
+            .part_rooms
+            .get_mut(track)
+            .and_then(|rooms| rooms.get_mut(part))
+        {
+            *slot = value.min(127);
+        }
+    }
+
+    /// Sets the input trim of the song's track `track`, in dB (0: as recorded), before its
+    /// chain: how hard an amp or a compressor is driven.
+    pub(crate) fn set_trim(&mut self, track: usize, db: f32) {
+        if let Some(trim) = self.trim_db.get_mut(track) {
+            *trim = if db.is_finite() {
+                db.clamp(-24.0, 24.0)
+            } else {
+                0.0
+            };
+        }
+    }
+
     /// The song's track `track` sends `value` (0-127) into the compressor bus.
     pub(crate) fn set_comp_send(&mut self, track: usize, value: u8) {
         if let Some(send) = self.comp_sends.get_mut(track) {
@@ -609,11 +695,13 @@ impl Mixer {
             }
         }
         // Channels no strip owns (sound left over from a sequence just replaced) go
-        // straight out.
-        for (channel, [from_left, from_right]) in self.channels.iter().enumerate() {
-            if self.channel_strip.get(channel).copied().flatten().is_none() {
-                add(left, from_left);
-                add(right, from_right);
+        // straight out (never into a bus stem).
+        if self.dry {
+            for (channel, [from_left, from_right]) in self.channels.iter().enumerate() {
+                if self.channel_strip.get(channel).copied().flatten().is_none() {
+                    add(left, from_left);
+                    add(right, from_right);
+                }
             }
         }
         for position in 0..self.count {
@@ -744,6 +832,28 @@ impl Mixer {
                         *r = (from_r * rr + from_l * rl) * gain;
                     }
                 }
+                // Its Room send, after the level and pan: into the kit's one shared room.
+                let room_send = self
+                    .part_rooms
+                    .get(strip.song_track)
+                    .and_then(|rooms| rooms.get(part))
+                    .copied()
+                    .unwrap_or(0)
+                    .min(127);
+                if audible
+                    && room_send > 0
+                    && let Some([room_left, room_right]) = self.room_input.get_mut(strip.song_track)
+                {
+                    let send = f32::from(room_send) / 127.0;
+                    for (index, (l, r)) in work_left.iter().zip(work_right.iter()).enumerate() {
+                        if let (Some(into_l), Some(into_r)) =
+                            (room_left.get_mut(index), room_right.get_mut(index))
+                        {
+                            *into_l += l * send;
+                            *into_r += r * send;
+                        }
+                    }
+                }
                 // The part's meter, after its chain, level and mute.
                 let fall = self.ballistics;
                 let peak = self
@@ -771,6 +881,57 @@ impl Mixer {
             }
             work_left.copy_from_slice(sum_left);
             work_right.copy_from_slice(sum_right);
+            // The kit's own Room knob: the whole kit (after the parts' levels, before the
+            // track's chain) into the same room.
+            let kit_send = self
+                .room_sends
+                .get(strip.song_track)
+                .copied()
+                .unwrap_or(0)
+                .min(127);
+            if kit_send > 0
+                && let Some([room_left, room_right]) = self.room_input.get_mut(strip.song_track)
+            {
+                let send = f32::from(kit_send) / 127.0;
+                for (index, (l, r)) in work_left.iter().zip(work_right.iter()).enumerate() {
+                    if let (Some(into_l), Some(into_r)) =
+                        (room_left.get_mut(index), room_right.get_mut(index))
+                    {
+                        *into_l += l * send;
+                        *into_r += r * send;
+                    }
+                }
+            }
+            // The kit's room: the parts' sends through one short shared room, its return
+            // part of the kit (before the track's own chain and fader, so the kit's
+            // processing and its sends hear it; a bus stem leaves only the dry sound out).
+            if let Some(input) = self.room_input.get_mut(strip.song_track) {
+                let sent = {
+                    let [left, right] = &*input;
+                    left.iter().chain(right.iter()).any(|sample| *sample != 0.0)
+                };
+                let ringing = self
+                    .rooms
+                    .get(strip.song_track)
+                    .and_then(Option::as_ref)
+                    .is_some_and(|chain| chain.ringing());
+                if sent || ringing {
+                    let mut room_left = *input.first().unwrap_or(&[0.0; BLOCK]);
+                    let mut room_right = *input.get(1).unwrap_or(&[0.0; BLOCK]);
+                    if let Some(chain) = self
+                        .rooms
+                        .get_mut(strip.song_track)
+                        .and_then(Option::as_mut)
+                        && let (Some(left), Some(right)) =
+                            (room_left.get_mut(..frames), room_right.get_mut(..frames))
+                    {
+                        chain.process_in_place(left, right, true);
+                        add(work_left, left);
+                        add(work_right, right);
+                    }
+                }
+                input.fill([0.0; BLOCK]);
+            }
             true
         } else {
             match strings.slot_of(position) {
@@ -797,11 +958,37 @@ impl Mixer {
                 }
             }
         };
+        // The input trim, before the chain (and its meter, so the amp's drive can be set
+        // by how hard the input hits it).
+        let trim = self.trim_db.get(strip.song_track).copied().unwrap_or(0.0);
+        let trim_gain = if trim.abs() > 1e-3 {
+            10.0_f32.powf(trim / 20.0)
+        } else {
+            1.0
+        };
+        if (trim_gain - 1.0).abs() > 1e-6 {
+            for sample in work_left.iter_mut().chain(work_right.iter_mut()) {
+                *sample *= trim_gain;
+            }
+        }
+        // Its input meter: what reaches the chain, after the trim.
+        let fall = self.ballistics;
+        if strip.song_track < MAX_TONES
+            && let Some(strip) = self.strips.get_mut(position)
+        {
+            strip
+                .input_peak
+                .update(peak_of(work_left), peak_of(work_right), fall);
+            let peak = strip.input_peak;
+            let track = strip.song_track;
+            self.meters.publish(Which::Input(track), peak);
+        }
         let sounding = peak_of(work_left) > 0.0 || (stereo && peak_of(work_right) > 0.0);
         let chain = self.tones.chain(strip.song_track);
         let ringing = chain.as_ref().is_some_and(|chain| chain.ringing());
         if !sounding && !ringing {
             self.settle_meter(position, 0.0, 0.0, 0.0);
+            self.settle_chain_output(position);
             return;
         }
         let reduction = match chain {
@@ -816,6 +1003,20 @@ impl Mixer {
                 part_reduction
             }
         };
+        // What leaves the chain (and its output level), before the fader and pan: its own
+        // meter, for setting the chain's output.
+        let (chain_peak, track) = match self.strips.get_mut(position) {
+            Some(strip) => {
+                strip
+                    .output_peak
+                    .update(peak_of(work_left), peak_of(work_right), self.ballistics);
+                (strip.output_peak, strip.song_track)
+            }
+            None => (Peak::default(), usize::MAX),
+        };
+        if track < MAX_TONES {
+            self.meters.publish(Which::ChainOutput(track), chain_peak);
+        }
         // The fader and the pan (a balance once the signal is stereo), then the sends.
         let gain = volume_gain(strip.volume);
         let (to_left, to_right) = pan_gains(strip.pan);
@@ -836,6 +1037,7 @@ impl Mixer {
         let [reverb_in, _] = &mut reverb.input;
         let [comp_left, comp_right] = &mut compressor.input;
         let [chorus_in, _] = &mut chorus.input;
+        let dry = self.dry;
         let (mut peak_left, mut peak_right) = (0.0_f32, 0.0_f32);
         for (index, ((l, r), (wl, wr))) in left
             .iter_mut()
@@ -844,8 +1046,10 @@ impl Mixer {
             .enumerate()
         {
             let (out_l, out_r) = (wl * gain * to_left, wr * gain * to_right);
-            *l += out_l;
-            *r += out_r;
+            if dry {
+                *l += out_l;
+                *r += out_r;
+            }
             peak_left = peak_left.max(out_l.abs());
             peak_right = peak_right.max(out_r.abs());
             // The reverb hears a mono sum (it makes its own stereo); the compressor bus
@@ -870,6 +1074,19 @@ impl Mixer {
             }
         }
         self.settle_meter(position, peak_left, peak_right, reduction);
+    }
+
+    /// Silences the chain-output meter of strip `position` (its chain is not running).
+    fn settle_chain_output(&mut self, position: usize) {
+        let fall = self.ballistics;
+        if let Some(strip) = self.strips.get_mut(position) {
+            strip.output_peak.update(0.0, 0.0, fall);
+            let peak = strip.output_peak;
+            let track = strip.song_track;
+            if track < MAX_TONES {
+                self.meters.publish(Which::ChainOutput(track), peak);
+            }
+        }
     }
 
     /// The meter of strip `position` after a block with these peaks and its chain's

@@ -68,6 +68,7 @@ impl GuitarScoreApp {
             || self.settings_window.is_some()
             || self.shortcuts.is_some()
             || self.tuner.is_some()
+            || self.transpose.is_some()
             || self.about.is_some()
             || self.history.is_some()
             || self.new_song_dialog.is_some()
@@ -314,7 +315,23 @@ impl GuitarScoreApp {
                     }
                     _ => None,
                 };
+                // A transposition is not visible in the score (the notes stay as written);
+                // say what happened in the status bar. Undo and redo replay the command, so
+                // its step would say the opposite of what an undo did: they stay quiet.
+                let transposed = match action {
+                    Action::Plain(id) if !matches!(id, ActionId::Undo | ActionId::Redo) => document
+                        .editor()
+                        .last_command()
+                        .and_then(|command| match command {
+                            Command::TransposeSong { semitones } => Some(*semitones),
+                            _ => None,
+                        }),
+                    _ => None,
+                };
                 self.after_edit(effect, layout);
+                if let Some(semitones) = transposed {
+                    self.status = Some(transpose_status(semitones));
+                }
                 if let Some((at, string)) = entered {
                     self.audition(at, string, ctx);
                 } else if let Some(at) = heard {
@@ -339,6 +356,36 @@ impl GuitarScoreApp {
             Ok(Outcome::Request(request)) => self.request(request, ctx),
             Err(error) => self.notice = Some(error.to_string()),
         }
+    }
+
+    /// Runs `command` as one undo step from a window rather than a key press (a dialog's
+    /// Apply button), refreshing the layout and playback as any edit does. Returns the
+    /// reason when it could not run; the song is then unchanged.
+    pub(super) fn run_command_from_window(&mut self, command: Command) -> Result<(), String> {
+        let Some(tab) = self.tabs.get_mut(self.active) else {
+            return Err("no song is open".to_owned());
+        };
+        let document = &mut tab.document;
+        // A bug in a command must not take the app down (AGENTS.md "Containment"): the
+        // model edits a copy, so a panic leaves the song as it was.
+        let performed = catch_unwind(AssertUnwindSafe(|| {
+            document.editor_mut().execute_command(command.clone())
+        }));
+        let Ok(performed) = performed else {
+            document.snapshot();
+            self.notice = Some(
+                "The edit failed unexpectedly and was not applied. A crash report and a \
+                 recovery snapshot were written."
+                    .to_owned(),
+            );
+            return Err("the edit failed unexpectedly".to_owned());
+        };
+        let performed = performed.map_err(|error| error.to_string())?;
+        let _ = performed;
+        let layout = command.changes_layout();
+        let effect = EditEffect::of(&command);
+        self.after_edit(effect, layout);
+        Ok(())
     }
 
     /// Moves the cursor to the track shown above (`step` -1, onto its bottom string) or
@@ -962,6 +1009,18 @@ fn key_types_finger(hand: gscore_model::Hand, key: egui::Key) -> bool {
     let name = key.name().to_lowercase();
     super::edit_effects::finger_key(hand, &name).is_some()
         || matches!(key, egui::Key::Backspace | egui::Key::Delete)
+}
+
+/// What the status bar says after transposing by `semitones`.
+fn transpose_status(semitones: i32) -> String {
+    match semitones {
+        12 => "Transposed up an octave".to_owned(),
+        -12 => "Transposed down an octave".to_owned(),
+        1 => "Transposed up a semitone".to_owned(),
+        -1 => "Transposed down a semitone".to_owned(),
+        step if step > 0 => format!("Transposed up {step} semitones"),
+        step => format!("Transposed down {} semitones", step.saturating_neg()),
+    }
 }
 
 /// Whether `action` works with no song open: files, windows and the view.

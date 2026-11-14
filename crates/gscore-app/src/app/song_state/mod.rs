@@ -25,7 +25,9 @@ use gscore_model::{Song, TrackIndex};
 use gscore_play::{StringKind, TrackEngine};
 use serde::{Deserialize, Serialize};
 
-use crate::chain_settings::{ChainSetting, DrumPart};
+use crate::chain_settings::{
+    BlockChoice, BlockSetting, ChainSetting, DEFAULT_TRIM_DB, DrumPart, default_drum_room,
+};
 use crate::playback::{MidiOutRoute, TrackDrumPart};
 use crate::settings::{ChorusBus, CompressorBus, PresetTone, ReverbBus};
 
@@ -137,6 +139,21 @@ pub(crate) struct TrackSound {
     /// missing here plays this machine's kit setting (or the built-in tone) at unity.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub drum_parts: Vec<DrumPartSound>,
+    /// What the track sounds like relative to what is written, in semitones (0 when it is
+    /// not transposed). It changes playback only: the notes, the tablature and the score
+    /// stay as they are.
+    #[serde(default, skip_serializing_if = "is_zero_i32")]
+    pub transpose: i32,
+    /// Its input trim before the effect chain, in dB (unset: the starting -6 dB): how hard
+    /// an amp or a compressor is driven.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub trim_db: Option<f32>,
+    /// A drum kit's one shared room, when it is not the built-in short one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub drum_room: Option<BlockSetting>,
+    /// The kit's own send into that room (0-127, 0: dry).
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub drum_room_send: u8,
 }
 
 /// One drum part's own tone in a song: its chain and its mixing level in the drum track.
@@ -156,6 +173,9 @@ pub(crate) struct DrumPartSound {
     /// Whether the part is muted inside the kit.
     #[serde(default, skip_serializing_if = "is_false")]
     pub muted: bool,
+    /// Its send into the kit's one short room (0-127, 0: dry).
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub room: u8,
     /// Whether the part is soloed inside the kit.
     #[serde(default, skip_serializing_if = "is_false")]
     pub soloed: bool,
@@ -196,6 +216,7 @@ impl DrumPartSound {
             pan: part.pan.min(127),
             muted: part.muted,
             soloed: part.soloed,
+            room: part.room.min(127),
         }
     }
 
@@ -213,11 +234,17 @@ impl DrumPartSound {
             pan: self.pan.min(127),
             muted: self.muted,
             soloed: self.soloed,
+            room: self.room.min(127),
         })
     }
 }
 
 /// `true` for 0, so a default number is not written.
+/// Serde helper: `true` for 0, so a default setting is left out of the JSON.
+fn is_zero_i32(value: &i32) -> bool {
+    *value == 0
+}
+
 fn is_zero(value: &u8) -> bool {
     *value == 0
 }
@@ -270,11 +297,18 @@ impl TrackSound {
     /// One track's state, from the document (a payload that does not read counts as none,
     /// so a damaged file never stops a song from opening).
     pub(crate) fn of_song(song: &Song, track: usize) -> Self {
-        song.track(TrackIndex::new(track))
+        let mut state = song
+            .track(TrackIndex::new(track))
             .and_then(|view| view.sound_state())
             .and_then(|json| serde_json::from_str::<TrackSound>(json).ok())
             .map(TrackSound::sanitized)
-            .unwrap_or_default()
+            .unwrap_or_default();
+        // The transposition itself lives in the document (playback reads it there); the
+        // payload keeps it so it travels with the file.
+        state.transpose = song
+            .track(TrackIndex::new(track))
+            .map_or(0, |view| view.transposition());
+        state
     }
 
     /// A copy with values the rest of the program can rely on (a broken file may hold
@@ -282,6 +316,24 @@ impl TrackSound {
     fn sanitized(mut self) -> Self {
         self.comp_send = self.comp_send.min(127);
         self.midi_out = self.midi_out.map(MidiOutRoute::sanitized);
+        self.transpose = self
+            .transpose
+            .clamp(-gscore_model::MAX_TRANSPOSE, gscore_model::MAX_TRANSPOSE);
+        self.trim_db = self.trim_db.map(|db| {
+            if db.is_finite() {
+                db.clamp(-24.0, 24.0)
+            } else {
+                DEFAULT_TRIM_DB
+            }
+        });
+        // A kit's room is a reverb, always all wet (the sends decide how much reaches it).
+        if let Some(room) = &mut self.drum_room {
+            if room.choice != BlockChoice::Reverb {
+                *room = default_drum_room();
+            }
+            room.mix = 1.0;
+        }
+        self.drum_room_send = self.drum_room_send.min(127);
         for part in &mut self.drum_parts {
             part.level = part.level.min(127);
         }
@@ -363,13 +415,14 @@ impl SongState {
     /// [`Self::resolve`]) and the buses on the song. Called once when a song opens, before
     /// it can be edited.
     pub(crate) fn apply_to_song(&self, song: &mut Song) {
-        let resolved: Vec<(usize, Option<String>)> = self
-            .resolve(song)
-            .into_iter()
-            .map(|(track, state)| (track, state.sound.json()))
-            .collect();
-        for (track, state) in resolved {
-            let _ = song.set_track_sound_state(TrackIndex::new(track), state);
+        for (track, state) in self.resolve(song) {
+            let at = TrackIndex::new(track);
+            let _ = song.set_track_sound_state(at, state.sound.json());
+            // The transposition travels in the block but is applied to the document, where
+            // playback reads it (switched on, so the song plays as it was saved).
+            if state.sound.transpose != 0 {
+                let _ = song.transpose_track_to(at, state.sound.transpose);
+            }
         }
         if let Some(json) = self.buses.json() {
             let _ = song.set_sound_state(Some(json));
@@ -709,6 +762,7 @@ mod tests {
                     pan: 30,
                     muted: false,
                     soloed: false,
+                    room: 40,
                 }),
                 DrumPartSound::of(&TrackDrumPart {
                     part: DrumPart::Snare,
@@ -717,6 +771,7 @@ mod tests {
                     pan: 64,
                     muted: true,
                     soloed: false,
+                    room: 0,
                 }),
             ],
             ..TrackSound::default()

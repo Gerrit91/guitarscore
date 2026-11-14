@@ -452,6 +452,77 @@ fn a_drum_tracks_parts_have_their_own_chains() {
 }
 
 #[test]
+fn the_input_trim_sets_how_hard_the_chain_is_fed() {
+    // A trim of -12 dB is a quarter of the power at the chain's input (and so at the
+    // output, a track without a chain); the input meter shows it before the chain.
+    let sequence = Sequence::new(&song(1), None).unwrap();
+    let level = |trim: f32| {
+        let mut engine = engine(&sequence);
+        engine.set_trim(0, trim);
+        let (left, _) = render(&mut engine, 1.0);
+        let meters = engine.meters();
+        (
+            rms(steady(&left)),
+            meters.input(0).left,
+            meters.chain_output(0).left,
+        )
+    };
+    let (plain, plain_input, plain_output) = level(0.0);
+    let (down, down_input, down_output) = level(-12.0);
+    assert!((down / plain - 0.251).abs() < 0.02, "{down} {plain}");
+    assert!(
+        (down_input / plain_input - 0.251).abs() < 0.05,
+        "{down_input} {plain_input}"
+    );
+    // A track without a chain: what leaves it is what came in, so both meters agree.
+    assert!((plain_output / plain_input - 1.0).abs() < 0.01);
+    assert!((down_output / down_input - 1.0).abs() < 0.01);
+    let (up, up_input, up_output) = level(6.0);
+    assert!(up > plain * 1.8, "{up} {plain}");
+    assert!(up_input > plain_input * 1.8, "{up_input} {plain_input}");
+    assert!(up_output > plain_output * 1.8, "{up_output} {plain_output}");
+}
+
+#[test]
+fn a_kits_room_carries_its_parts_sends() {
+    // The kit's one short room: a part's Room send reaches it, its return sounds after
+    // the part itself has died away, and more send is more room.
+    let mut song = testing::song_with_notes_on_tracks(1, &[]).expect("a silent song");
+    let _ = song
+        .set_track_drums(TrackIndex::new(0), true)
+        .expect("a drum track");
+    let sequence = Sequence::new(&song, None).unwrap();
+    let channel = sequence.tracks[0].channel;
+    let tail = |part_send: u8, kit_send: u8| {
+        let bytes = gscore_audio::testing::sine_drum_soundfont("Test Drums");
+        let bank = SoundBank::read(&mut bytes.as_slice()).unwrap();
+        let mut engine = SynthEngine::new(&bank, RATE).unwrap();
+        engine.load(Arc::new(sequence.clone()));
+        engine.play();
+        engine.set_track_room(0, gscore_audio::prepare_drum_room(RATE));
+        engine.set_part_room(0, 0, part_send);
+        engine.set_track_room_send(0, kit_send);
+        engine.send_event(MidiEvent::NoteOn {
+            channel,
+            key: 36,
+            velocity: 100,
+        });
+        let _ = render(&mut engine, 0.2);
+        engine.send_event(MidiEvent::NoteOff { channel, key: 36 });
+        let (left, _) = render(&mut engine, 1.5);
+        // The hit has died away after half a second; what is left is the room's tail.
+        rms(&left[RATE as usize / 2..])
+    };
+    let dry = tail(0, 0);
+    let half = tail(64, 0);
+    let wet = tail(127, 0);
+    assert!(wet > half && half > dry * 3.0, "{dry} {half} {wet}");
+    // The kit's own send reaches the same room too.
+    let via_kit = tail(0, 127);
+    assert!(via_kit > dry * 3.0, "{dry} {via_kit}");
+}
+
+#[test]
 fn a_drum_tracks_parts_have_their_own_levels() {
     // Each part of a drum track has a mixing level of its own: turning the kick down
     // leaves the snare as it is, and the level scales the part after its chain.

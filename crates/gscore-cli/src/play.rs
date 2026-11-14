@@ -131,6 +131,71 @@ pub(crate) fn export_wav(
     Ok(out)
 }
 
+/// Writes one WAV per track of the song into `folder` (stems, for mixing elsewhere).
+pub(crate) fn export_stems(
+    input: &Path,
+    folder: &Path,
+    tracks: &[usize],
+    soundfont: Option<PathBuf>,
+    modelled: bool,
+) -> Result<String, CliError> {
+    let soundfont = soundfont.or_else(find_soundfont).ok_or_else(|| {
+        CliError::Failed(
+            "no SoundFont found; pass --soundfont <file.sf2> or set GSCORE_SOUNDFONT\n".to_owned(),
+        )
+    })?;
+    let bank =
+        gscore_audio::SoundBank::open(&soundfont).map_err(|e| CliError::Failed(e.to_string()))?;
+    let song = crate::input::read_song(input)?.song;
+    std::fs::create_dir_all(folder)
+        .map_err(|e| CliError::Failed(format!("cannot make {}: {e}", folder.display())))?;
+    let base = input
+        .file_stem()
+        .map_or_else(|| "stems".to_owned(), |s| s.to_string_lossy().into_owned());
+    // Every track goes into its stem, as in the app: the file's own mute and solo are
+    // cleared first (a soloed track would otherwise silence every other stem).
+    let mut song = song;
+    for track in 0..song.track_count() {
+        let at = TrackIndex::new(track);
+        let _ = song.set_track_mute(at, false);
+        let _ = song.set_track_solo(at, false);
+    }
+    let names = gscore_audio::stem_names(
+        &song
+            .tracks()
+            .map(|track| track.name().to_owned())
+            .collect::<Vec<_>>(),
+    );
+    let mut written = 0_usize;
+    for (track, name) in names.iter().enumerate() {
+        if !tracks.is_empty() && !tracks.contains(&track.saturating_add(1)) {
+            continue;
+        }
+        // One track alone, as the mix plays it (its fader, pan and sends).
+        let mut only = song.clone();
+        for other in 0..only.track_count() {
+            if other != track {
+                let _ = only.set_track_mute(TrackIndex::new(other), true);
+            }
+        }
+        let mut sequence = sequence(&only, &[])?;
+        if modelled {
+            sequence = sequence.with_modelled_guitars();
+        }
+        let path = folder.join(format!("{base} - {name}.wav"));
+        let file = std::fs::File::create(&path)
+            .map_err(|e| CliError::Failed(format!("cannot write {}: {e}", path.display())))?;
+        let mut writer = std::io::BufWriter::new(file);
+        gscore_audio::write_wav(&mut writer, &sequence, &bank)
+            .map_err(|e| CliError::Failed(e.to_string()))?;
+        written = written.saturating_add(1);
+    }
+    Ok(format!(
+        "Wrote {written} stem(s) into {}\n",
+        folder.display()
+    ))
+}
+
 /// Lists the MIDI output ports.
 pub(crate) fn ports() -> Result<String, CliError> {
     let ports = midi_output_ports().map_err(|e| CliError::Failed(e.to_string()))?;

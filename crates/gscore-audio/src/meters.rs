@@ -74,6 +74,11 @@ impl Meter {
 pub struct Meters {
     /// By the song's track index (tracks past [`MAX_TONES`] have none).
     tracks: Vec<Meter>,
+    /// Each track's input, before its chain (and its trim): by the song's track index.
+    inputs: Vec<Meter>,
+    /// Each track's chain output, after the chain (and its output level), before the
+    /// fader: by the song's track index.
+    outputs: Vec<Meter>,
     /// A drum track's parts, by the track's index and then the part's.
     parts: Vec<Meter>,
     reverb: Meter,
@@ -90,6 +95,8 @@ impl Default for Meters {
     fn default() -> Self {
         Meters {
             tracks: (0..MAX_TONES).map(|_| Meter::default()).collect(),
+            inputs: (0..MAX_TONES).map(|_| Meter::default()).collect(),
+            outputs: (0..MAX_TONES).map(|_| Meter::default()).collect(),
             parts: (0..MAX_TONES.saturating_mul(PARTS))
                 .map(|_| Meter::default())
                 .collect(),
@@ -118,6 +125,18 @@ impl Meters {
             .and_then(|index| index.checked_add(part))
             .and_then(|index| self.parts.get(index))
             .map_or(Level::default(), Meter::get)
+    }
+
+    /// The level of the song's track `track` before its chain (after its input trim), for
+    /// setting how hard an amp or compressor is driven.
+    pub fn input(&self, track: usize) -> Level {
+        self.inputs.get(track).map_or(Level::default(), Meter::get)
+    }
+
+    /// The level of the song's track `track` after its chain (and its output level),
+    /// before the fader.
+    pub fn chain_output(&self, track: usize) -> Level {
+        self.outputs.get(track).map_or(Level::default(), Meter::get)
     }
 
     /// The level of the reverb bus after its fader.
@@ -274,6 +293,10 @@ impl Needle {
 #[derive(Debug, Clone, Copy)]
 pub(crate) enum Which {
     Track(usize),
+    /// A track's sound before its chain (after its input trim).
+    Input(usize),
+    /// A track's sound after its chain and its output level.
+    ChainOutput(usize),
     /// One part of a drum track.
     Part(usize, usize),
     Reverb,
@@ -287,6 +310,8 @@ impl Meters {
     pub(crate) fn publish(&self, which: Which, peak: Peak) {
         let meter = match which {
             Which::Track(track) => self.tracks.get(track),
+            Which::Input(track) => self.inputs.get(track),
+            Which::ChainOutput(track) => self.outputs.get(track),
             Which::Part(track, part) => track
                 .checked_mul(PARTS)
                 .and_then(|index| index.checked_add(part))

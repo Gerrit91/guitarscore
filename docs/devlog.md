@@ -5129,3 +5129,189 @@ from a sound's name to one of its tones, filled by the owner:
   the action needs no open song, like the other view actions. App test:
   `f3_and_the_view_menu_switch_between_the_song_grid_and_the_mixer` (key and menu, both
   ways, remembered in the settings). `docs/usage.md` lists F3.
+
+## 2026-11-14 — Transposition: sound or notes, from the toolbar or a window; the tuner in Tools
+
+- **Transposition** (owner's design, in steps): the toolbar's control is the tuning fork, the
+  value in semitones (0 by default, click it to type one) and a small split pair (− over +).
+  The fork switches the transposition on and off (A/B); it starts off and is only clickable
+  once there is a value. The value is GuitarScore's own (`Track::transpose_sound`), *not* the
+  format's `<Transpose>` block: Guitar Pro's own `<Octave>-1</Octave>` on a guitar is its
+  written-vs-sounding octave (our notation's `octave_up`), and the MIDI in every `testdata`
+  `.mid` shows it does not move the sounding pitch — so existing files play exactly as
+  before, and the value travels in the song's notes (`TrackSound::transpose`, applied on
+  open, collected on save). Playback adds it in `TrackView::sounding_pitch`; the layout uses
+  `written_pitch`, so the score and the tab stay.
+- **The transpose window** (Tools › Transpose…): whole song or the shown track, the sound
+  (`transpose_by`/`transpose_track_by`, clamped to an octave) or the notes themselves with
+  "Change the fingerings" (`transpose_notes`: each note is re-fingered by target pitch —
+  its own string first, then the nearest that can hold it; a note that cannot be placed
+  fails the whole edit unchanged). Drum kits are left alone. One undo step each.
+- **The tuner** moved to a Tools menu before Help, with the transpose window; its toolbar
+  button now draws a sound wave (the fork became the transposition's).
+- **The tuning dialog** has a play button per string (a reference tone of its open note,
+  filled with the accent color while it sounds, and the same button stops it); close and OK
+  silence it.
+- **Toolbar layout fix:** the transport could grow over the right group's buttons and take
+  their clicks (the width feedback oscillated with the position readout). The transport now
+  gets the room between the groups, its readout keeps fixed widths (so it does not shift
+  while the clock counts) and drops its parts in order of importance (time, measure, bar
+  fill, tempo) on a narrow window; the SoundFont loading progress moved to the status bar.
+  Tests that assert the readout use a wider window (`wide_app_with`).
+- Tests: model (`edit/transpose_tests.rs`: sound vs written, per-track, notes re-fingered,
+  a note that cannot move, the switch, undo), command round trips and `panic_hunt`, and app
+  tests for the toolbar control, the window and the tuning play/stop buttons. App snapshots
+  regenerated: the menu bar gained Tools, the toolbar gained the transposition control.
+
+## 2026-11-14 — A drum room, stems, input trim and meters, solo-safe buses
+
+- **Drum room.** Each drum kit's parts now send into one short room of the kit's own
+  (`gscore_audio::drum_room_spec`/`drum_room_knobs`: a computed reverb, size 0.25, decay
+  0.6 s, no meaningful pre-delay, all wet), the way a room's overheads glue a kit
+  together. The mixer keeps one prepared chain per drum track (built on the synth's
+  housekeeping thread like the other chains, never in the callback), accumulates the
+  parts' post-fader sends into its input, runs it while it rings, and adds its return to
+  the kit *before* the track's own chain, fader and bus sends — so the kit's processing
+  and its reverb/compressor sends hear the room, and a bus stem's sends do too. Every part
+  has a **Room** knob (0-127, 0 dry) in its mixer strip and beside its level in the sound
+  chain window; it is saved in the song's drum-part block (`DrumPartSound::room`) and
+  exported (`PartChoice`/`StemPart`, `SoundMessage::DrumRoom`/`PartRoom`). Web, wire and
+  worklet carry the two messages.
+- **Input meter and trim.** Every track has a trim before its chain (−24..+24 dB,
+  `TrackSound::trim_db`, saved with the song and used by the WAV export), and an input
+  meter that shows what reaches the chain after it (`Meters::input`, `Which::Input`,
+  `SoundMessage::Trim`). The Sound chain window has the "Input trim" knob and the small
+  stereo "in" meter beside the chain output, so an amp or a compressor can be driven by
+  how hard the input hits it instead of the track's level.
+- **Stems.** File › Export › Stems (WAV)… writes one WAV per track (its own sound through
+  its chain, fader and pan, without the buses or the master) and one per mixer bus (only
+  what the bus returns, through `StemPart::Buses` and the mixer's `dry` switch), into a
+  chosen folder; `gscore-cli wav <file> --stems DIR` writes the tracks' files.
+- **Solo-safe buses.** Checked and pinned: solo filters only the sequence, so a soloed
+  track's sends still reach the reverb, compressor and chorus buses, and solo never mutes
+  a bus (`a_soloed_track_keeps_its_sends_in_the_buses`).
+- Tests: the room's tail and its proportion to the send, the trim against the input meter,
+  `PartRoom`/`DrumRoom`/`Trim` wire round trips, the part Room knob as one undo step, and
+  bus stems carrying only the bus. App snapshots regenerated for the trim row and the
+  parts' Room knob.
+
+## 2026-11-14 — A kit room to edit and send the whole kit into, chain-output meters, safer deletes
+
+- **Soloing a drum part solos its track.** A part's solo is only useful when the rest of
+  the song falls silent with it, so the solo buttons of a kit's parts now set the drum
+  track's own solo too (one undo step, `Command::Batch` with the part's state). Un-soloing
+  the last soloed part un-solos the track; another part still soloed keeps it on. The
+  track's own Solo button is unchanged.
+- **A kit-wide Room send and an editable room.** The drum track's strip now has a Room
+  knob beside Reverb/Chorus/Comp (short captions on a kit's strip, five knobs in the same
+  width): the whole kit, after the parts' levels and before its chain, into the kit's
+  room. The parts' Room knobs and this one feed the same room. "Kit room…" in the Sound
+  chain window opens the room (the computed reverb's size, decay, pre-delay, damping,
+  modulation, width and cuts, always all wet), stored with the song
+  (`TrackSound::drum_room`/`drum_room_send`, default `default_drum_room`: size 0.25, decay
+  0.6 s). Knob changes are sent as settings, not rebuilt, so the short tail is not cut;
+  `DrumRoom`/`DrumRoomSettings`/`TrackRoomSend` join the wire (new message numbers 16, 18,
+  19). The WAV export and stems render the room and both sends (`RoomChoice`).
+- **The chain-output meter.** Next to "Input trim" there is now the same small stereo
+  meter beside "Chain output", showing what leaves the chain (after its output level,
+  before the fader): `Meters::chain_output`, `Which::ChainOutput`.
+- **Delete a note alone.** The Delete key now runs its own action (`delete`, "Delete note
+  or beat"): it clears the note under the cursor when the cursor's string holds one, and
+  removes the whole beat only when that string has no note, so a chord can be edited note
+  by note (the cursor on an empty string still deletes the beat). Rests do not count. The
+  menus' "Delete beat" (`delete_beat`) still removes the beat.
+- **The input trim starts at −6 dB.** The chain input meter showed the modelled strings'
+  plucks near −2..−6 dBFS (steel −1.9, electric −5.5, bass −6.1 at the old settings), so
+  it sat in the red on every tab. The trim is now stored as `Option<f32>` and defaults to
+  −6 dB: the meter is green, `xtask tones normalize` keeps working relative to it, and the
+  knob shows the pad and can be changed per song. (`tones normalize` also reports the
+  reference note's peak and the strings' input level now.) Turning the amp's or drive's
+  input down by 6 dB makes the built-in tones cleaner; the tone library's outputs were not
+  regenerated for this.
+- **The tempo and repeat dialogs** got the same small split −/+ pair as the transposition:
+  a beat per minute slower/faster, and one repeat fewer/more.
+- Tests: a kit room round trip (window, payload, Default), the kit Room knob as one undo
+  step, a part's solo soloing its track (and the last part un-soloing it), Delete on a
+  chord note vs. an empty string, and the input trim's new default. Snapshots updated for
+  the five-knob drum strip, the two chain meters, the trim value and the Kit room button.
+
+## 2026-11-14 — The sound-chain entry on every mixer strip is a named bar
+
+- The tiny 14×14 stomp-box icons at the bottom of the mixer strips were hard to find. Every
+  strip now has a full-width, framed bar between its knobs and its fader, with the stomp
+  box and the words "Sound chain" (a track, a drum part or the master) or "Edit…" (a bus),
+  highlighting on hover and carrying the same accessible labels and tooltips as before.
+  The bar takes 21 points from the fader (which stays generous); the drum parts arrow
+  stays in the corner. A second row of send knobs was the other option, but it would have
+  cost every strip (buses too) 40 points of fader and still needed a label; the bar is a
+  larger target than the icon and says what it does. The chain is also still reachable from
+  the track panel. Mixer snapshots regenerated.
+
+## 2026-11-14 — Two rows of knobs on a mixer strip; a larger way into the sound chain
+
+- The one-row strip with a thin "Sound chain" bar still read as cramped, so the strip now
+  has two knob rows: pan, reverb and chorus above; the compressor send and (for a kit) its
+  Room send below, with full captions. Under them the "Sound chain" bar is taller (26
+  points, 12-point text, a larger stomp box), and the faders still have room. Bus strips,
+  which have no knobs of their own, use their whole top for a large "Edit…" button instead
+  of a thin bar; the master keeps its pan and the chain bar. The drum part strips keep
+  their pan and Room knobs and the same bar, aligned with the tracks. The mixer snapshots
+  were regenerated.
+
+## 2026-11-14 — The sound chain stomp box in the sends' row; grid zoom and a delete button
+
+- **Mixer:** the full-width "Sound chain" bar is gone. The stomp box (no text) sits in the
+  second send-knob row, beside the compressor send (and a kit's Room send): pan, reverb
+  and chorus above; comp, room and the chain below. The send knobs are back to 20 points.
+  A drum part's strip has pan, room and the stomp in its single row; the master has its pan
+  and the stomp; a bus strip has no knobs, so its (slightly larger) stomp sits at the top
+  center.
+- **Note input:** the voice selector (1-4) moved to the top of the section, centered.
+- **Grid zoom and delete:** the song grid's header gained a trash can (delete the shown
+  track) and the score's magnifier buttons with the "100 %" reset. They scale only the
+  measure columns (0.2-3.0, saved with the view), so a zoomed-out grid shows the whole song;
+  the row heights and track controls stay legible. `ViewState::grid_zoom`,
+  `GridAction::SetGridZoom`, `Icon::Delete`.
+- **Settings gear:** drawn like the ⚙️ emoji: a thick body with a hole and eight filled
+  teeth, instead of a thin circle with radial spokes.
+- Tests: grid zoom out and the 100 % reset (a zoomed-out snapshot), the header's delete
+  button, plus the existing voice and mixer tests; snapshots regenerated for the moved
+  voice row, the new header buttons, the mixer and the gear.
+
+## 2026-11-14 — The mixer's two columns: the sound chain on the left, the sends on the right
+
+- A track strip's top is split in two: a narrow left column with the sound chain's stomp
+  box, centered, and a right column with all the sends in two rows — pan, reverb and
+  chorus above; comp and (for a kit) room below. A drum part's strip and the master use the
+  same two columns with their one row of knobs; a bus (no sends) keeps its stomp centered
+  in the top. This is what the earlier one-row bar and the icon-in-the-grid variants were
+  trying to be. Mixer snapshots regenerated.
+
+## 2026-11-14 — Back to one row of sends; the sound chain beside mute/solo
+
+- The two-column top did not look right either. The send knobs are back in the one row they
+  started in (pan, reverb, chorus and comp, plus a kit's room), and the sound chain's stomp
+  box — no text — sits at the right of the mute/solo row, a 20-point target beside the
+  buttons that are already there. Bus strips have their mute and the stomp there too, and
+  the master's mute/solo-all row ends with it; part strips do the same. Mixer snapshots
+  regenerated.
+
+## 2026-11-14 — Review fixes on transpose-tools; gear and trash can icons
+
+Fixed from a review of the branch:
+- Moving notes fingers a beat's notes together: no two land on one string (notes that can
+  keep their own string do; the others go around them), and a chord that cannot be spread
+  fails the edit unchanged. A grace note's fret follows its main note to another string. A
+  natural harmonic moves to the string whose open note it needs, else becomes an artificial
+  harmonic with the same node.
+- One transposition limit: a file storing more than an octave only steps back towards it,
+  and undo restores the stored value (was a jump to ±12).
+- A song saved transposed opens switched on; the on/off switch works when tracks differ
+  (`Song::is_transposed`). Undo/redo no longer report the opposite transposition. Dragging
+  the toolbar value is one edit when the drag ends; a failure shows in the status bar.
+- Stems: distinct file names (`gscore_audio::stem_names`: duplicates and bus names get the
+  track number); the CLI clears the file's mute and solo first, as the app does.
+
+Icons: the gear is drawn like the ⚙️ emoji (solid body, small hole, broad teeth); the trash
+can has a handle, a tapered body and visible ribs. 45 app snapshots changed by those icons
+only (71–99 pixels each).

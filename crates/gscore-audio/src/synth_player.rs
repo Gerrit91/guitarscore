@@ -104,6 +104,8 @@ struct ChainRequest {
     part: Option<usize>,
     /// The master's chain (after the tracks and buses).
     master: bool,
+    /// A drum track's room.
+    room: bool,
     spec: ChainSpec,
     knobs: ChainKnobs,
 }
@@ -314,6 +316,7 @@ impl SynthPlayer {
                 track,
                 part: None,
                 master: false,
+                room: false,
                 spec,
                 knobs,
             })
@@ -332,6 +335,7 @@ impl SynthPlayer {
                 track: 0,
                 part: None,
                 master: true,
+                room: false,
                 spec,
                 knobs,
             })
@@ -360,6 +364,7 @@ impl SynthPlayer {
                 track,
                 part: Some(part),
                 master: false,
+                room: false,
                 spec,
                 knobs,
             })
@@ -464,6 +469,53 @@ impl SynthPlayer {
     /// The song's track `track` sends `value` (0-127) into the compressor bus.
     pub fn set_comp_send(&self, track: usize, value: u8) -> Result<(), PlayError> {
         self.send(Command::CompSend(track, value))
+    }
+
+    /// Sets the input trim of the song's track `track`, in dB, before its chain.
+    pub fn set_trim(&self, track: usize, db: f32) -> Result<(), PlayError> {
+        self.send(Command::Trim(track, db))
+    }
+
+    /// Gives the drum kit `track` its room, prepared on the synth's own thread from `spec`
+    /// and `knobs` (one short shared room behind the kit's parts).
+    pub fn set_track_room(
+        &self,
+        track: usize,
+        spec: ChainSpec,
+        knobs: ChainKnobs,
+    ) -> Result<(), PlayError> {
+        if let Some(error) = self.error() {
+            return Err(PlayError::Device(error));
+        }
+        self.chains
+            .try_send(ChainRequest {
+                track,
+                part: None,
+                master: false,
+                room: true,
+                spec,
+                knobs,
+            })
+            .map_err(|_| PlayError::Device("the synthesizer is not keeping up".to_owned()))
+    }
+
+    /// New knob values for the drum kit `track`'s room.
+    pub fn set_track_room_settings(
+        &self,
+        track: usize,
+        knobs: ChainKnobs,
+    ) -> Result<(), PlayError> {
+        self.send(Command::TrackRoomSettings(track, knobs))
+    }
+
+    /// The drum kit `track`'s own send into its room (0-127).
+    pub fn set_track_room_send(&self, track: usize, value: u8) -> Result<(), PlayError> {
+        self.send(Command::TrackRoomSend(track, value))
+    }
+
+    /// A drum part's send into its kit's room (0-127).
+    pub fn set_part_room(&self, track: usize, part: usize, value: u8) -> Result<(), PlayError> {
+        self.send(Command::PartRoom(track, part, value))
     }
 }
 
@@ -600,6 +652,8 @@ fn run(
                 let chain = prepare_chain(&request.spec, &request.knobs, rate);
                 let command = if request.master {
                     Command::MasterChain(chain, Box::new(request.knobs))
+                } else if request.room {
+                    Command::TrackRoom(request.track, chain)
                 } else {
                     match request.part {
                         None => Command::Chain(request.track, chain, Box::new(request.knobs)),

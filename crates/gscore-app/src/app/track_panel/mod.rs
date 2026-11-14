@@ -217,9 +217,11 @@ impl GuitarScoreApp {
         match outcome {
             tuning::Outcome::Apply => {
                 let commands = dialog.commands();
+                // The reference tone stops with the dialog that played it.
+                dialog.stop_tone();
                 self.apply_commands(commands);
             }
-            tuning::Outcome::Cancel => {}
+            tuning::Outcome::Cancel => dialog.stop_tone(),
             tuning::Outcome::Remove | tuning::Outcome::Listen => {
                 tab.track_panel.tuning = Some(dialog);
             }

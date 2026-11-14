@@ -96,7 +96,7 @@ const PRESETS: &[Preset] = &[
 ];
 
 /// The open dialog.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub(super) struct TuningDialog {
     /// The track the tuning belongs to.
     track: usize,
@@ -112,6 +112,12 @@ pub(super) struct TuningDialog {
     original_pitches: Vec<u8>,
     /// Why OK is disabled, if the draft cannot become a command.
     error: Option<String>,
+    /// A reference tone, for the play button beside each string.
+    tone: super::super::tuner::Tone,
+    /// The string whose tone is sounding, while one is: its play button then stops it.
+    playing: Option<usize>,
+    /// Why the reference tone does not sound, if it does not.
+    tone_error: Option<String>,
 }
 
 impl TuningDialog {
@@ -131,6 +137,9 @@ impl TuningDialog {
             original_pitches: pitches.clone(),
             pitches,
             error: None,
+            tone: super::super::tuner::Tone::default(),
+            playing: None,
+            tone_error: None,
         }
     }
 
@@ -158,6 +167,9 @@ impl TuningDialog {
                         ui.set_width(WIDTH);
                         self.body(ui);
                         if let Some(error) = &self.error {
+                            ui.colored_label(ui.visuals().error_fg_color, error);
+                        }
+                        if let Some(error) = &self.tone_error {
                             ui.colored_label(ui.visuals().error_fg_color, error);
                         }
                         ui.add_space(6.0);
@@ -333,11 +345,14 @@ impl TuningDialog {
                 );
                 let current = self.pitches.get(index).copied().unwrap_or(LOWEST);
                 let mut pitch = current;
-                if ui
-                    .small_button("−")
-                    .on_hover_text("A semitone lower")
-                    .clicked()
-                {
+                let down_label = format!("String {number} a semitone lower");
+                let up_label = format!("String {number} a semitone higher");
+                let (down, up) = super::super::icons::step_pair(
+                    ui,
+                    (&down_label, "A semitone lower", true),
+                    (&up_label, "A semitone higher", true),
+                );
+                if down {
                     pitch = pitch.saturating_sub(1);
                 }
                 let combo = egui::ComboBox::from_id_salt(("tuning_note", index))
@@ -351,12 +366,39 @@ impl TuningDialog {
                 ui.ctx().accesskit_node_builder(combo.response.id, |node| {
                     node.set_label(format!("String {number} note"));
                 });
-                if ui
-                    .small_button("+")
-                    .on_hover_text("A semitone higher")
-                    .clicked()
-                {
+                if up {
                     pitch = pitch.saturating_add(1).min(127);
+                }
+                // Hear the string: a reference tone of its open note, which the same
+                // button stops again (the tone rings until it is stopped).
+                let sounding = self.playing == Some(index) && self.tone.playing();
+                let (icon, label, tip) = if sounding {
+                    (
+                        super::super::icons::Icon::Stop,
+                        format!("Stop string {number}"),
+                        "Stop the reference tone",
+                    )
+                } else {
+                    (
+                        super::super::icons::Icon::Play,
+                        format!("Play string {number}"),
+                        "Sound this string's open note",
+                    )
+                };
+                if super::super::icons::accent_button(ui, icon, &label, tip, sounding).clicked() {
+                    if sounding {
+                        self.tone.stop();
+                        self.playing = None;
+                    } else {
+                        let note = pitch.saturating_add(self.capo).min(127);
+                        self.tone.play_and_remember(note);
+                        self.tone_error = self.tone.error();
+                        self.playing = if self.tone.playing() {
+                            Some(index)
+                        } else {
+                            None
+                        };
+                    }
                 }
                 if pitch != current
                     && let Some(slot) = self.pitches.get_mut(index)
@@ -365,6 +407,11 @@ impl TuningDialog {
                 }
             });
         }
+    }
+
+    /// Silences the reference tone the play buttons started.
+    pub(super) fn stop_tone(&mut self) {
+        self.tone.stop();
     }
 
     /// The change the draft describes: one batch, so it is one undo step.

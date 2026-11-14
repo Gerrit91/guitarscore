@@ -127,7 +127,12 @@ pub(super) fn run_normalize(args: NormalizeArgs) -> Result<(), String> {
                     &tone,
                     output_before,
                     trimmed,
-                    Some((target_db, measurement.rms_db)),
+                    Some((
+                        target_db,
+                        measurement.rms_db,
+                        measurement.peak_db,
+                        measurement.input_db,
+                    )),
                     note,
                 );
             }
@@ -180,13 +185,16 @@ fn print_row(
     tone: &Tone,
     output_before: f32,
     trimmed: f32,
-    measured: Option<(f32, f32)>,
+    measured: Option<(f32, f32, f32, f32)>,
     note: String,
 ) {
     let change = (tone.chain.output_db - output_before).abs() > 1e-4
         || (tone.sound.level - level_before).abs() > 1e-4;
     let measured_text = match measured {
-        Some((target, rms_db)) => format!("  measured {rms_db:>7.1} dBFS (target {target:.1})"),
+        Some((target, rms_db, peak_db, input_db)) => format!(
+            "  measured {rms_db:>7.1} dBFS rms, {peak_db:>6.1} peak, in {input_db:>6.1} \
+             (target {target:.1})"
+        ),
         None => format!("  level trims {trimmed:+.1} dB"),
     };
     println!(

@@ -343,6 +343,29 @@ impl GuitarScoreApp {
                     tab.edit_palette.effects.open_lyrics(&snapshot);
                 }
                 style::section(ui, "note_input", "Note input", |ui| {
+                    // The voice, centered at the top: which voice the cursor writes into.
+                    ui.with_layout(egui::Layout::top_down(egui::Align::Center), |ui| {
+                        if let Some(voice) = tiles::segments_with_tips(
+                            ui,
+                            &[
+                                ("1", "Voice 1", "First voice"),
+                                ("2", "Voice 2", "Second voice"),
+                                (
+                                    "3",
+                                    "Voice 3",
+                                    "Third voice (kept in GP7 files; GP3-5 keep two voices)",
+                                ),
+                                (
+                                    "4",
+                                    "Voice 4",
+                                    "Fourth voice (kept in GP7 files; GP3-5 keep two voices)",
+                                ),
+                            ],
+                            snapshot.cursor.voice.get(),
+                        ) {
+                            tab.edit_palette.pending_voice = Some(voice);
+                        }
+                    });
                     note_length(ui, &mut tab.edit_palette, &snapshot, &hint, &mut commands);
                     beat_buttons(ui, &mut tab.edit_palette, &snapshot, &hint, &mut commands);
                 });
@@ -1017,28 +1040,6 @@ fn beat_buttons(
         // Octave signs change where the notes are written: the last of Note input.
         super::edit_effects::octave_tiles(ui, snapshot, hint, commands);
     });
-    ui.add_space(2.0);
-    let chosen = snapshot.cursor.voice.get();
-    if let Some(voice) = tiles::segments_with_tips(
-        ui,
-        &[
-            ("1", "Voice 1", "First voice"),
-            ("2", "Voice 2", "Second voice"),
-            (
-                "3",
-                "Voice 3",
-                "Third voice (kept in GP7 files; GP3-5 keep two voices)",
-            ),
-            (
-                "4",
-                "Voice 4",
-                "Fourth voice (kept in GP7 files; GP3-5 keep two voices)",
-            ),
-        ],
-        chosen,
-    ) {
-        state.pending_voice = Some(voice);
-    }
 }
 
 /// How a note-length choice changes the selected beats.

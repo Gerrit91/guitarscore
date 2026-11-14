@@ -877,6 +877,28 @@ pub fn default_drum_bus_chain() -> ChainSetting {
     ChainSetting::default()
 }
 
+/// The input trim a track starts with, before its chain: -6 dB, so the modelled strings'
+/// plucks do not pin the input meter at red and an amp or compressor is driven the way its
+/// tone was measured. The trim is a per-song setting; this is only where it starts.
+pub const DEFAULT_TRIM_DB: f32 = -6.0;
+
+/// The built-in room every drum kit's parts can send into: one short room behind the whole
+/// kit (as a room's overheads glue a kit together), all wet. Its knobs are the kit's own to
+/// change; the parts' Room knobs and the kit's own decide how much reaches it.
+pub fn default_drum_room() -> BlockSetting {
+    let mut block = BlockSetting::of(BlockChoice::Reverb);
+    block.size = 0.25;
+    block.decay = 0.6;
+    block.pre_delay = 5.0;
+    block.damping = 0.5;
+    block.modulation = 0.3;
+    block.width = 0.6;
+    block.mix = 1.0;
+    block.low_cut = 120.0;
+    block.high_cut = 9_000.0;
+    block
+}
+
 #[cfg(test)]
 mod drum_tests {
     #![allow(clippy::unwrap_used, clippy::indexing_slicing)]

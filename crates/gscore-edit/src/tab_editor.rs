@@ -6,7 +6,7 @@
 //! so this stays usable on every target and testable without waiting.
 
 use gscore_model::{
-    BeatIndex, BeatKind, Fret, MeasureIndex, ModelError, NoteValue, Song, TrackIndex,
+    BeatIndex, BeatKind, Fret, MeasureIndex, ModelError, NoteKind, NoteValue, Song, TrackIndex,
 };
 
 use crate::action::{Action, ActionId};
@@ -300,7 +300,9 @@ impl TabEditor {
             ActionId::SelectLineDown => Ok(Outcome::Request(Request::SelectLine { down: true })),
             ActionId::EnterFret => Ok(Outcome::Nothing),
             // With a selection, Delete and clear clear every selected note at once.
-            ActionId::ClearNote | ActionId::DeleteBeat if let Some(selection) = self.selection => {
+            ActionId::ClearNote | ActionId::Delete | ActionId::DeleteBeat
+                if let Some(selection) = self.selection =>
+            {
                 self.clear_selection(selection)
             }
             ActionId::ClearNote => {
@@ -314,6 +316,24 @@ impl TabEditor {
                 let duration = self.current_value();
                 let at = self.cursor.position();
                 self.execute(Command::InsertBeat { at, duration }, self.cursor, false)
+            }
+            ActionId::Delete => {
+                // A note under the cursor is what is deleted; the whole beat (the chord)
+                // only when the cursor's string has none, so a specific note can go alone.
+                let at = self.cursor.position();
+                let string = self.string()?;
+                let has_note = song.beat(at).is_some_and(|beat| {
+                    !beat.is_grace()
+                        && beat.notes().any(|note| {
+                            note.kind() != NoteKind::Rest
+                                && matches!(note.string(), Ok(at) if at == string)
+                        })
+                });
+                if has_note {
+                    self.execute(Command::ClearNote { at, string }, self.cursor, false)
+                } else {
+                    self.execute(Command::DeleteBeat { at }, self.cursor, false)
+                }
             }
             ActionId::DeleteBeat => {
                 let at = self.cursor.position();
@@ -331,6 +351,11 @@ impl TabEditor {
                 let measure = self.cursor.measure;
                 self.execute(Command::DeleteMeasure { measure }, self.cursor, false)
             }
+            ActionId::TransposeUpSemitone => self.transpose(1),
+            ActionId::TransposeDownSemitone => self.transpose(-1),
+            ActionId::TransposeUpOctave => self.transpose(12),
+            ActionId::TransposeDownOctave => self.transpose(-12),
+            ActionId::ToggleTransposition => self.toggle_transposition(),
             ActionId::Copy => self.copy_selection(),
             ActionId::Cut => self.cut_selection(),
             ActionId::Paste => self.paste_clipboard(),
@@ -578,6 +603,18 @@ impl TabEditor {
         }
         self.cursor.right(song);
         Ok(Outcome::Moved)
+    }
+
+    /// Transposes what the song sounds like by `semitones` (one undo step); the written
+    /// notes stay as they are.
+    fn transpose(&mut self, semitones: i32) -> Result<Outcome, EditError> {
+        self.execute(Command::TransposeSong { semitones }, self.cursor, false)
+    }
+
+    /// Switches the song's transposition on or off (one undo step; the value is kept).
+    fn toggle_transposition(&mut self) -> Result<Outcome, EditError> {
+        let active = !self.editor.song().transpose_active();
+        self.execute(Command::SetTransposeActive { active }, self.cursor, false)
     }
 
     /// What is missing from the cursor's voice to fill its measure, if anything.

@@ -42,6 +42,9 @@ pub enum ActionId {
     DurationLonger,
     /// Insert a rest beat before the cursor.
     InsertBeat,
+    /// Delete what the cursor is on: the note on its string, or the whole beat when that
+    /// string has none.
+    Delete,
     /// Remove the beat at the cursor.
     DeleteBeat,
     /// Insert a measure before the cursor's measure, in every track.
@@ -233,6 +236,16 @@ pub enum ActionId {
     ToggleFullscreen,
     /// Show the mixer in the bottom panel instead of the measure grid, and back.
     ToggleMixer,
+    /// Play the song a semitone higher (the written notes stay).
+    TransposeUpSemitone,
+    /// Play the song a semitone lower (the written notes stay).
+    TransposeDownSemitone,
+    /// Play the song an octave higher (the written notes stay).
+    TransposeUpOctave,
+    /// Play the song an octave lower (the written notes stay).
+    TransposeDownOctave,
+    /// Switch the song's transposition on or off (a listening aid).
+    ToggleTransposition,
     /// Show every track of the song together, or only the cursor's track again.
     ToggleMultitrack,
     /// Open the edit history window.
@@ -377,6 +390,7 @@ pub const ACTIONS: &[ActionInfo] = &[
     ),
     info(ActionId::DurationLonger, "duration_longer", "Longer note"),
     info(ActionId::InsertBeat, "insert_beat", "Insert beat"),
+    info(ActionId::Delete, "delete", "Delete note or beat"),
     info(ActionId::DeleteBeat, "delete_beat", "Delete beat"),
     info(ActionId::InsertMeasure, "insert_measure", "Insert measure"),
     info(ActionId::DeleteMeasure, "delete_measure", "Delete measure"),
@@ -633,6 +647,31 @@ pub const ACTIONS: &[ActionInfo] = &[
     ),
     info(ActionId::ToggleMixer, "toggle_mixer", "Mixer"),
     info(
+        ActionId::TransposeUpSemitone,
+        "transpose_up_semitone",
+        "Transpose up a semitone",
+    ),
+    info(
+        ActionId::TransposeDownSemitone,
+        "transpose_down_semitone",
+        "Transpose down a semitone",
+    ),
+    info(
+        ActionId::TransposeUpOctave,
+        "transpose_up_octave",
+        "Transpose up an octave",
+    ),
+    info(
+        ActionId::TransposeDownOctave,
+        "transpose_down_octave",
+        "Transpose down an octave",
+    ),
+    info(
+        ActionId::ToggleTransposition,
+        "toggle_transposition",
+        "Transposition on/off",
+    ),
+    info(
         ActionId::ToggleMultitrack,
         "toggle_multitrack",
         "All tracks",
@@ -718,6 +757,6 @@ mod tests {
             );
         }
         assert_eq!(ActionId::from_id("no_such_action"), None);
-        assert_eq!(ACTIONS.len(), 117, "one entry per ActionId variant");
+        assert_eq!(ACTIONS.len(), 123, "one entry per ActionId variant");
     }
 }

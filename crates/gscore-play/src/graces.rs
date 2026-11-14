@@ -94,7 +94,7 @@ pub(crate) fn gather(
         };
         let string = note.string().ok();
         let pitch = string
-            .and_then(|string| view.pitch_at(string, grace.fret).ok())
+            .and_then(|string| view.sounding_pitch_at(string, grace.fret).ok())
             .or_else(|| view.sounding_pitch(&note).ok());
         match pitch {
             Some(pitch) => graces.push(Grace {

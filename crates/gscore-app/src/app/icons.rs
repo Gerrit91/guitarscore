@@ -52,6 +52,8 @@ pub(crate) enum Icon {
     Settings,
     /// Add (a plus).
     Add,
+    /// Delete (a trash can).
+    Delete,
     /// Move up (an arrow pointing up).
     MoveUp,
     /// Move down (an arrow pointing down).
@@ -72,7 +74,9 @@ pub(crate) enum Icon {
     PanelRight,
     /// Rename (a pencil).
     Rename,
-    /// A tuner (a tuning fork).
+    /// The transposition (a tuning fork).
+    TuningFork,
+    /// A tuner (a sound wave).
     Tuner,
     /// The speed trainer (a speed gauge with its needle turned up).
     SpeedTrainer,
@@ -128,6 +132,96 @@ fn sized_button(
         visuals.fg_stroke.color,
         icon,
     );
+    response.on_hover_text(tip)
+}
+
+/// A very small text button (a glyph such as "−" or "+"), for the toolbar's split pair.
+pub(crate) fn tiny_button(
+    ui: &mut egui::Ui,
+    glyph: &str,
+    label: &str,
+    tip: &str,
+    enabled: bool,
+) -> Response {
+    const SIZE: Vec2 = vec2(18.0, 9.0);
+    let sense = if enabled {
+        Sense::click()
+    } else {
+        Sense::hover()
+    };
+    let (rect, response) = ui.allocate_exact_size(SIZE, sense);
+    ui.ctx().accesskit_node_builder(response.id, |node| {
+        node.set_label(label);
+        node.set_role(egui::Role::Button);
+    });
+    let visuals = ui.style().interact(&response);
+    if enabled && (response.hovered() || response.has_focus()) {
+        ui.painter().rect_filled(rect, 3.0, visuals.weak_bg_fill);
+    }
+    let color = if enabled {
+        visuals.text_color()
+    } else {
+        ui.visuals().weak_text_color()
+    };
+    ui.painter().text(
+        rect.center(),
+        egui::Align2::CENTER_CENTER,
+        glyph,
+        egui::FontId::proportional(10.0),
+        color,
+    );
+    response.on_hover_text(tip)
+}
+
+/// The small split pair for stepping a value: one button over the other (a step down over
+/// a step up). Each is `(accessibility label, tooltip, enabled)`; returns whether each was
+/// clicked.
+pub(crate) fn step_pair(
+    ui: &mut egui::Ui,
+    down: (&str, &str, bool),
+    up: (&str, &str, bool),
+) -> (bool, bool) {
+    let mut clicked = (false, false);
+    ui.allocate_ui_with_layout(
+        vec2(18.0, 18.0),
+        egui::Layout::top_down(egui::Align::Center),
+        |ui| {
+            clicked.0 = tiny_button(ui, "−", down.0, down.1, down.2).clicked();
+            clicked.1 = tiny_button(ui, "+", up.0, up.1, up.2).clicked();
+        },
+    );
+    clicked
+}
+
+/// An icon button that is filled with the accent color while it is active (something
+/// plays through it), as the tuner's Play button is, for the same look everywhere.
+pub(crate) fn accent_button(
+    ui: &mut egui::Ui,
+    icon: Icon,
+    label: &str,
+    tip: &str,
+    active: bool,
+) -> Response {
+    let (rect, response) = ui.allocate_exact_size(BUTTON, Sense::click());
+    ui.ctx().accesskit_node_builder(response.id, |node| {
+        node.set_label(label);
+        node.set_role(egui::Role::Button);
+    });
+    let tokens = crate::app::style::tokens(ui);
+    if active || response.hovered() || response.has_focus() {
+        let fill = if active {
+            tokens.accent
+        } else {
+            ui.style().interact(&response).weak_bg_fill
+        };
+        ui.painter().rect_filled(rect, 4.0, fill);
+    }
+    let color = if active {
+        tokens.on_accent
+    } else {
+        ui.style().interact(&response).fg_stroke.color
+    };
+    paint(ui.painter(), rect.shrink(6.0), color, icon);
     response.on_hover_text(tip)
 }
 
@@ -489,23 +583,87 @@ pub(crate) fn paint(painter: &Painter, rect: Rect, color: Color32, icon: Icon) {
             }
         }
         Icon::Settings => {
-            painter.circle_stroke(center, size * 0.24, stroke);
-            for step in 0..8 {
-                let angle = std::f32::consts::TAU * (step as f32) / 8.0;
+            // A gear as the emoji draws it: a solid body with a small hole in the middle,
+            // and eight broad teeth that grow out of it.
+            let hole = size * 0.14;
+            let body = size * 0.32;
+            // The body is a thick ring: a closed path (stroked about its middle, unlike a
+            // circle's stroke) reaching from the hole to the body's rim.
+            let middle = (hole + body) * 0.5;
+            let ring: Vec<Pos2> = (0..48)
+                .map(|step| {
+                    center + Vec2::angled(std::f32::consts::TAU * step as f32 / 48.0) * middle
+                })
+                .collect();
+            painter.add(Shape::closed_line(
+                ring,
+                Stroke::new(body - hole, stroke.color),
+            ));
+            let teeth = 8;
+            for step in 0..teeth {
+                let angle = std::f32::consts::TAU * (step as f32) / (teeth as f32);
                 let direction = Vec2::angled(angle);
-                painter.line_segment(
-                    [
-                        center + direction * (size * 0.34),
-                        center + direction * (size * 0.48),
+                let across = Vec2::angled(angle + std::f32::consts::FRAC_PI_2);
+                let inner = center + direction * (body - size * 0.04);
+                let outer = center + direction * (size * 0.48);
+                painter.add(Shape::convex_polygon(
+                    vec![
+                        inner - across * (size * 0.115),
+                        inner + across * (size * 0.115),
+                        outer + across * (size * 0.08),
+                        outer - across * (size * 0.08),
                     ],
-                    stroke,
-                );
+                    stroke.color,
+                    Stroke::NONE,
+                ));
             }
         }
         Icon::Add => {
             let half = size * 0.42;
             painter.line_segment([center - vec2(half, 0.0), center + vec2(half, 0.0)], stroke);
             painter.line_segment([center - vec2(0.0, half), center + vec2(0.0, half)], stroke);
+        }
+        Icon::Delete => {
+            // A trash can: a lid with its handle, and below it a slightly tapered body with
+            // two ribs.
+            let lid = center.y - size * 0.24;
+            let lid_half = size * 0.38;
+            painter.line_segment(
+                [
+                    pos2(center.x - lid_half, lid),
+                    pos2(center.x + lid_half, lid),
+                ],
+                stroke,
+            );
+            let handle = size * 0.13;
+            painter.add(Shape::line(
+                vec![
+                    pos2(center.x - handle, lid),
+                    pos2(center.x - handle, lid - size * 0.13),
+                    pos2(center.x + handle, lid - size * 0.13),
+                    pos2(center.x + handle, lid),
+                ],
+                stroke,
+            ));
+            let top = lid + size * 0.12;
+            let bottom = center.y + size * 0.42;
+            let (top_half, bottom_half) = (size * 0.29, size * 0.23);
+            painter.add(Shape::line(
+                vec![
+                    pos2(center.x - top_half, top),
+                    pos2(center.x - bottom_half, bottom),
+                    pos2(center.x + bottom_half, bottom),
+                    pos2(center.x + top_half, top),
+                ],
+                stroke,
+            ));
+            for side in [-1.0, 1.0] {
+                let x = center.x + side * size * 0.09;
+                painter.line_segment(
+                    [pos2(x, top + size * 0.08), pos2(x, bottom - size * 0.1)],
+                    stroke,
+                );
+            }
         }
         Icon::Rename => {
             // A pencil: a thin body from the lower left to the upper right, and its tip.
@@ -602,7 +760,7 @@ pub(crate) fn paint(painter: &Painter, rect: Rect, color: Color32, icon: Icon) {
                 thin,
             );
         }
-        Icon::Tuner => {
+        Icon::TuningFork => {
             // A tuning fork: two prongs, the U where they meet, a stem and a base.
             let half = size * 0.24;
             let top = center.y - size * 0.44;
@@ -636,6 +794,23 @@ pub(crate) fn paint(painter: &Painter, rect: Rect, color: Color32, icon: Icon) {
                 ],
                 stroke,
             );
+        }
+        Icon::Tuner => {
+            // A sound wave: one sine period and a half across the icon, as the tuner draws
+            // the tone it plays.
+            let width = size * 0.42;
+            let amplitude = size * 0.3;
+            let wave: Vec<_> = (0..=24)
+                .map(|step| {
+                    let share = step as f32 / 24.0;
+                    let x = center.x - width + 2.0 * width * share;
+                    pos2(
+                        x,
+                        center.y - amplitude * (share * 3.0 * std::f32::consts::PI).sin(),
+                    )
+                })
+                .collect();
+            painter.add(Shape::line(wave, stroke));
         }
         Icon::SpeedTrainer => {
             // A speed gauge: an open arc, a few ticks and a needle pointing up-right.
