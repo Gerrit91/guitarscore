@@ -522,14 +522,18 @@ pub struct CompressorBus {
 
 impl Default for CompressorBus {
     fn default() -> Self {
-        // A CA-76 at "All", driven hard and made up: the classic parallel slam.
+        // A CA-76 at 4:1 for a whole drum kit and a few instruments: about 7 dB of gain
+        // reduction on a kit peaking at -14 dBFS, the slowest attack so the hits keep their
+        // front, and a release long enough that it breathes rather than pumps (the gain
+        // swings about 6 dB between hits; "All" at +18 dB swung 20 dB). The output puts the
+        // compressed sum about 6 dB under what feeds it, blended in under the dry tracks.
         let mut block =
             crate::chain_settings::BlockSetting::of(crate::chain_settings::BlockChoice::Compressor);
-        block.input_db = 18.0;
-        block.gain_db = -12.0;
-        block.attack_ms = 0.2;
-        block.release_ms = 150.0;
-        block.comp_ratio = crate::chain_settings::CompRatioSetting::All;
+        block.input_db = 9.0;
+        block.gain_db = -7.0;
+        block.attack_ms = 0.8;
+        block.release_ms = 400.0;
+        block.comp_ratio = crate::chain_settings::CompRatioSetting::Four;
         block.mix = 1.0;
         CompressorBus {
             level: 127,

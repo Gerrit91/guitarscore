@@ -66,8 +66,8 @@ impl GuitarScoreApp {
                         ui.label(
                             RichText::new(
                                 "Parallel (\"New York\") compression: the tracks send into \
-                                 this bus with their Comp knob in the mixer, it squashes the \
-                                 sum hard, and its fader blends the result in under the dry \
+                                 this bus with their Comp knob in the mixer, it compresses \
+                                 the sum, and its fader blends the result in under the dry \
                                  tracks. Its meter shows how far it works.",
                             )
                             .weak(),
@@ -98,6 +98,20 @@ impl GuitarScoreApp {
                                     block = BlockSetting::of(choice);
                                     rebuilt = true;
                                 }
+                            }
+                            // Back to the built-in setting (a saved bus keeps its own knobs
+                            // when the built-in one changes).
+                            let default = crate::settings::CompressorBus::default().block;
+                            if ui
+                                .add_enabled(block != default, egui::Button::new("Default"))
+                                .on_hover_text(
+                                    "The built-in setting: 4:1, made for a whole drum kit and \
+                                     a few instruments",
+                                )
+                                .clicked()
+                            {
+                                block = default;
+                                rebuilt = true;
                             }
                         });
                         ui.add_space(4.0);

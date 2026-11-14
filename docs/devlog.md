@@ -5400,3 +5400,15 @@ Measured on the way (FluidR3 kit, the default reverb bus, 100 % send): the rever
 peaks about 9 dB under the drum track's, its energy 2-4 dB under. The send is full; a
 reverb spreads a hit's peak over its tail, the block is voiced 4-6 dB under the dry
 signal, and the bus's 150 Hz low cut takes the kick's body (about 3 dB of a kit).
+
+## 2026-11-14 — Reverb bus return +6 dB; a compressor bus default that does not pump
+
+- The reverb bus returns 6 dB louder (`mixer::REVERB_RETURN_DB`): the reverb block is
+  voiced 4-6 dB under the dry signal when all wet, so a full send came back well under the
+  track. A drum kit at 100 % send now comes back about 1.5 dB over its energy, its peaks
+  about 3 dB under (a reverb spreads a hit over its tail).
+- The compressor bus's default is 4:1, +9 dB in, -7 dB out, 0.8 ms attack, 400 ms release
+  (was "All" at +18 dB, 0.2 / 150 ms). Measured on a FluidR3 kit groove peaking at
+  -14 dBFS: about 7 dB of gain reduction swinging 6 dB between hits (was 16 dB swinging
+  21 dB: the pumping). A Default button in the bus window brings it back; a bus saved in
+  the settings or a song keeps its own knobs.
