@@ -5358,3 +5358,14 @@ live on a branch, `feature/design-mode`, in four steps:
 Open: what GP8 itself writes for a moved beat (needs a GP8-saved file), only horizontal
 movement (as in Guitar Pro), the exact width step of `+`/`-` (ours is 10 %), and native
 printing of the result.
+
+## 2026-11-14 — GP8's own beat layout properties are kept
+
+No Guitar Pro 8 licence is available here (the trial has expired), so the design mode's
+own beat offset cannot be probed; the plan stays: GuitarScore's `GuitarScoreSpacing`
+property until a GP8-saved file shows the format's field. What could be fixed blind is the
+loss: GP8 writes `<XProperties>` on a `<Beat>` too (alphaTab reads three beaming ids), and
+the reader dropped them. `Beat::x_properties` now keeps them verbatim and the GPIF writer
+writes them back, like a bar's and a master bar's, so a GP8 file's design data survives a
+save even where we cannot interpret it. Test: `gpif_import/design_tests.rs`
+(`guitar_pros_own_beat_layout_properties_survive_saving`).

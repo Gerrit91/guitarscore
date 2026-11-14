@@ -268,6 +268,9 @@ pub(super) fn convert_beat(
             }
         }
     }
+    // GuitarScore addition: Guitar Pro's own beat layout properties are kept, so saving
+    // does not lose what Guitar Pro 8 wrote there.
+    s_beat.x_properties = xproperties(g_beat.x_properties.as_ref());
     if s_beat.effect.tremolo_bar.is_none()
         && let (Some(origin), Some(destination)) = (whammy_origin, whammy_destination)
     {

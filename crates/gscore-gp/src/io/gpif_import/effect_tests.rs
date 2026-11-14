@@ -64,6 +64,7 @@ fn beat() -> GpifBeat {
         arpeggio: None,
         dead_slapped: None,
         properties: None,
+        x_properties: None,
     }
 }
 
@@ -274,6 +275,7 @@ fn whammy_bar_is_imported() {
         arpeggio: None,
         dead_slapped: None,
         properties: None,
+        x_properties: None,
     };
     let mut velocity = 0;
     let song_beat = super::convert_beat(&beat, &HashMap::new(), &HashMap::new(), &mut velocity);
@@ -404,6 +406,7 @@ fn gp6_whammy_properties_are_imported() {
                     property("WhammyBarDestinationValue", destination),
                 ],
             }),
+            x_properties: None,
         }
     }
 

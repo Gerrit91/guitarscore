@@ -257,6 +257,10 @@ pub(crate) struct Beat {
     pub dead_slapped: Option<EnableTag>,
     #[serde(rename = "Properties", default)]
     pub properties: Option<BeatPropertiesWrapper>,
+    /// GuitarScore addition: Guitar Pro's opaque layout properties for this beat (beam
+    /// overrides and GP8's design-mode data), kept verbatim.
+    #[serde(rename = "XProperties", default)]
+    pub x_properties: Option<XPropertiesWrapper>,
 }
 
 /// The `<Lyrics>` of a beat: one syllable per lyric line (often empty).

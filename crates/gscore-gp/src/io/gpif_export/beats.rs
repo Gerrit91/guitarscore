@@ -253,6 +253,10 @@ pub(super) fn build_beat_xml(
         bxml.push_str("</Properties>");
     }
 
+    // GuitarScore addition: Guitar Pro's own beat layout properties, written back as they
+    // were read.
+    bxml.push_str(&xproperties_xml(&beat.x_properties));
+
     // Rhythm reference
     bxml.push_str(&format!("<Rhythm ref=\"{rhythm_id}\"/>"));
 

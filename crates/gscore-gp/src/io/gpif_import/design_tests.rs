@@ -162,6 +162,50 @@ fn design_data_survives_saving() {
     );
 }
 
+/// A GP7 file whose first beat carries Guitar Pro's own beat layout properties (as GP8
+/// writes them for beaming and its design mode).
+fn with_beat_properties() -> Vec<u8> {
+    with_gpif(MULTI_STAFF, |gpif| {
+        insert_inside(
+            gpif,
+            "<Beat id=",
+            "</Beat>",
+            "<XProperties>\
+             <XProperty id=\"1124204545\"><Int>1</Int></XProperty>\
+             <XProperty id=\"1124204552\"><Int>8</Int></XProperty>\
+             </XProperties>",
+        )
+    })
+}
+
+#[test]
+fn guitar_pros_own_beat_layout_properties_survive_saving() {
+    let mut song = Song::default();
+    song.read_gp(&with_beat_properties()).expect("reads");
+    let kept = |song: &Song| {
+        song.tracks[0].measures[0]
+            .voices
+            .first()
+            .and_then(|voice| voice.beats.first())
+            .map(|beat| {
+                beat.x_properties
+                    .iter()
+                    .map(|property| (property.id.clone(), property.value.clone()))
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default()
+    };
+    let properties = kept(&song);
+    assert_eq!(properties.len(), 2, "{properties:?}");
+    assert!(properties.contains(&("1124204545".to_owned(), "1".to_owned())));
+    // A save and reload keeps them, which a GP8 file's design data needs.
+    let mut reread = Song::default();
+    reread
+        .read_gp(&song.write_gp().expect("writes"))
+        .expect("reads back");
+    assert_eq!(kept(&reread), properties);
+}
+
 #[test]
 fn a_hostile_scale_is_clamped() {
     let file = with_gpif(MULTI_STAFF, |gpif| {

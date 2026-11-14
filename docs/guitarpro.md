@@ -334,6 +334,9 @@ Code comments mark changed spots with "GuitarScore". Each fix could be offered u
     `x_properties`, the properties the file had, kept verbatim and written back in the
     same order and shape (`Int`, `Double`, `Float`, `Text`); at most
     `MAX_XPROPERTIES` (64) per bar are kept, and a value this code cannot name is skipped.
+    GP8 writes the same `<XProperties>` on a `<Beat>` too (beam overrides, and whatever its
+    design mode needs); those are kept verbatim as well (`Beat::x_properties`), so a GP8
+    file's own layout data survives a save even where this code cannot interpret it.
     The one id the model understands is the bar's width scale (`BAR_SCALE` 1124139520 on
     a bar, `MASTER_BAR_SCALE` 1124073984 on a master bar), read as
     `Measure::display_scale` / `MeasureHeader::display_scale`, clamped to
