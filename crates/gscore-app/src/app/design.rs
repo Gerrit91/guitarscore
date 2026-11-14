@@ -47,10 +47,19 @@ struct Drag {
     handle: Handle,
     /// Where the handle was when the drag started, in staff spaces.
     x: f32,
-    /// The column's offset, or the bar's width, when the drag started (staff spaces).
+    /// The column's offset, or the width of the bar's columns, when the drag started
+    /// (staff spaces).
     value: f32,
-    /// The bar's natural width (at a scale of 1) when the drag started, in staff spaces.
+    /// The width of the bar's columns at a scale of 1 when the drag started, in staff
+    /// spaces.
     natural: f32,
+    /// How far the pointer has moved since the drag started, in staff spaces. The target is
+    /// the start plus this, never the handle's laid-out place: a justified line moves the
+    /// handle away from the pointer, and following it would make the bar creep.
+    moved: f32,
+    /// Whether this drag has sent a command: the first one starts an undo step, the later
+    /// ones continue it (so a second drag of the same handle is a step of its own).
+    sent: bool,
 }
 
 /// What the overlay edits: the song, the staff the handles follow, and whose bars change.
@@ -82,14 +91,21 @@ impl Overlay<'_> {
         }
     }
 
-    /// The percent of its natural width `measure` has now.
+    /// The percent of its natural width `measure` has now, in the width a command of this
+    /// overlay changes: the staff's own (falling back to the song's) in a single-track
+    /// view, the song's with several tracks shown.
     fn percent_of(&self, measure: MeasureIndex) -> f32 {
-        self.song.measure_scale(self.track, self.staff, measure) * 100.0
+        let scale = match self.scope {
+            Some(_) => self.song.measure_scale(self.track, self.staff, measure),
+            None => self.song.song_measure_scale(measure).unwrap_or(1.0),
+        };
+        scale * 100.0
     }
 }
 
 /// Draws the design mode over the page and turns the pointer's gestures into `commands`,
-/// which the caller applies (with merge, so one drag is one undo step).
+/// which the caller applies. A drag's command comes with whether it continues the drag's
+/// undo step (the first of a drag starts one, so one drag is one undo step).
 #[allow(clippy::too_many_arguments)]
 pub(super) fn overlay(
     ui: &mut egui::Ui,
@@ -101,7 +117,7 @@ pub(super) fn overlay(
     theme: &Theme,
     design: &Overlay<'_>,
     state: &mut DesignState,
-    dragged: &mut Option<Command>,
+    dragged: &mut Option<(Command, bool)>,
     commands: &mut Vec<Command>,
 ) {
     let scale = POINTS_PER_SPACE * zoom;
@@ -197,13 +213,13 @@ pub(super) fn overlay(
                     state.drag = Some(start_drag(design, places, handle, x));
                 }
                 if response.dragged()
-                    && state
-                        .drag
-                        .as_ref()
-                        .is_some_and(|drag| drag.handle == handle)
+                    && let Some(drag) = state.drag.as_mut()
+                    && drag.handle == handle
                 {
-                    let delta = response.drag_delta().x / scale;
-                    let mut target = x + delta;
+                    drag.moved += response.drag_delta().x / scale;
+                    let start = drag.x;
+                    let mut target = start + drag.moved;
+                    // Not to itself: the handle's own line is where the layout put it now.
                     if let Some(snapped) = snap(&candidates, target, x, scale) {
                         target = snapped;
                         let line = to_screen(Point::new(target, 0.0)).x;
@@ -214,8 +230,8 @@ pub(super) fn overlay(
                             3.0,
                         ));
                     }
-                    if let Some(command) = drag_command(design, state, handle, target) {
-                        *dragged = Some(command);
+                    if let Some(step) = drag_step(design, state, handle, target) {
+                        *dragged = Some(step);
                     }
                 }
                 if response.drag_stopped() {
@@ -368,20 +384,47 @@ fn start_drag(design: &Overlay<'_>, places: &Places, handle: Handle, x: f32) -> 
                 .and_then(|beat| beat.spacing())
                 .unwrap_or(0.0),
             natural: 1.0,
+            moved: 0.0,
+            sent: false,
         },
         Handle::Barline(measure) => {
-            let width = places
-                .measure(measure)
-                .map_or(0.0, |place| (place.right - place.left).max(0.0));
+            // The scale stretches the bar's columns only (its clef, key and time signature
+            // and the room before the first beat stay), so the drag measures those: from
+            // the first column to the barline.
+            let columns = places.measure(measure).map_or(0.0, |place| {
+                let first = place
+                    .beats
+                    .iter()
+                    .map(|beat| beat.x)
+                    .fold(place.content, f32::min)
+                    .max(place.left);
+                (place.right - first).max(0.0)
+            });
             let percent = design.percent_of(measure) / 100.0;
             Drag {
                 handle,
                 x,
-                value: width,
-                natural: width / percent.max(0.01),
+                value: columns,
+                natural: columns / percent.max(0.01),
+                moved: 0.0,
+                sent: false,
             }
         }
     }
+}
+
+/// The command a drag to `target` makes, with whether it continues the drag's undo step:
+/// the drag's first command starts one, its later ones continue it.
+fn drag_step(
+    design: &Overlay<'_>,
+    state: &mut DesignState,
+    handle: Handle,
+    target: f32,
+) -> Option<(Command, bool)> {
+    let command = drag_command(design, state, handle, target)?;
+    let drag = state.drag.as_mut()?;
+    let merge = std::mem::replace(&mut drag.sent, true);
+    Some((command, merge))
 }
 
 /// The command a drag to `target` (staff spaces) makes.
@@ -442,9 +485,10 @@ fn reset_commands(design: &Overlay<'_>, measures: &[MeasureIndex]) -> Vec<Comman
                 percent: None,
             });
         }
+        // The staff the handles follow: its own width and its moved beats.
         let Some(view) = design
             .song
-            .track(design.track)
+            .staff(design.track, design.staff)
             .and_then(|track| track.measure(measure))
         else {
             continue;
@@ -520,6 +564,8 @@ mod tests {
                 x: 10.0,
                 value: 0.0,
                 natural: 1.0,
+                moved: 0.0,
+                sent: false,
             }),
         };
         let command = drag_command(&design, &state, Handle::Column(column(1)), 10.234).unwrap();
@@ -565,6 +611,8 @@ mod tests {
                 x: 20.0,
                 value: 10.0,
                 natural: 10.0,
+                moved: 0.0,
+                sent: false,
             }),
         };
         let command = drag_command(&design, &state, Handle::Barline(measure), 22.0).unwrap();
@@ -590,6 +638,102 @@ mod tests {
                 measure,
                 percent: Some(25)
             }
+        );
+    }
+
+    #[test]
+    fn a_drag_is_one_undo_step_and_the_next_drag_another() {
+        let song = test_song();
+        let design = overlay(&song);
+        let start = |state: &mut DesignState| {
+            state.drag = Some(Drag {
+                handle: Handle::Column(column(1)),
+                x: 10.0,
+                value: 0.0,
+                natural: 1.0,
+                moved: 0.0,
+                sent: false,
+            });
+        };
+        let mut state = DesignState::default();
+        start(&mut state);
+        let handle = Handle::Column(column(1));
+        let merges: Vec<bool> = [10.5, 11.0, 11.5]
+            .iter()
+            .filter_map(|&target| drag_step(&design, &mut state, handle, target))
+            .map(|(_, merge)| merge)
+            .collect();
+        assert_eq!(merges, [false, true, true]);
+        // Released and taken again: a new step.
+        start(&mut state);
+        let (_, merge) = drag_step(&design, &mut state, handle, 12.0).unwrap();
+        assert!(!merge);
+    }
+
+    #[test]
+    fn narrowing_with_several_tracks_starts_from_the_songs_width() {
+        let mut song = test_song();
+        let measure = MeasureIndex::new(0);
+        // The track's own bar is wider; the song's is unset.
+        let _ = song
+            .set_measure_scale(
+                gscore_model::ScaleScope::Staff {
+                    track: TrackIndex::new(0),
+                    staff: StaffIndex::new(0),
+                },
+                measure,
+                Some(1.5),
+            )
+            .unwrap();
+        let single = overlay(&song);
+        assert!((single.percent_of(measure) - 150.0).abs() < 0.01);
+        let several = Overlay {
+            scope: None,
+            ..overlay(&song)
+        };
+        assert!((several.percent_of(measure) - 100.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn reset_clears_the_cursor_staffs_own_layout() {
+        let mut song = testing::song_with_two_staves().unwrap();
+        let measure = MeasureIndex::new(0);
+        let bass = StaffIndex::new(1);
+        let _ = song
+            .set_measure_scale(
+                gscore_model::ScaleScope::Staff {
+                    track: TrackIndex::new(0),
+                    staff: bass,
+                },
+                measure,
+                Some(1.25),
+            )
+            .unwrap();
+        let moved = BeatPosition {
+            staff: bass,
+            beat: gscore_model::BeatIndex::new(0),
+            ..column(0)
+        };
+        let _ = song.set_beat_spacing(moved, Some(0.5)).unwrap();
+        let design = Overlay {
+            staff: bass,
+            ..overlay(&song)
+        };
+        let commands = reset_commands(&design, &[measure]);
+        assert_eq!(
+            commands,
+            vec![
+                Command::SetMeasureScale {
+                    track: Some(TrackIndex::new(0)),
+                    staff: bass,
+                    measure,
+                    percent: None,
+                },
+                Command::SetBeatSpacing {
+                    at: moved,
+                    offset: None,
+                },
+            ]
         );
     }
 

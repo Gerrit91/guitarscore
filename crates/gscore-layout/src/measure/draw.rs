@@ -227,7 +227,7 @@ impl MeasureLayout {
             previous = Some(at);
             cursor = at + column.advance(stretch);
         }
-        cursor
+        cursor + self.tail_spacing
     }
 
     /// Where the first voice's beats are, for lyrics: `(beat, x)`.

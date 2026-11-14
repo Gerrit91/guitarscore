@@ -55,17 +55,20 @@ pub(crate) struct XPropertiesWrapper {
     pub properties: Vec<XPropertyTag>,
 }
 
-/// One `<XProperty id="...">` with its value in a typed child element.
+/// One `<XProperty id="...">` with its value in a typed child element. Every value is read
+/// as text: it is kept verbatim (a number is written back exactly as Guitar Pro wrote it),
+/// and a value that is not a valid number cannot make the whole file fail to open; the
+/// ids GuitarScore understands parse their number when they are used.
 #[derive(Debug, Default, Deserialize)]
 pub(crate) struct XPropertyTag {
     #[serde(rename = "@id", default)]
     pub id: String,
     #[serde(rename = "Int", default)]
-    pub int: Option<i64>,
+    pub int: Option<String>,
     #[serde(rename = "Double", default)]
-    pub double: Option<f64>,
+    pub double: Option<String>,
     #[serde(rename = "Float", default)]
-    pub float: Option<f64>,
+    pub float: Option<String>,
     #[serde(rename = "Text", default)]
     pub text: Option<String>,
 }
@@ -75,9 +78,9 @@ impl XPropertyTag {
     /// for a value this code does not know (it cannot be written back faithfully).
     pub(crate) fn to_xproperty(&self) -> Option<XProperty> {
         let (kind, value) = match (&self.int, &self.double, &self.float, &self.text) {
-            (Some(value), _, _, _) => ("Int", value.to_string()),
-            (_, Some(value), _, _) => ("Double", value.to_string()),
-            (_, _, Some(value), _) => ("Float", value.to_string()),
+            (Some(value), _, _, _) => ("Int", value.trim().to_owned()),
+            (_, Some(value), _, _) => ("Double", value.trim().to_owned()),
+            (_, _, Some(value), _) => ("Float", value.trim().to_owned()),
             (_, _, _, Some(value)) => ("Text", value.clone()),
             _ => return None,
         };

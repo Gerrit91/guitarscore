@@ -215,7 +215,7 @@ fn every_mixer_strip_opens_its_sound_chain_from_the_stomp_box() {
     let mut harness = app_with_mixer_view();
     harness.get_by_label("Sound chain for Clean Guitar").click();
     harness.run();
-    harness.snapshot("mixer_stomp_track");
+    harness.snapshot_options("mixer_stomp_track", &meter_tolerance());
 }
 
 #[test]

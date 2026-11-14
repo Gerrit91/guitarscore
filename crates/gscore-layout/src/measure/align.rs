@@ -19,6 +19,11 @@ use crate::options::Spacing;
 /// and what any track's notes there need, and a column that spans several gaps (another
 /// track has beats in between) gets at least its own natural space. One track (or none) is
 /// returned unchanged.
+///
+/// Guitar Pro's design mode applies across the tracks too: the gaps follow the widest bar's
+/// width scale (as a bar is as wide as its widest track), and a column moved in one track
+/// moves every track's column at that time (and with it the rest of the bar), so the beats
+/// still stand one above the other.
 pub(crate) fn align(measures: &[Arc<MeasureLayout>], spacing: &Spacing) -> Vec<Arc<MeasureLayout>> {
     if measures.len() < 2 {
         return measures.to_vec();
@@ -45,15 +50,37 @@ pub(crate) fn align(measures: &[Arc<MeasureLayout>], spacing: &Spacing) -> Vec<A
         return measures.to_vec();
     };
     let at = |onset: Duration| grid.binary_search(&onset).ok();
-    // The length of each gap, from a start time to the next one (or to the end).
+    let scale = measures
+        .iter()
+        .map(|m| m.scale)
+        .fold(f32::NEG_INFINITY, f32::max);
+    let scale = if scale.is_finite() {
+        scale.max(0.0)
+    } else {
+        1.0
+    };
+    // The length of each gap, from a start time to the next one (or to the end), at the
+    // bar's width scale.
     let mut gaps: Vec<f32> = grid
         .iter()
         .enumerate()
         .map(|(index, onset)| {
             let next = grid.get(index.saturating_add(1)).copied().unwrap_or(end);
-            spacing.after(next.checked_sub(*onset).map_or(0.0, as_f64))
+            spacing.after(next.checked_sub(*onset).map_or(0.0, as_f64)) * scale
         })
         .collect();
+    // The design mode's offset at each start time: the largest move any track's column
+    // there has (a move left counts by its size too).
+    let mut shifts = vec![0.0_f32; grid.len()];
+    for measure in measures {
+        for column in &measure.columns {
+            if let Some(shift) = at(column.onset).and_then(|index| shifts.get_mut(index))
+                && column.spacing.abs() > shift.abs()
+            {
+                *shift = column.spacing;
+            }
+        }
+    }
     // Every column's span on the grid: its gap index and the next column's (or the end).
     let spans: Vec<Vec<(usize, usize, f32)>> = measures
         .iter()
@@ -99,12 +126,19 @@ pub(crate) fn align(measures: &[Arc<MeasureLayout>], spacing: &Spacing) -> Vec<A
             let mut aligned = MeasureLayout::clone(measure);
             aligned.signature_pad = keys - key_width(measure);
             aligned.lead = lead + (times - time_width(measure));
+            // Each column moves by the offsets of every start time since the column before
+            // it; what comes after the last column moves the barline.
+            let mut taken = 0;
             for (column, &(from, to, _)) in aligned.columns.iter_mut().zip(spans) {
                 column.space = gaps.get(from..to).map_or(0.0, |gaps| gaps.iter().sum());
                 // Lined up across tracks, a column is not squeezed: the tracks' columns
                 // would part.
                 column.floor = column.space;
+                let upto = from.saturating_add(1).max(taken);
+                column.spacing = shifts.get(taken..upto).map_or(0.0, |s| s.iter().sum());
+                taken = upto;
             }
+            aligned.tail_spacing = shifts.get(taken..).map_or(0.0, |s| s.iter().sum());
             Arc::new(aligned)
         })
         .collect()

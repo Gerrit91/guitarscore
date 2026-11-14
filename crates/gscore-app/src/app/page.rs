@@ -193,7 +193,7 @@ impl GuitarScoreApp {
         // Guitar Pro's design mode: the commands its handles and buttons made this frame.
         let design_mode = self.view.design_mode;
         let mut design_commands: Vec<Command> = Vec::new();
-        let mut design_drag: Option<Command> = None;
+        let mut design_drag: Option<(Command, bool)> = None;
         let mut designing = false;
         let playing = self.playback.state() == PlayState::Playing;
         // The vertical views turn over while playing: once the playing line leaves the
@@ -499,8 +499,8 @@ impl GuitarScoreApp {
         // The design mode's edits, once the page's own borrows are done: a drag continues
         // one undo step; a button's batch is one step of its own.
         let design_edited = design_drag.is_some() || !design_commands.is_empty();
-        if let Some(command) = design_drag {
-            self.apply_command(command, true);
+        if let Some((command, merge)) = design_drag {
+            self.apply_command(command, merge);
         }
         if !design_commands.is_empty() {
             self.apply_commands(design_commands);

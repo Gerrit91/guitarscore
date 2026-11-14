@@ -5369,3 +5369,21 @@ the reader dropped them. `Beat::x_properties` now keeps them verbatim and the GP
 writes them back, like a bar's and a master bar's, so a GP8 file's design data survives a
 save even where we cannot interpret it. Test: `gpif_import/design_tests.rs`
 (`guitar_pros_own_beat_layout_properties_survive_saving`).
+
+## 2026-11-14 — Review fixes on feature/design-mode
+
+- CI: `mixer_stomp_track` takes the meter tolerance the other wide mixer snapshots have
+  (the GitHub runner's software GPU anti-aliases thin lines differently: 11 pixels past 0.6).
+- Several tracks: a column moved in one track moves every track's column at that time (and
+  the barline after a track's last column, `tail_spacing`); a bar's width scale shrinks the
+  aligned gaps too (the widest track's scale), so "-" and a barline drag narrow a bar.
+- A squeezed bar never puts its columns below the room their notes need.
+- Line breaking counts a moved column's room once, as fixed width (the larger of its room
+  at a natural and a squeezed line), so a planned line never runs past the margin.
+- Drags: the target is where the drag started plus the pointer's whole movement (a
+  justified line no longer makes a held handle creep); a barline drag scales the bar's
+  columns, not its signatures; each drag is one undo step of its own.
+- "-" with several tracks starts from the song's width; reset clears the cursor staff's own
+  width and moved beats (was staff 1's).
+- `<XProperty>` values are read as text: an odd number no longer stops a file from opening,
+  and every value is written back exactly as the file had it.

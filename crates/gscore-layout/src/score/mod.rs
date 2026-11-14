@@ -137,9 +137,13 @@ pub(crate) fn layout_with(
             let (before, after) = marks.extra_width(&top.ctx);
             MeasureWidth {
                 // Guitar Pro's design mode: a moved column's room is fixed, not squeezed.
-                fixed: m.fixed_width() + m.spacing_width() + before + after,
+                // The clamps that keep a column clear of its neighbour make that room
+                // depend a little on the stretch (a column moved left gets less of its
+                // move on a squeezed line), so the line reserves the larger of the two:
+                // a planned line never runs past the margin.
+                fixed: m.fixed_width() + m.spacing_width().max(m.spacing_floor()) + before + after,
                 stretchable: m.stretchable_width(),
-                floor: m.floor_width() + m.spacing_floor(),
+                floor: m.floor_width(),
             }
         })
         .collect();

@@ -249,3 +249,45 @@ fn a_scale_set_in_the_model_replaces_the_file_value() {
         .expect("reads back");
     assert_eq!(reread.tracks[0].measures[0].display_scale(), None);
 }
+
+#[test]
+fn an_odd_property_value_neither_stops_the_file_nor_changes() {
+    // An `Int` written with a decimal point or past i64, and a `Double` with trailing
+    // zeros: the file opens, and each value is written back exactly as it was.
+    let file = with_gpif(MULTI_STAFF, |gpif| {
+        insert_inside(
+            gpif,
+            "<Bar id=",
+            "</Bar>",
+            &format!(
+                "<XProperties>\
+                 <XProperty id=\"1124204545\"><Int>1.0</Int></XProperty>\
+                 <XProperty id=\"1124204546\"><Int>99999999999999999999</Int></XProperty>\
+                 <XProperty id=\"{BAR_SCALE}\"><Double>1.50</Double></XProperty>\
+                 </XProperties>"
+            ),
+        )
+    });
+    let mut song = Song::default();
+    song.read_gp(&file)
+        .expect("an odd value does not stop the file");
+    assert_eq!(song.tracks[0].measures[0].display_scale(), Some(1.5));
+    let values = |song: &Song| {
+        song.tracks[0].measures[0]
+            .x_properties
+            .iter()
+            .map(|property| (property.id.clone(), property.value.clone()))
+            .collect::<Vec<_>>()
+    };
+    let expected = vec![
+        ("1124204545".to_owned(), "1.0".to_owned()),
+        ("1124204546".to_owned(), "99999999999999999999".to_owned()),
+        (BAR_SCALE.to_owned(), "1.50".to_owned()),
+    ];
+    assert_eq!(values(&song), expected);
+    let mut reread = Song::default();
+    reread
+        .read_gp(&song.write_gp().expect("writes"))
+        .expect("reads back");
+    assert_eq!(values(&reread), expected);
+}

@@ -106,6 +106,12 @@ pub(crate) struct MeasureLayout {
     columns: Vec<Column>,
     /// When the measure ends: the time signature's length, or the longest voice.
     end: Duration,
+    /// Guitar Pro's design mode: the bar's width scale (1 at its natural width).
+    scale: f32,
+    /// Guitar Pro's design mode: room after the last column, in staff spaces. Lined up
+    /// across tracks, another track's column moved after this one's last moves the barline
+    /// (0 on its own; set by [`align`]).
+    tail_spacing: f32,
 }
 
 /// A time signature as glyph rows, scaled to the staff.
@@ -520,8 +526,8 @@ impl MeasureLayout {
                 // Guitar Pro's design mode: a bar's width scale stretches or squeezes its
                 // columns (never below the room its notes need), keeping its lead and
                 // signatures as they are.
-                let natural = (space.max(room) * scale).max(0.0);
-                let room = room.min(natural).max(0.0);
+                let room = room.max(0.0);
+                let natural = (space.max(room) * scale).max(room);
                 Column {
                     onset: onsets.get(i).copied().unwrap_or(starts.end),
                     space: natural,
@@ -569,6 +575,8 @@ impl MeasureLayout {
             lead,
             columns,
             end: starts.end,
+            scale,
+            tail_spacing: 0.0,
         })
     }
 

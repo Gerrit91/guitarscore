@@ -242,3 +242,72 @@ fn a_wider_bar_of_a_later_track_widens_it_for_every_track() {
         "the shared bar line follows the widest bar: {before} became {after}"
     );
 }
+
+/// Two guitar tracks laid out together, the first one primary.
+fn two_tracks_layout(song: &Song) -> Layout {
+    let fonts = Fonts::bundled().expect("the bundled fonts");
+    let tracks = [TrackIndex::new(0), TrackIndex::new(1)];
+    layout_tracks(song, &tracks, tracks[0], &LayoutOptions::default(), &fonts).expect("lays out")
+}
+
+#[test]
+fn a_column_moved_in_another_track_moves_the_shown_tracks_column_too() {
+    let mut song = testing::song(&[GUITAR_6, GUITAR_6], 2).expect("a song");
+    let before = two_tracks_layout(&song);
+    let _ = song
+        .set_beat_spacing(
+            BeatPosition {
+                track: TrackIndex::new(1),
+                staff: StaffIndex::new(0),
+                measure: MeasureIndex::new(0),
+                voice: VoiceIndex::new(0),
+                beat: BeatIndex::new(1),
+            },
+            Some(2.0),
+        )
+        .expect("moves the column");
+    let after = two_tracks_layout(&song);
+    // The first track's beats stand above the second's, so they move with them.
+    assert!(
+        (beat_x(&after, 1) - (beat_x(&before, 1) + 2.0)).abs() < 0.01,
+        "{} became {}",
+        beat_x(&before, 1),
+        beat_x(&after, 1)
+    );
+    assert!((beat_x(&after, 0) - beat_x(&before, 0)).abs() < 0.01);
+    assert!(
+        (after.places.measures[0].right - (before.places.measures[0].right + 2.0)).abs() < 0.01
+    );
+}
+
+#[test]
+fn a_narrower_bar_is_narrower_with_several_tracks_too() {
+    let mut song = testing::song(&[GUITAR_6, GUITAR_6], 2).expect("a song");
+    let width = |song: &Song| {
+        let layout = two_tracks_layout(song);
+        layout.places.measures[1].right - layout.places.measures[1].left
+    };
+    let before = width(&song);
+    let _ = song
+        .set_measure_scale(ScaleScope::Song, MeasureIndex::new(1), Some(0.5))
+        .expect("sets the scale");
+    let after = width(&song);
+    assert!(after < before * 0.95, "{before} became {after}");
+}
+
+#[test]
+fn a_squeezed_bar_keeps_the_room_its_notes_need() {
+    // At a quarter of its width a bar may narrow, but its beats never come closer than
+    // their notes need.
+    let mut song = song(2);
+    let natural = layout(&song);
+    let _ = song
+        .set_measure_scale(ScaleScope::Song, MeasureIndex::new(0), Some(0.25))
+        .expect("sets the scale");
+    let squeezed = layout(&song);
+    for beat in 1..4 {
+        let gap = beat_x(&squeezed, beat) - beat_x(&squeezed, beat - 1);
+        assert!(gap > 0.5, "beats {} and {beat} are {gap} apart", beat - 1);
+        assert!(gap <= beat_x(&natural, beat) - beat_x(&natural, beat - 1) + 0.01);
+    }
+}
