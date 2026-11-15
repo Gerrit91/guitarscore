@@ -5900,3 +5900,30 @@ no place (the source, In or Out); a chain over the whole board. It is greyed whi
 clipboard is empty, and its tip says which it will do. The same for a drum part's board.
 Tests: `the_header_copies_the_selected_block_and_pastes_what_was_copied`; the copy test
 between tracks and a drum part uses the header's menu and paste.
+
+## 2026-11-15 — Jumps and codas: drawn, edited, several per bar
+
+- **Data.** A bar holds a list of navigation signs (`MeasureHeader::directions`, was one).
+  GP7 reading kept one sign, the target winning, and a bar with two `<Target>`s failed to
+  open (one field each in the serde struct); writing put codas, segnos and fine under
+  `<Jump>`. Both fixed: targets and jumps each as a list, codas, segnos and fine written as
+  `<Target>`. GP3-5 (a table of where each sign is) keeps several signs at one measure.
+- **Playback.** `playback_order` applies the first sign of a bar that acts on this pass, a
+  fine before any jump, so a bar may carry a segno and a "to coda", or a fine and a D.C. al
+  fine.
+- **Command.** `set_directions measure=N directions=segno,da_coda|none` with undo; ids as
+  in `Direction::id`, kept in GPIF order whatever was typed.
+- **Score.** A row over a system's top staff, between the ending brackets and the tempo:
+  segno, segno segno (two segnos), coda and double coda (Bravura's `codaSquare`) at the
+  bar's start; Fine, D.C./D.S./D.S.S. (al Fine, al Coda, al Double Coda) and "To Coda" with
+  its sign bold and right-aligned at the bar's end. Both are click areas
+  (`ScoreMarkKind::Directions`) that open the dialog.
+- **Dialog.** Staff palette › Jumps and codas (coda tile, with the dialog triangle): return
+  points (combinable), a 3 × 4 grid of jumps back (D.C., D.S., D.S.S. by plain, al Fine,
+  al Coda, al Double Coda; one per bar) and the two "to coda" jumps (one per bar), each an
+  engraved tile; a line explains the sign under the mouse, and a warning names what a
+  chosen jump still misses in the song (a segno, a "To Coda", a coda...).
+- Tests: GPIF and GP5 round trips with several signs per bar, playback order with two
+  signs in a bar, undo, the parser, the layout (positions, one row, click areas), the
+  dialog in the app (`staff_directions_dialog` snapshot). The Staff palette gained a tile,
+  so every app snapshot showing the palette moved by one tile.

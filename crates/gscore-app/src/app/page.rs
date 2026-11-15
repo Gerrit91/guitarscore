@@ -46,6 +46,9 @@ fn mark_name(kind: ScoreMarkKind) -> String {
     match kind {
         ScoreMarkKind::Tempo { measure } => format!("tempo of bar {}", bar(measure)),
         ScoreMarkKind::Section { measure } => format!("section of bar {}", bar(measure)),
+        ScoreMarkKind::Directions { measure } => {
+            format!("jumps and codas of bar {}", bar(measure))
+        }
         ScoreMarkKind::TimeSignature { measure } => {
             format!("time signature of bar {}", bar(measure))
         }
@@ -715,6 +718,7 @@ impl GuitarScoreApp {
             }
             ScoreMarkKind::Tempo { measure } => (Dialog::Tempo, measure),
             ScoreMarkKind::Section { measure } => (Dialog::Section, measure),
+            ScoreMarkKind::Directions { measure } => (Dialog::Directions, measure),
             ScoreMarkKind::TimeSignature { measure } => (Dialog::Time, measure),
             ScoreMarkKind::KeySignature { measure } => (Dialog::Key, measure),
         };

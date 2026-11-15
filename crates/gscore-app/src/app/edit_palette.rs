@@ -116,6 +116,9 @@ pub(super) struct PaletteSnapshot {
     /// The measure's feel and fermata.
     pub(super) feel: Feel,
     pub(super) fermata: Option<Fermata>,
+    /// The measure's jumps and codas, and the signs the song's other bars carry.
+    pub(super) directions: Vec<gscore_model::Direction>,
+    pub(super) directions_elsewhere: Vec<gscore_model::Direction>,
     /// The note on the cursor's string: whether it exists and whether it is a tie.
     pub(super) note_exists: bool,
     pub(super) note_tie: bool,
@@ -265,6 +268,8 @@ impl PaletteSnapshot {
             bars_per_system: track.and_then(|track| track.bars_per_system()),
             feel: song.feel(measure).unwrap_or_default(),
             fermata: song.fermata(measure),
+            directions: song.directions(measure),
+            directions_elsewhere: directions_elsewhere(song, measure),
             note_exists: note.is_some(),
             note_tie: note
                 .as_ref()
@@ -906,6 +911,18 @@ const REST_FACE: Face<'static> = Face::Glyph {
 
 /// Every note-input tile's face, for the test that they fit their tiles: the regular
 /// tiles, then the wide (tuplet) ones.
+/// The navigation signs the song's bars other than `measure` carry.
+fn directions_elsewhere(song: &Song, measure: MeasureIndex) -> Vec<gscore_model::Direction> {
+    gscore_model::Direction::ALL
+        .into_iter()
+        .filter(|&direction| {
+            (0..song.measure_count())
+                .map(MeasureIndex::new)
+                .any(|other| other != measure && song.has_direction(other, direction))
+        })
+        .collect()
+}
+
 #[cfg(test)]
 pub(super) fn faces() -> (Vec<Face<'static>>, Vec<Face<'static>>) {
     let mut regular: Vec<_> = [1, 2, 4, 8, 16, 32, 64]

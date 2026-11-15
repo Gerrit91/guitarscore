@@ -92,7 +92,7 @@ in AGENTS.md section 9.
 
 ## Score and layout
 
-11. **Missing in the score:** D.C./D.S./coda and other directions, lyrics, rhythm under
+11. **Missing in the score:** lyrics, rhythm under
     the tab (shown in the notation instead), a bracket or brace for multi-track systems,
     native printing (print from the PDF). Beat text can collide with high notes in the
     notation ("Bend", "Slides" in `ornaments.gp`). Text widths are estimated for

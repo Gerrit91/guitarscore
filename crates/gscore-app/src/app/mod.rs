@@ -17,6 +17,7 @@ mod circle_of_fifths;
 mod compressor_bus_window;
 mod delay_knobs;
 mod design;
+mod direction_picker;
 mod edit_dynamics;
 mod edit_effects;
 mod edit_palette;

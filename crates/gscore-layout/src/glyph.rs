@@ -87,6 +87,12 @@ pub enum Glyph {
     Dynamic(Dynamic),
     /// A fermata above the staff (`fermataVeryShortAbove` ... `fermataVeryLongAbove`).
     Fermata(Fermata),
+    /// The segno (`segno`).
+    Segno,
+    /// The coda (`coda`).
+    Coda,
+    /// The double coda, as Guitar Pro draws it (`codaSquare`).
+    CodaSquare,
     /// Sharp (`accidentalSharp`).
     Sharp,
     /// Flat (`accidentalFlat`).
@@ -251,6 +257,9 @@ impl Glyph {
             Glyph::Brace,
             Glyph::BracketTop,
             Glyph::BracketBottom,
+            Glyph::Segno,
+            Glyph::Coda,
+            Glyph::CodaSquare,
         ]
         .into_iter()
         .chain(digits)
@@ -350,6 +359,9 @@ impl Glyph {
             Glyph::Repeat1Bar => "repeat1Bar",
             Glyph::Repeat2Bars => "repeat2Bars",
             Glyph::Brace => "brace",
+            Glyph::Segno => "segno",
+            Glyph::Coda => "coda",
+            Glyph::CodaSquare => "codaSquare",
             Glyph::BracketTop => "bracketTop",
             Glyph::BracketBottom => "bracketBottom",
         }
@@ -432,6 +444,9 @@ impl Glyph {
             Glyph::Repeat1Bar => 0xE500,
             Glyph::Repeat2Bars => 0xE501,
             Glyph::Brace => 0xE000,
+            Glyph::Segno => 0xE047,
+            Glyph::Coda => 0xE048,
+            Glyph::CodaSquare => 0xE049,
             Glyph::BracketTop => 0xE003,
             Glyph::BracketBottom => 0xE004,
         };

@@ -5,6 +5,7 @@
 use egui::{RichText, vec2};
 use gscore_model::{Feel, Fermata, MAX_BARS_PER_SYSTEM, SystemBreak};
 
+use super::direction_picker;
 use super::edit_staff::{Dialog, StaffState, Target};
 use super::icons;
 use super::staff_pickers;
@@ -24,6 +25,7 @@ pub(super) fn title(dialog: Dialog) -> &'static str {
         Dialog::Endings => "Alternative endings",
         Dialog::Feel => "Swing feel",
         Dialog::Fermata => "Fermata",
+        Dialog::Directions => "Jumps and codas",
         Dialog::Break => "Line break",
         Dialog::Bars => "Bars per line",
     }
@@ -36,6 +38,7 @@ pub(super) fn width(dialog: Dialog) -> f32 {
         Dialog::Clef => 330.0,
         Dialog::Feel => 430.0,
         Dialog::Section => 380.0,
+        Dialog::Directions => 470.0,
         Dialog::Tempo | Dialog::Fermata => 380.0,
         _ => 330.0,
     }
@@ -100,6 +103,7 @@ pub(super) fn body(ui: &mut egui::Ui, state: &mut StaffState, target: Target) {
             );
         }
         Dialog::Section => staff_pickers::section(ui, state),
+        Dialog::Directions => direction_picker::show(ui, state),
         Dialog::RepeatStart => {
             for (on, name, detail, sign) in [
                 (false, "No repeat start", "A plain barline.", "\u{E030}"),
