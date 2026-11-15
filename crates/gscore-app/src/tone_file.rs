@@ -1,7 +1,7 @@
 //! A single tone in a file of its own (`.gstone`), for sharing one sound: the strings'
 //! sound, the chain after them and what plays them, as a saved tone keeps them, plus the
 //! impulse responses (WAV files) its blocks load, so the tone sounds the same on another
-//! machine. JSON, with the WAV files in Base64.
+//! machine. JSON, with the WAV files in Base64 (the same as the song's own state uses).
 //!
 //! Importing writes the impulse responses into a folder of this machine's (named by their
 //! content, so the same file imported twice is kept once) and points the blocks there.
@@ -78,7 +78,7 @@ pub(crate) fn write(preset: &ChainPreset) -> Result<(Vec<u8>, Vec<String>), Stri
             Ok(bytes) => impulses.push(Impulse {
                 place,
                 name,
-                wav: base64_encode(&bytes),
+                wav: crate::base64::encode(&bytes),
             }),
             Err(_) => unreadable.push(name),
         }
@@ -120,7 +120,7 @@ pub(crate) fn read(bytes: &[u8], impulse_dir: Option<&Path>) -> Result<Imported,
         let Some(block) = preset.chain.blocks.get_mut(impulse.place) else {
             continue;
         };
-        let Some(wav) = base64_decode(&impulse.wav) else {
+        let Some(wav) = crate::base64::decode(&impulse.wav) else {
             missing.push(impulse.name.clone());
             continue;
         };
@@ -186,57 +186,6 @@ fn file_name(path: &Path) -> String {
     )
 }
 
-const BASE64: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-
-/// Standard Base64 with padding.
-fn base64_encode(bytes: &[u8]) -> String {
-    let mut out = String::with_capacity(bytes.len().div_ceil(3) * 4);
-    let symbol =
-        |index: u32| char::from(BASE64.get((index & 63) as usize).copied().unwrap_or(b'A'));
-    for chunk in bytes.chunks(3) {
-        let [a, b, c] = [0, 1, 2].map(|at| u32::from(chunk.get(at).copied().unwrap_or(0)));
-        let group = (a << 16) | (b << 8) | c;
-        out.push(symbol(group >> 18));
-        out.push(symbol(group >> 12));
-        out.push(if chunk.len() > 1 {
-            symbol(group >> 6)
-        } else {
-            '='
-        });
-        out.push(if chunk.len() > 2 { symbol(group) } else { '=' });
-    }
-    out
-}
-
-/// Decodes [`base64_encode`]'s text (whitespace is skipped); `None` if it is not Base64.
-fn base64_decode(text: &str) -> Option<Vec<u8>> {
-    let values: Vec<u8> = text
-        .bytes()
-        .filter(|byte| !byte.is_ascii_whitespace())
-        .take_while(|&byte| byte != b'=')
-        .map(|byte| {
-            BASE64
-                .iter()
-                .position(|&symbol| symbol == byte)
-                .map(|at| at as u8)
-        })
-        .collect::<Option<_>>()?;
-    let mut out = Vec::with_capacity(values.len() * 3 / 4);
-    for chunk in values.chunks(4) {
-        if chunk.len() == 1 {
-            return None;
-        }
-        let group = chunk.iter().enumerate().fold(0_u32, |group, (at, &value)| {
-            group | (u32::from(value) << (18 - 6 * at))
-        });
-        // Four symbols carry three bytes; a shorter last group carries one byte fewer
-        // than its symbols.
-        let bytes = [(group >> 16) as u8, (group >> 8) as u8, group as u8];
-        out.extend(bytes.iter().take(chunk.len().saturating_sub(1)));
-    }
-    Some(out)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -267,19 +216,6 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).expect("a temp dir");
         dir
-    }
-
-    #[test]
-    fn base64_round_trips_every_length() {
-        for length in 0..40_usize {
-            let bytes: Vec<u8> = (0..length).map(|at| (at * 37 + 11) as u8).collect();
-            let text = base64_encode(&bytes);
-            assert_eq!(text.len() % 4, 0);
-            assert_eq!(base64_decode(&text), Some(bytes), "{length}");
-        }
-        assert_eq!(base64_encode(b"Man"), "TWFu");
-        assert_eq!(base64_encode(b"Ma"), "TWE=");
-        assert_eq!(base64_decode("not base64!"), None);
     }
 
     #[test]

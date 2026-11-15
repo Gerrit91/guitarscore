@@ -5796,8 +5796,8 @@ saved tones and plays it on the track at once.
   it). The impulse responses its blocks load (a Room, a cab or body from a WAV) travel
   inside it in Base64, so the tone sounds the same on another machine; importing keeps
   them in an `impulses` folder beside the settings file, named by their content's
-  checksum (the same file is kept once), and points the blocks there. Base64 is written
-  out here (a few lines) rather than adding a dependency.
+  checksum (the same file is kept once), and points the blocks there. The Base64 is the
+  song state's own (moved from `song_state/codec.rs` into `base64.rs`, which both use).
 - Another JSON file, a damaged one or one from a newer version is refused with a message.
   A WAV that cannot be read on export, or that a file did not bring, is named in a
   message; the tone is still exported or imported.

@@ -4,6 +4,7 @@
 //! `gscore-layout`, and the draw operations are painted with egui.
 
 mod app;
+mod base64;
 mod canvas;
 pub mod chain_settings;
 mod document;
