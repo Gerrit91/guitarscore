@@ -5978,3 +5978,17 @@ bar on the page.
   rests, which packs them tighter. GP's per-track bar count (`SystemsLayout`) stays a
   maximum, not a target.
 Tests: golden SVGs and app snapshots regenerated (the music is smaller; nothing else moved).
+
+## 2026-11-15 — Guitar Pro's hidden tracks: read, kept and written
+
+- GP7 keeps which tracks are shown in its multi-track view (the eye in the track list) in
+  `Content/LayoutConfiguration`; we dropped that file on saving. Decoded from the owner's
+  two saves of one song (all tracks shown, six guitars hidden): one byte per track, `ff`
+  or `00`; the rest (a header, a second byte per track, the selected track) is kept as
+  read. Our save of the owner's file writes it back byte for byte.
+- GP5's track flags were read from the wrong bits: every GP5 track came in invisible and
+  the banjo flag came from the 12-string bit (the writer was right).
+- Not used yet: the score does not leave hidden tracks out. The owner wants our own views
+  of the score (a dialog to build them, saved with the song) rather than only GP's eye.
+Tests: GP5 flags round trip; Guitar Pro's bytes read and written back; wrong lengths
+ignored; hidden tracks of `multi_staff.gp` survive a save.

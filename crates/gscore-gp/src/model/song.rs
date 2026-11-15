@@ -69,6 +69,9 @@ pub struct Song {
     /// GuitarScore addition: GP7's style sheet, kept so saving writes back what is not
     /// edited (the page setup is read from it and written into it).
     pub stylesheet: Option<Stylesheet>,
+    /// GuitarScore addition: GP7's `LayoutConfiguration` beside the per-track visibility
+    /// (which is [`Track::visible`]), kept as read; `None` for a song that had none.
+    pub layout_configuration: Option<LayoutConfiguration>,
 
     //Used to read the file
     pub current_measure_number: Option<usize>,
@@ -120,9 +123,33 @@ impl Default for Song {
 
             page_setup: PageSetup::default(),
             stylesheet: None,
+            layout_configuration: None,
 
             master_effect: RseMasterEffect::default(),
             master_volume_pan: None,
+        }
+    }
+}
+
+/// GuitarScore addition: the parts of GP7's `Content/LayoutConfiguration` beside each
+/// track's visibility, whose meaning is not known; kept so saving writes them back.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LayoutConfiguration {
+    /// The leading big-endian number (4 to 7 in the files seen).
+    pub kind: u32,
+    /// The two bytes after it (`01 00` or `03 00`).
+    pub flags: [u8; 2],
+    /// The trailing number, which looks like the selected track.
+    pub selected: u32,
+}
+
+impl Default for LayoutConfiguration {
+    /// What Guitar Pro 7 writes for a song nobody changed the view of.
+    fn default() -> Self {
+        LayoutConfiguration {
+            kind: 4,
+            flags: [1, 0],
+            selected: 0,
         }
     }
 }

@@ -183,6 +183,14 @@ pub(crate) fn write_gp_bytes(song: &crate::io::Song) -> GpResult<Vec<u8>> {
         .map_err(|e| format!("Zip write error: {e}"))?;
     zip.write_all(&super::part_configuration::write(&song.tracks))
         .map_err(|e| format!("Zip data write error: {e}"))?;
+    // GuitarScore addition: which tracks are shown when all are shown together.
+    zip.start_file(super::layout_configuration::LAYOUT_CONFIGURATION, options)
+        .map_err(|e| format!("Zip write error: {e}"))?;
+    zip.write_all(&super::layout_configuration::write(
+        song.layout_configuration.as_ref(),
+        &song.tracks,
+    ))
+    .map_err(|e| format!("Zip data write error: {e}"))?;
     // GuitarScore addition: the page setup, in the file's own style sheet when it had one.
     if let Some(sheet) = super::stylesheet::for_saving(song.stylesheet.as_ref(), &song.page_setup) {
         zip.start_file(super::stylesheet::STYLESHEET, options)

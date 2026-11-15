@@ -167,6 +167,17 @@ impl Song {
                 gpx::part_configuration::apply_flags(track, flags);
             }
         }
+        // GuitarScore addition: which tracks are shown when all are shown together.
+        if let Some(bytes) = gpx::read_gp_layout_configuration(data)
+            && let Some((config, per_track)) =
+                gpx::layout_configuration::read(&bytes, self.tracks.len())
+        {
+            for (track, (visible, second)) in self.tracks.iter_mut().zip(per_track) {
+                track.visible = visible;
+                track.layout_second = second;
+            }
+            self.layout_configuration = Some(config);
+        }
         // GuitarScore addition: the page setup from the style sheet, which is kept for
         // saving.
         if let Some(sheet) = gpx::read_gp_stylesheet(data) {

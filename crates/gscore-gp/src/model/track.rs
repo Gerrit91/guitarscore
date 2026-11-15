@@ -49,7 +49,12 @@ pub struct Track {
     pub channel_index: usize, //pub channel_id: i32,
     pub solo: bool,
     pub mute: bool,
+    /// Shown when all tracks are shown together (GP5's track flag, GP7's
+    /// `LayoutConfiguration`: the eye in Guitar Pro's track list).
     pub visible: bool,
+    /// GuitarScore addition: the track's second byte in GP7's `LayoutConfiguration`, of
+    /// unknown meaning (0xff in every file seen); kept so saving writes it back.
+    pub layout_second: u8,
     pub name: String,
     pub short_name: String,
     /// A guitar string with a special tuning.
@@ -212,6 +217,7 @@ impl Default for Track {
             solo: false,
             mute: false,
             visible: true,
+            layout_second: 0xff,
             name: String::from("Track 1"),
             short_name: String::new(),
             strings: vec![(1, 64), (2, 59), (3, 55), (4, 50), (5, 45), (6, 40)],

@@ -5,6 +5,7 @@
 // Derived from the `guitarpro` crate by slundi (https://github.com/slundi/guitarpro,
 // MIT, see crates/gscore-gp/LICENSE-guitarpro). Changes: docs/guitarpro.md.
 
+pub(crate) mod layout_configuration;
 pub(crate) mod part_configuration;
 pub(crate) mod stylesheet;
 mod write;
@@ -65,6 +66,16 @@ pub(crate) fn read_gp_track_flags(data: &[u8]) -> Option<Vec<u8>> {
     let file = zip.by_name(part_configuration::PART_CONFIGURATION).ok()?;
     let bytes = read_limited(file, "PartConfiguration").ok()?;
     part_configuration::read_track_flags(&bytes)
+}
+
+/// GuitarScore addition: the bytes of `Content/LayoutConfiguration`, if the archive has
+/// one.
+pub(crate) fn read_gp_layout_configuration(data: &[u8]) -> Option<Vec<u8>> {
+    let mut zip = ZipArchive::new(Cursor::new(data)).ok()?;
+    let file = zip
+        .by_name(layout_configuration::LAYOUT_CONFIGURATION)
+        .ok()?;
+    read_limited(file, "LayoutConfiguration").ok()
 }
 
 /// GuitarScore addition: the style sheet in `Content/BinaryStylesheet`, if the archive has
