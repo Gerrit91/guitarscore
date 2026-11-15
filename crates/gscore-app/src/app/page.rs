@@ -187,16 +187,22 @@ impl GuitarScoreApp {
             single_line: score_view.single_line(),
             ..options
         };
-        // Empty staves may be left out, but never the cursor's: it must stay editable.
+        // The tracks, their staves and empty staves as the chosen view has them. Empty
+        // staves may be left out, but never the cursor's: it must stay editable.
+        let score = tab.score.resolve(document.song(), tab.track, true);
         let options = gscore_layout::LayoutOptions {
-            empty_staves: if self.view.hide_empty_staves {
+            empty_staves: if score
+                .hide_empty_staves
+                .unwrap_or(self.view.hide_empty_staves)
+            {
                 gscore_layout::EmptyStaves::HiddenButPrimary
             } else {
                 gscore_layout::EmptyStaves::Shown
             },
+            track_staves: score.staves,
             ..options
         };
-        let shown = tab.score.tracks(tab.track, document.song().track_count());
+        let shown = score.tracks;
         let layout = match document.layout(&shown, tab.track, &options, fonts) {
             Ok(layout) => layout,
             Err(error) => {

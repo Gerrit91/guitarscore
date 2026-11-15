@@ -46,6 +46,7 @@ mod recent;
 mod recovery;
 mod reverb_bus_window;
 mod score_view;
+mod score_views_dialog;
 mod settings_page;
 mod settings_window;
 mod shape_editor;
@@ -149,6 +150,8 @@ pub struct GuitarScoreApp {
     shortcuts: Option<shortcuts::ShortcutPanel>,
     /// The edit history, while it is open.
     history: Option<history::HistoryPanel>,
+    /// The score views dialog, when it is open.
+    score_views: Option<score_views_dialog::ScoreViewsDialog>,
     /// The new-song dialog, while it is open.
     new_song_dialog: Option<new_song::NewSongDialog>,
     /// The empty workspace's recent songs, search and preview.
@@ -326,6 +329,7 @@ impl GuitarScoreApp {
             recoverable: Vec::new(),
             shortcuts: None,
             history: None,
+            score_views: None,
             new_song_dialog: None,
             recent: recent::RecentFiles::default(),
             pending_opens: VecDeque::new(),
@@ -438,7 +442,11 @@ impl GuitarScoreApp {
                 })
             })
             .collect();
-        song_state::SongState::new(tracks, tab.sound().buses.clone())
+        song_state::SongState::new(
+            tracks,
+            tab.sound().buses.clone(),
+            song_state::ViewState::of_song(song),
+        )
     }
 
     /// The settings as they are now (including the view and window state).
@@ -960,6 +968,7 @@ impl eframe::App for GuitarScoreApp {
         self.show_settings_window(&ctx);
         self.show_shortcuts(&ctx);
         self.show_history(&ctx);
+        self.show_score_views(&ctx);
         self.show_new_track_dialog(&ctx);
         self.show_about(&ctx);
         self.show_tuner(&ctx);

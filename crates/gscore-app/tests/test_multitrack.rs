@@ -627,3 +627,79 @@ fn only_a_track_the_modelled_strings_play_starts_with_a_lower_trim() {
     assert_eq!(trim(&harness, guitar), 0.0);
     assert_eq!(trim(&harness, drums), 0.0);
 }
+
+/// The tracks of the song's score views, as indices.
+fn view_tracks(harness: &Harness<'static, GuitarScoreApp>) -> Vec<Vec<usize>> {
+    harness
+        .state()
+        .document()
+        .unwrap()
+        .song()
+        .score_views()
+        .iter()
+        .map(|view| view.tracks.iter().map(|entry| entry.track.get()).collect())
+        .collect()
+}
+
+fn click(harness: &mut Harness<'static, GuitarScoreApp>, label: &str) {
+    harness.get_by_label(label).click();
+    harness.run();
+}
+
+#[test]
+fn a_score_view_is_built_in_its_dialog_and_shown() {
+    let mut harness = app_with_multi_staff();
+    view_menu(&mut harness, "All tracks");
+    view_menu(&mut harness, "Score views…");
+    // A new view starts as the score shows now, and is shown.
+    click(&mut harness, "New view");
+    assert_eq!(view_tracks(&harness), [vec![0, 1, 2, 3, 4, 5]]);
+    // Three guitars out, the drums above the bass: the score follows each step.
+    click(&mut harness, "2. Rhythm Guitar");
+    click(&mut harness, "3. Crunch Guitar");
+    click(&mut harness, "4. Crunch Guitar");
+    assert_eq!(view_tracks(&harness), [vec![0, 4, 5]]);
+    click(&mut harness, "Move 6. Drumkit up");
+    assert_eq!(view_tracks(&harness), [vec![0, 5, 4]]);
+    assert_eq!(harness.state().score_tracks(), [0, 5, 4]);
+    // Named as typed, when the field is left.
+    harness.get_by_label("Name").click();
+    harness.run();
+    harness.key_press_modifiers(egui::Modifiers::COMMAND, Key::A);
+    harness.get_by_label("Name").type_text("Rhythm section");
+    harness.run();
+    harness.key_press(Key::Enter);
+    harness.run();
+    let song = harness.state().document().unwrap().song().clone();
+    assert_eq!(song.score_views()[0].name, "Rhythm section");
+    park_pointer(&mut harness);
+    harness.snapshot("score_views_dialog");
+    // Each change is one undo step.
+    click(&mut harness, "Edit");
+    harness.get_by_label_contains("Undo ctrl+z").click();
+    harness.run();
+    assert_eq!(
+        harness.state().document().unwrap().song().score_views()[0].name,
+        "View 1"
+    );
+    assert_eq!(view_tracks(&harness), [vec![0, 5, 4]]);
+
+    // All tracks is Guitar Pro's view: switching a track off there hides it from it.
+    harness
+        .get_all_by_label("All tracks")
+        .next()
+        .expect("the dialog's entry")
+        .click();
+    harness.run();
+    click(&mut harness, "6. Drumkit");
+    let shown: Vec<bool> = harness
+        .state()
+        .document()
+        .unwrap()
+        .song()
+        .tracks()
+        .map(|track| track.is_visible())
+        .collect();
+    assert_eq!(shown, [true, true, true, true, true, false]);
+    assert_eq!(harness.state().score_tracks(), [0, 1, 2, 3, 4]);
+}

@@ -5992,3 +5992,30 @@ Tests: golden SVGs and app snapshots regenerated (the music is smaller; nothing 
   of the score (a dialog to build them, saved with the song) rather than only GP's eye.
 Tests: GP5 flags round trip; Guitar Pro's bytes read and written back; wrong lengths
 ignored; hidden tracks of `multi_staff.gp` survive a save.
+
+## 2026-11-15 — Score views: named selections of tracks, saved with the song
+
+The owner wanted more than Guitar Pro's one eye per track: views people build for their
+part (strings only, percussion only, a rhythm section) and print.
+- Model: `ScoreView` (name, tracks in order with their staves, hide empty staves) kept on
+  the song; tracks are referred to by a per-session key, so a view follows moved tracks,
+  loses a deleted one and gets it back on undo. `set_score_views`, `set_track_visible`
+  (GP's eye; one track always stays shown), both undoable. Commands `set_score_view`,
+  `delete_score_view`, `set_track_visible`.
+- Layout: `LayoutOptions::track_staves` overrides a track's staves; each staff's cache key
+  holds the staves it shows.
+- App: the tab bar's right end chooses one track, all tracks (those Guitar Pro shows), or a
+  view (the toolbar had no room at 1000 px). View › Score views… and "Edit score views…"
+  open the dialog: the views on the left (new, duplicate, delete), the chosen one's tracks
+  on the right (checkbox, instrument icon, staves, up/down), hide empty staves. "All
+  tracks" is Guitar Pro's view: its checkboxes are GP's eyes, its staves each track's own.
+  Every change is one undo step and shows at once; choosing a view moves the cursor into
+  it. PDF export prints the view as built (no cursor track added). The ad-hoc "Tracks
+  shown" ticks in the View menu are gone (replaced by views).
+- Saving: views travel in GuitarScore's notes block, each track with its identity, so a
+  view finds its tracks after a reorder in Guitar Pro; a view whose tracks are all gone is
+  dropped.
+- Save warnings: a hidden track is reported before saving to GP3/4/GP6, which cannot keep
+  it.
+Open: quick picks (only drums, only strings), an eye in the track grid, `gscore-cli render
+--view`, the dialog covers the score (it can be dragged aside).

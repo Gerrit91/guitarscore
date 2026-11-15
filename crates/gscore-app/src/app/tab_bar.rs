@@ -52,9 +52,15 @@ impl GuitarScoreApp {
             if plus_button(ui) {
                 new_workspace = true;
             }
+            // At the right end, which tracks the active tab's score shows.
+            let choice = if self.tabs.get(self.active).is_some() {
+                super::score_view::SCORE_VIEW_WIDTH + 24.0
+            } else {
+                0.0
+            };
             // The rest of the strip, where there are no tabs: a double click starts a new
             // empty workspace too.
-            let width = ui.available_width();
+            let width = ui.available_width() - choice;
             if width > 1.0 {
                 let (_, empty) =
                     ui.allocate_exact_size(vec2(width, TAB_HEIGHT), Sense::click());
@@ -71,6 +77,9 @@ impl GuitarScoreApp {
                 empty.on_hover_text(
                     "Double-click here to open a new empty workspace (a song, a recent file                      or a dropped file)",
                 );
+            }
+            if choice > 0.0 {
+                self.score_view_choice(ui);
             }
         });
         if let Some(index) = switch_to {

@@ -1,147 +1,261 @@
-//! Which tracks the score shows: the cursor's track (as before), every track (Guitar
-//! Pro's multitrack view), or a chosen set. Several tracks are stacked in every system with
-//! their beats lined up; the cursor's track is always among them.
+//! Which tracks the score shows: the cursor's track (as before), every track Guitar Pro
+//! shows together (its multitrack view; a track hidden with its eye stays out), or one of
+//! the song's named score views (GuitarScore's own: tracks in their order, their staves,
+//! and whether empty staves are left out). Several tracks are stacked in every system with
+//! their beats lined up; on screen the cursor's track is always among them.
 
 use gscore_edit::{ActionId, Command, Cursor};
 use gscore_model::{
-    BeatIndex, BeatKind, Duration, MeasureIndex, Song, SystemBreak, TrackIndex, VoiceIndex,
+    BeatIndex, BeatKind, Duration, MeasureIndex, Song, SystemBreak, TrackIndex, TrackStaves,
+    VoiceIndex,
 };
 
 /// The tracks a tab's score shows.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub(crate) enum ScoreTracks {
     /// Only the cursor's track.
     #[default]
     Cursor,
-    /// Every track of the song.
+    /// Every track shown in Guitar Pro's multitrack view, in song order.
     All,
-    /// These tracks (and the cursor's), in song order.
-    Chosen(Vec<usize>),
+    /// The song's score view at this position (all tracks once it is gone).
+    View(usize),
+}
+
+/// What a score shows, resolved against the song.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) struct ShownScore {
+    /// The tracks, top to bottom.
+    pub(crate) tracks: Vec<usize>,
+    /// The staves a track shows instead of its own.
+    pub(crate) staves: Vec<(TrackIndex, TrackStaves)>,
+    /// Whether empty staves are left out: the view's own choice; `None` for the program's
+    /// setting (one track, or all tracks).
+    pub(crate) hide_empty_staves: Option<bool>,
 }
 
 impl ScoreTracks {
-    /// The tracks to lay out, top to bottom, for a song of `count` tracks whose cursor is
-    /// on `cursor`: valid indices only, in song order, the cursor's track always included.
-    pub(crate) fn tracks(&self, cursor: usize, count: usize) -> Vec<usize> {
-        let mut tracks: Vec<usize> = match self {
-            ScoreTracks::Cursor => Vec::new(),
-            ScoreTracks::All => (0..count).collect(),
-            ScoreTracks::Chosen(chosen) => chosen.clone(),
+    /// What the score shows for `song` with the cursor on `cursor`. With `cursor_shown`
+    /// (on screen, where it must stay editable) the cursor's track is added where a view
+    /// leaves it out; printed, the view is exactly as built.
+    pub(crate) fn resolve(&self, song: &Song, cursor: usize, cursor_shown: bool) -> ShownScore {
+        let count = song.track_count();
+        let all = || -> Vec<usize> {
+            song.tracks()
+                .filter(|track| track.is_visible())
+                .map(|track| track.index().get())
+                .collect()
         };
-        tracks.push(cursor);
-        tracks.retain(|&track| track < count);
-        tracks.sort_unstable();
-        tracks.dedup();
-        tracks
+        let mut shown = match self {
+            ScoreTracks::Cursor => ShownScore {
+                tracks: vec![cursor],
+                ..ShownScore::default()
+            },
+            ScoreTracks::All => ShownScore {
+                tracks: all(),
+                ..ShownScore::default()
+            },
+            ScoreTracks::View(index) => match song.score_views().into_iter().nth(*index) {
+                Some(view) => ShownScore {
+                    tracks: view.tracks.iter().map(|entry| entry.track.get()).collect(),
+                    staves: view
+                        .tracks
+                        .iter()
+                        .map(|entry| (entry.track, entry.staves))
+                        .collect(),
+                    hide_empty_staves: Some(view.hide_empty_staves),
+                },
+                None => ShownScore {
+                    tracks: all(),
+                    ..ShownScore::default()
+                },
+            },
+        };
+        shown.tracks.retain(|&track| track < count);
+        let missing = !shown.tracks.contains(&cursor);
+        if (cursor_shown || shown.tracks.is_empty()) && missing && cursor < count {
+            // Among all tracks, the cursor's goes in song order; a view gets it last.
+            shown.tracks.push(cursor);
+            if !matches!(self, ScoreTracks::View(_)) {
+                shown.tracks.sort_unstable();
+            }
+        }
+        if shown.tracks.is_empty() && count > 0 {
+            shown.tracks.push(0);
+        }
+        shown
     }
 
-    /// Every track, or back to the cursor's alone (the View menu's "All tracks").
+    /// The tracks to lay out on screen, top to bottom (the cursor's among them).
+    pub(crate) fn tracks(&self, song: &Song, cursor: usize) -> Vec<usize> {
+        self.resolve(song, cursor, true).tracks
+    }
+
+    /// All tracks, or back to the cursor's alone (the View menu's "All tracks" key).
     pub(crate) fn toggle_all(&mut self) {
         *self = match self {
             ScoreTracks::Cursor => ScoreTracks::All,
-            ScoreTracks::All | ScoreTracks::Chosen(_) => ScoreTracks::Cursor,
-        };
-    }
-
-    /// Whether `track` is shown (the cursor's always is).
-    pub(crate) fn shows(&self, track: usize, cursor: usize, count: usize) -> bool {
-        self.tracks(cursor, count).contains(&track)
-    }
-
-    /// Shows or hides `track` in a chosen set made from what is shown now. The cursor's
-    /// track stays; a set of every track becomes [`ScoreTracks::All`], a set of the
-    /// cursor's alone [`ScoreTracks::Cursor`].
-    pub(crate) fn toggle(&mut self, track: usize, cursor: usize, count: usize) {
-        let mut tracks = self.tracks(cursor, count);
-        if tracks.contains(&track) {
-            if track != cursor {
-                tracks.retain(|&shown| shown != track);
-            }
-        } else if track < count {
-            tracks.push(track);
-        }
-        tracks.sort_unstable();
-        *self = if tracks.len() == count && count > 1 {
-            ScoreTracks::All
-        } else if tracks.len() <= 1 {
-            ScoreTracks::Cursor
-        } else {
-            ScoreTracks::Chosen(tracks)
+            ScoreTracks::All | ScoreTracks::View(_) => ScoreTracks::Cursor,
         };
     }
 
     /// The track shown above (`step` -1) or below (`step` 1) `cursor`'s, if there is one:
     /// where Up past the top string and Down past the bottom one go.
-    pub(crate) fn neighbour(&self, cursor: usize, count: usize, step: isize) -> Option<usize> {
-        let tracks = self.tracks(cursor, count);
+    pub(crate) fn neighbour(&self, song: &Song, cursor: usize, step: isize) -> Option<usize> {
+        let tracks = self.tracks(song, cursor);
         let at = tracks.iter().position(|&track| track == cursor)?;
         let next = at.checked_add_signed(step)?;
         tracks.get(next).copied()
     }
+
+    /// The name the toolbar and menus show for this choice.
+    pub(crate) fn label(&self, song: &Song) -> String {
+        match self {
+            ScoreTracks::Cursor => "One track".to_owned(),
+            ScoreTracks::All => "All tracks".to_owned(),
+            ScoreTracks::View(index) => song
+                .score_views()
+                .into_iter()
+                .nth(*index)
+                .map_or_else(|| "All tracks".to_owned(), |view| view.name),
+        }
+    }
 }
 
+/// The width of the tab bar's choice of score view.
+pub(super) const SCORE_VIEW_WIDTH: f32 = 130.0;
+
 impl super::GuitarScoreApp {
-    /// The View menu's choice of tracks: the cursor's track, all tracks, or a set ticked
-    /// track by track (the cursor's track cannot be unticked).
+    /// Shows `choice` in the active tab. A view that leaves the cursor's track out takes
+    /// the cursor to its first track, at the same place in the music.
+    pub(super) fn choose_score_tracks(&mut self, choice: ScoreTracks) {
+        let Some(tab) = self.tabs.get_mut(self.active) else {
+            return;
+        };
+        tab.score = choice;
+        let song = tab.document.song();
+        let shown = choice.resolve(song, tab.track, false);
+        if !shown.tracks.contains(&tab.track)
+            && let Some(&first) = shown.tracks.first()
+        {
+            let from = tab.document.editor().cursor();
+            let to = cursor_in_track(song, from, first, true);
+            tab.track = first;
+            tab.document.editor_mut().set_cursor(to);
+        }
+    }
+
+    /// Which tracks the score shows: one track, all tracks, or one of the song's score
+    /// views; and the dialog that builds the views.
+    pub(super) fn score_view_choice(&mut self, ui: &mut egui::Ui) {
+        let Some(tab) = self.tabs.get(self.active) else {
+            return;
+        };
+        let song = tab.document.song();
+        let current = tab.score;
+        let mut entries = vec![
+            (ScoreTracks::Cursor, "One track".to_owned()),
+            (ScoreTracks::All, "All tracks".to_owned()),
+        ];
+        entries.extend(
+            song.score_views()
+                .into_iter()
+                .enumerate()
+                .map(|(index, view)| (ScoreTracks::View(index), view.name)),
+        );
+        let mut chosen = None;
+        let mut edit = false;
+        let combo = egui::ComboBox::from_id_salt("score_view_choice")
+            .width(SCORE_VIEW_WIDTH)
+            .selected_text(current.label(song))
+            .show_ui(ui, |ui| {
+                for (choice, name) in &entries {
+                    if ui.selectable_label(*choice == current, name).clicked() {
+                        chosen = Some(*choice);
+                    }
+                }
+                ui.separator();
+                if ui.button("Edit score views…").clicked() {
+                    edit = true;
+                }
+            });
+        ui.ctx().accesskit_node_builder(combo.response.id, |node| {
+            node.set_label("Score view");
+        });
+        combo
+            .response
+            .on_hover_text("Which tracks the score shows: one, all, or a view of the score");
+        if let Some(choice) = chosen {
+            self.choose_score_tracks(choice);
+        }
+        if edit {
+            self.open_score_views();
+        }
+    }
+
+    /// The View menu's choice of tracks: the cursor's track, all tracks, or one of the
+    /// song's score views; and the dialog that builds the views.
     pub(super) fn score_view_menu(&mut self, ui: &mut egui::Ui) {
         let hint = super::toolbar::key_hint(&self.keymap, ActionId::ToggleMultitrack);
-        let Some(tab) = self.tabs.get_mut(self.active) else {
+        let Some(tab) = self.tabs.get(self.active) else {
             ui.add_enabled(false, egui::Button::new("All tracks"));
             return;
         };
-        let count = tab.document.song().track_count();
+        let current = tab.score;
+        let views: Vec<String> = tab
+            .document
+            .song()
+            .score_views()
+            .into_iter()
+            .map(|view| view.name)
+            .collect();
+        let mut chosen = None;
         if ui
-            .radio(tab.score == ScoreTracks::Cursor, "One track")
+            .radio(current == ScoreTracks::Cursor, "One track")
             .on_hover_text("Only the track the cursor is on")
             .clicked()
         {
-            tab.score = ScoreTracks::Cursor;
-            ui.close();
+            chosen = Some(ScoreTracks::Cursor);
         }
         if ui
-            .radio(tab.score == ScoreTracks::All, "All tracks")
+            .radio(current == ScoreTracks::All, "All tracks")
             .on_hover_text(format!(
-                "Every track in one score, their beats lined up{hint}"
+                "Every track in one score, their beats lined up (the tracks Guitar Pro \
+                 shows together){hint}"
             ))
             .clicked()
         {
-            tab.score = ScoreTracks::All;
+            chosen = Some(ScoreTracks::All);
+        }
+        for (index, name) in views.iter().enumerate() {
+            if ui
+                .radio(current == ScoreTracks::View(index), name)
+                .on_hover_text("A score view of this song")
+                .clicked()
+            {
+                chosen = Some(ScoreTracks::View(index));
+            }
+        }
+        if let Some(choice) = chosen {
+            self.choose_score_tracks(choice);
             ui.close();
         }
         ui.checkbox(&mut self.view.hide_empty_staves, "Hide empty staves")
             .on_hover_text(
-                "With several tracks: leave a track out of a line where it plays nothing \
-                 (the first line and the cursor's track always show)",
+                "With all tracks: leave a track out of a line where it plays nothing (the \
+                 first line and the cursor's track always show). Each score view has its own \
+                 choice.",
             );
-        let Some(tab) = self.tabs.get_mut(self.active) else {
-            return;
-        };
-        ui.menu_button("Tracks shown", |ui| {
-            let names: Vec<String> = tab
-                .document
-                .song()
-                .tracks()
-                .map(|track| {
-                    let name = track.name().trim();
-                    let number = track.index().get().saturating_add(1);
-                    if name.is_empty() {
-                        format!("Track {number}")
-                    } else {
-                        format!("{number}. {name}")
-                    }
-                })
-                .collect();
-            for (index, name) in names.into_iter().enumerate() {
-                let mut shown = tab.score.shows(index, tab.track, count);
-                let cursor = index == tab.track;
-                let response = ui
-                    .add_enabled(!cursor, egui::Checkbox::new(&mut shown, name))
-                    .on_disabled_hover_text("The cursor's track is always shown");
-                if response.clicked() {
-                    tab.score.toggle(index, tab.track, count);
-                }
-            }
-        });
+        if ui
+            .button("Score views…")
+            .on_hover_text(
+                "Build views of the score: which tracks, in what order, with which staves",
+            )
+            .clicked()
+        {
+            self.open_score_views();
+            ui.close();
+        }
     }
 }
 
@@ -301,39 +415,73 @@ fn beat_onset(
 mod tests {
     use super::*;
 
-    #[test]
-    fn the_cursors_track_is_always_shown_in_song_order() {
-        assert_eq!(ScoreTracks::Cursor.tracks(2, 4), [2]);
-        assert_eq!(ScoreTracks::All.tracks(2, 4), [0, 1, 2, 3]);
-        assert_eq!(ScoreTracks::Chosen(vec![3, 0]).tracks(2, 4), [0, 2, 3]);
-        // Tracks deleted meanwhile drop out.
-        assert_eq!(ScoreTracks::Chosen(vec![1, 7]).tracks(0, 3), [0, 1]);
+    use gscore_model::{ScoreView, ViewTrack};
+
+    /// A song of `count` guitar tracks.
+    fn song(count: usize) -> Song {
+        let tunings = vec![gscore_model::testing::GUITAR_6; count];
+        gscore_model::testing::song(&tunings, 1).unwrap()
+    }
+
+    fn view(tracks: &[usize], hide: bool) -> ScoreView {
+        ScoreView {
+            name: "Part".to_owned(),
+            tracks: tracks
+                .iter()
+                .map(|&track| ViewTrack {
+                    track: TrackIndex::new(track),
+                    staves: TrackStaves::TAB_ONLY,
+                })
+                .collect(),
+            hide_empty_staves: hide,
+        }
     }
 
     #[test]
-    fn toggling_builds_a_set_and_falls_back_to_one_or_all() {
-        let mut shown = ScoreTracks::Cursor;
-        shown.toggle(3, 1, 4);
-        assert_eq!(shown, ScoreTracks::Chosen(vec![1, 3]));
-        // The cursor's track cannot be hidden.
-        shown.toggle(1, 1, 4);
-        assert_eq!(shown, ScoreTracks::Chosen(vec![1, 3]));
-        shown.toggle(0, 1, 4);
-        shown.toggle(2, 1, 4);
-        assert_eq!(shown, ScoreTracks::All);
-        let mut shown = ScoreTracks::Chosen(vec![1, 3]);
-        shown.toggle(3, 1, 4);
-        assert_eq!(shown, ScoreTracks::Cursor);
+    fn all_tracks_are_those_guitar_pro_shows_and_the_cursors() {
+        let mut song = song(4);
+        assert_eq!(ScoreTracks::Cursor.tracks(&song, 2), [2]);
+        assert_eq!(ScoreTracks::All.tracks(&song, 2), [0, 1, 2, 3]);
+        let _ = song.set_track_visible(TrackIndex::new(1), false).unwrap();
+        let _ = song.set_track_visible(TrackIndex::new(2), false).unwrap();
+        assert_eq!(ScoreTracks::All.tracks(&song, 0), [0, 3]);
+        // On screen the cursor's hidden track stays, in song order; printed it does not.
+        assert_eq!(ScoreTracks::All.tracks(&song, 2), [0, 2, 3]);
+        assert_eq!(ScoreTracks::All.resolve(&song, 2, false).tracks, [0, 3]);
+    }
+
+    #[test]
+    fn a_view_shows_its_tracks_in_its_order_with_its_staves() {
+        let mut song = song(4);
+        let _ = song.set_score_views(&[view(&[3, 1], true)]).unwrap();
+        let shown = ScoreTracks::View(0).resolve(&song, 3, true);
+        assert_eq!(shown.tracks, [3, 1]);
+        assert_eq!(
+            shown.staves,
+            [
+                (TrackIndex::new(3), TrackStaves::TAB_ONLY),
+                (TrackIndex::new(1), TrackStaves::TAB_ONLY)
+            ]
+        );
+        assert_eq!(shown.hide_empty_staves, Some(true));
+        // The cursor elsewhere: last on screen, left out when printed.
+        assert_eq!(ScoreTracks::View(0).tracks(&song, 0), [3, 1, 0]);
+        assert_eq!(ScoreTracks::View(0).resolve(&song, 0, false).tracks, [3, 1]);
+        // A view that is gone shows all tracks.
+        assert_eq!(ScoreTracks::View(4).tracks(&song, 0), [0, 1, 2, 3]);
+        assert_eq!(ScoreTracks::View(0).label(&song), "Part");
     }
 
     #[test]
     fn neighbours_are_the_shown_tracks_above_and_below() {
-        let shown = ScoreTracks::Chosen(vec![0, 2, 5]);
-        assert_eq!(shown.neighbour(2, 6, -1), Some(0));
-        assert_eq!(shown.neighbour(2, 6, 1), Some(5));
-        assert_eq!(shown.neighbour(0, 6, -1), None);
-        assert_eq!(shown.neighbour(5, 6, 1), None);
-        assert_eq!(ScoreTracks::Cursor.neighbour(1, 3, 1), None);
+        let mut song = song(6);
+        let _ = song.set_score_views(&[view(&[5, 0, 2], false)]).unwrap();
+        let shown = ScoreTracks::View(0);
+        assert_eq!(shown.neighbour(&song, 0, -1), Some(5));
+        assert_eq!(shown.neighbour(&song, 0, 1), Some(2));
+        assert_eq!(shown.neighbour(&song, 5, -1), None);
+        assert_eq!(shown.neighbour(&song, 2, 1), None);
+        assert_eq!(ScoreTracks::Cursor.neighbour(&song, 1, 1), None);
     }
 
     fn line_break(measure: usize, kind: SystemBreak) -> Command {

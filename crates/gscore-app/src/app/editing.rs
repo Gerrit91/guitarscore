@@ -71,6 +71,7 @@ impl GuitarScoreApp {
             || self.transpose.is_some()
             || self.about.is_some()
             || self.history.is_some()
+            || self.score_views.is_some()
             || self.new_song_dialog.is_some()
             || tab.is_some_and(|tab| tab.new_track.is_some())
             || tab.is_some_and(|tab| tab.renaming.is_some())
@@ -395,8 +396,7 @@ impl GuitarScoreApp {
         let Some(tab) = self.tabs.get_mut(self.active) else {
             return;
         };
-        let count = tab.document.song().track_count();
-        let Some(next) = tab.score.neighbour(tab.track, count, step) else {
+        let Some(next) = tab.score.neighbour(tab.document.song(), tab.track, step) else {
             return;
         };
         let from = tab.document.editor().cursor();
