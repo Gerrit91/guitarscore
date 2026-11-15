@@ -96,8 +96,9 @@ impl GuitarScoreApp {
                                 ),
                                 (
                                     BlockChoice::Room,
-                                    "Room (impulse response)",
-                                    "A room recorded in a WAV file: a convolution reverb",
+                                    "Room",
+                                    "A convolution reverb: the built-in room, or a room recorded \
+                                     in a WAV file",
                                 ),
                                 (
                                     BlockChoice::Empty,
@@ -116,26 +117,18 @@ impl GuitarScoreApp {
                                     new_block.file = block.file.clone();
                                     block = new_block;
                                     rebuilt = true;
-                                    load = choice == BlockChoice::Room && block.file.is_none();
                                 }
                             }
                         });
                         if block.choice.uses_file() {
-                            ui.horizontal(|ui| {
-                                let name = block.file.as_ref().map_or_else(
-                                    || "No impulse response loaded".to_owned(),
-                                    |file| {
-                                        file.file_name().map_or_else(
-                                            || file.display().to_string(),
-                                            |name| name.to_string_lossy().into_owned(),
-                                        )
-                                    },
-                                );
-                                ui.label(RichText::new(name).weak());
-                                if ui.button("Load WAV…").clicked() {
-                                    load = true;
+                            match super::sound_chain::response_choice(ui, &block) {
+                                Some(super::sound_chain::ResponseChoice::Load) => load = true,
+                                Some(_) => {
+                                    block.file = None;
+                                    rebuilt = true;
                                 }
-                            });
+                                None => {}
+                            }
                         }
                         ui.add_space(4.0);
                         let moved = block_knobs(ui, &mut block, true, 0.0);

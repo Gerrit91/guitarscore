@@ -3539,8 +3539,14 @@ fn the_reverb_bus_window_chooses_the_reverb() {
         harness.state().playback().reverb_bus().block.choice,
         BlockChoice::Reverb
     );
-    // A room is offered too (it asks for its WAV).
-    harness.get_by_label("Room (impulse response)");
+    // A room is offered too: it starts on the built-in room, no file dialog.
+    harness.get_by_label("Room").click();
+    harness.run();
+    let bus = harness.state().playback().reverb_bus().block.clone();
+    assert_eq!(bus.choice, BlockChoice::Room);
+    assert_eq!(bus.file, None);
+    // Its dropdown offers the built-in room or a file.
+    harness.get_by_label("Room response");
 }
 
 #[test]

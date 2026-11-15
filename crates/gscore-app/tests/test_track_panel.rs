@@ -1290,6 +1290,40 @@ fn the_add_menu_shows_each_blocks_symbol() {
     harness.snapshot("sound_chain_add_menu");
 }
 
+/// A Room block starts on the built-in room, as a Cab starts on its built-in cabinet: no
+/// file dialog opens, and a file is an option in its dropdown.
+#[test]
+fn a_room_block_starts_on_the_built_in_room() {
+    use gscore_app::chain_settings::BlockChoice;
+    use gscore_play::StringKind;
+
+    let _gpu = common::lock_gpu();
+    let mut harness = app_with("basic/note_lengths.gp");
+    open_sound_chain(&mut harness);
+    let first = empty_block_index(&harness);
+    harness.get_by_label(&format!("Block {first}: +")).click();
+    harness.run();
+    harness.get_by_label("Room").click();
+    harness.run();
+    harness.run();
+    let room = harness
+        .state()
+        .playback()
+        .tone(0, 26, StringKind::Electric)
+        .chain
+        .blocks
+        .into_iter()
+        .find(|block| block.choice == BlockChoice::Room)
+        .expect("the room");
+    assert_eq!(room.file, None, "no file needed");
+    harness.get_by_label(&format!("Block {first}: Room"));
+    harness.get_by_label("Room response").click();
+    harness.run();
+    harness.get_by_label("Built-in room");
+    harness.get_by_label("Load file…");
+    harness.snapshot("sound_chain_room");
+}
+
 #[test]
 fn escape_closes_the_sound_chain_window() {
     let mut harness = app_with("basic/note_lengths.gp");

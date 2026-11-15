@@ -48,6 +48,7 @@ pub use impulse::{ImpulseError, ImpulseResponse, MAX_SECONDS};
 pub use knobs::{BlockSettings, ImpulseKnobs, ReverbKnobs, RoomKnobs, knob_ranges};
 pub use model::{GuitarModel, StringModel, ranges};
 pub use pickup::{Pickup, positions as pickup_positions};
+pub use reverb::{BUILT_IN_ROOM, built_in_room};
 pub use string::{Attack, Pluck, Release, StringVoice};
 pub use tail::{LENGTH_RANGE, MAX_LENGTHENED_SECONDS};
 

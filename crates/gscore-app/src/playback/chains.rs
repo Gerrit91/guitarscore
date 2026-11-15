@@ -412,7 +412,8 @@ impl Playback {
                 (BlockChoice::Delay, _) => Some(BlockKind::Delay),
                 // A cabinet without a file of its own plays the built-in one.
                 (BlockChoice::Cabinet, None) => block.built_in_cabinet().map(BlockKind::Impulse),
-                (BlockChoice::Room, None) => None,
+                // A room without a file plays the built-in one.
+                (BlockChoice::Room, None) => block.built_in_room(),
                 (choice, Some(file)) => match self.impulse(file) {
                     Ok(response) if choice == BlockChoice::Room => {
                         Some(BlockKind::room(response, block.room_length()))
@@ -852,16 +853,17 @@ impl Playback {
             BlockChoice::Empty => None,
             BlockChoice::Reverb => Some(BlockKind::Reverb),
             BlockChoice::Compressor => Some(BlockKind::Compressor),
-            BlockChoice::Room => block
-                .file
-                .as_ref()
-                .and_then(|file| match self.impulse(file) {
+            // A room without a file plays the built-in one.
+            BlockChoice::Room => match block.file.as_ref() {
+                None => block.built_in_room(),
+                Some(file) => match self.impulse(file) {
                     Ok(response) => Some(BlockKind::room(response, block.room_length())),
                     Err(error) => {
                         self.chain_notices.push(error);
                         None
                     }
-                }),
+                },
+            },
             BlockChoice::Cabinet => block
                 .file
                 .as_ref()
@@ -1133,7 +1135,8 @@ impl Playback {
                     (BlockChoice::Cabinet, None) => {
                         block.built_in_cabinet().map(BlockKind::Impulse)
                     }
-                    (BlockChoice::Room, None) => None,
+                    // A room without a file plays the built-in one.
+                    (BlockChoice::Room, None) => block.built_in_room(),
                     (choice, Some(file)) => match self.impulse(file) {
                         Ok(response) if choice == BlockChoice::Room => {
                             Some(BlockKind::room(response, block.room_length()))
@@ -1235,10 +1238,12 @@ mod tests {
             }
             other => panic!("the built-in cabinet, not {other:?}"),
         }
-        assert!(
-            spec.blocks[1].is_none(),
-            "a room without a file stays empty"
-        );
+        match &spec.blocks[1] {
+            Some(BlockKind::Room { response, .. }) => {
+                assert!(Arc::ptr_eq(response, &gscore_guitar::built_in_room()))
+            }
+            other => panic!("a room without a file plays the built-in room, not {other:?}"),
+        }
         // The other built-in responses: the acoustic bodies, each a structure of its own.
         let mut acoustic = setting.clone();
         acoustic.blocks[0].cabinet = crate::chain_settings::CabinetSetting::Classical;

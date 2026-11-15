@@ -236,10 +236,6 @@ impl GuitarScoreApp {
             }
             self.set_track_tone(index, tone);
             self.open_sound_chain_at(index, place);
-            // A room is silent until it has its file: ask for one at once.
-            if choice == BlockChoice::Room {
-                sound_actions.load = Some(place);
-            }
         }
         if let Some(place) = sound_actions.load
             && let Err(error) = self.tasks.pick_impulse(index, kind, place, None, ui.ctx())

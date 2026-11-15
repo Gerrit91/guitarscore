@@ -249,7 +249,7 @@ fn box_text(block: &BlockSetting) -> (String, String) {
                     if block.choice == BlockChoice::Cabinet {
                         block.cabinet.label().to_owned()
                     } else {
-                        "no file".to_owned()
+                        "built-in".to_owned()
                     }
                 },
                 |name| name.to_string_lossy().into_owned(),
@@ -1041,8 +1041,8 @@ pub(super) fn block_choices() -> [(BlockChoice, &'static str, &'static str); 9] 
         (
             BlockChoice::Room,
             "Room",
-            "A room's impulse response from a WAV file (stereo if recorded so): a convolution \
-             reverb",
+            "A convolution reverb: the built-in short room, or a room's impulse response from \
+             a WAV file (stereo if recorded so)",
         ),
         (
             BlockChoice::Reverb,
@@ -1569,18 +1569,30 @@ pub(super) fn board(
     actions
 }
 
-/// What was picked in a Cab block's dropdown.
-enum CabChoice {
-    BuiltIn(CabinetSetting),
+/// What was picked in a Cab or Room block's dropdown.
+pub(super) enum ResponseChoice {
+    /// One of the built-in cabinets.
+    Cabinet(CabinetSetting),
+    /// The built-in room.
+    Room,
+    /// A WAV file, from the file dialog.
     Load,
 }
 
-/// A Cab block's dropdown: the built-in responses, then loading a file; the file's name
-/// while one is loaded.
-fn cabinet_choice(ui: &mut egui::Ui, block: &BlockSetting) -> Option<CabChoice> {
+/// A Cab or Room block's dropdown: its built-in responses (the cabinets, or the one room),
+/// then loading a file; the file's name while one is loaded.
+pub(super) fn response_choice(ui: &mut egui::Ui, block: &BlockSetting) -> Option<ResponseChoice> {
+    const BUILT_IN_ROOM: &str = "Built-in room";
+    let room = block.choice == BlockChoice::Room;
     let mut picked = None;
     let shown = block.file.as_ref().map_or_else(
-        || block.cabinet.label().to_owned(),
+        || {
+            if room {
+                BUILT_IN_ROOM.to_owned()
+            } else {
+                block.cabinet.label().to_owned()
+            }
+        },
         |file| {
             file.file_name().map_or_else(
                 || file.display().to_string(),
@@ -1589,10 +1601,28 @@ fn cabinet_choice(ui: &mut egui::Ui, block: &BlockSetting) -> Option<CabChoice> 
         },
     );
     ui.horizontal(|ui| {
-        let combo = egui::ComboBox::from_id_salt("cab response")
-            .selected_text(shown)
-            .width(260.0)
-            .show_ui(ui, |ui| {
+        let combo = egui::ComboBox::from_id_salt(if room {
+            "room response"
+        } else {
+            "cab response"
+        })
+        .selected_text(shown)
+        .width(260.0)
+        .show_ui(ui, |ui| {
+            if room {
+                let chosen = block.file.is_none();
+                if ui
+                    .selectable_label(chosen, BUILT_IN_ROOM)
+                    .on_hover_text(
+                        "A short room, computed: the one a drum kit's room starts on. No \
+                             file needed.",
+                    )
+                    .clicked()
+                    && !chosen
+                {
+                    picked = Some(ResponseChoice::Room);
+                }
+            } else {
                 for cabinet in CabinetSetting::ALL {
                     let chosen = block.file.is_none() && block.cabinet == cabinet;
                     if ui
@@ -1601,20 +1631,29 @@ fn cabinet_choice(ui: &mut egui::Ui, block: &BlockSetting) -> Option<CabChoice> 
                         .clicked()
                         && !chosen
                     {
-                        picked = Some(CabChoice::BuiltIn(cabinet));
+                        picked = Some(ResponseChoice::Cabinet(cabinet));
                     }
                 }
-                ui.separator();
-                if ui
-                    .selectable_label(false, "Load file…")
-                    .on_hover_text("An impulse response from a WAV file: a cabinet or a body")
-                    .clicked()
-                {
-                    picked = Some(CabChoice::Load);
-                }
-            });
+            }
+            ui.separator();
+            if ui
+                .selectable_label(false, "Load file…")
+                .on_hover_text(if room {
+                    "A room recorded in a WAV file (an impulse response)"
+                } else {
+                    "An impulse response from a WAV file: a cabinet or a body"
+                })
+                .clicked()
+            {
+                picked = Some(ResponseChoice::Load);
+            }
+        });
         ui.ctx().accesskit_node_builder(combo.response.id, |node| {
-            node.set_label("Cab response");
+            node.set_label(if room {
+                "Room response"
+            } else {
+                "Cab response"
+            });
         });
         if let Some(file) = &block.file {
             combo.response.on_hover_text(file.display().to_string());
@@ -1644,28 +1683,20 @@ pub(super) fn editor(
         );
     } else {
         ui.label(RichText::new(block.choice.label()).strong());
-        if block.choice == BlockChoice::Cabinet {
-            let picked = cabinet_choice(ui, block);
-            match picked {
-                Some(CabChoice::BuiltIn(cabinet)) => {
+        if block.choice.uses_file() {
+            match response_choice(ui, block) {
+                Some(ResponseChoice::Cabinet(cabinet)) => {
                     edited.cabinet = cabinet;
                     edited.file = None;
                     changed = true;
                 }
-                Some(CabChoice::Load) => load = true,
+                Some(ResponseChoice::Room) => {
+                    edited.file = None;
+                    changed = true;
+                }
+                Some(ResponseChoice::Load) => load = true,
                 None => {}
             }
-        } else if block.choice.uses_file() {
-            ui.horizontal(|ui| {
-                let name = block.file.as_ref().map_or_else(
-                    || "No impulse response loaded".to_owned(),
-                    |file| file.display().to_string(),
-                );
-                ui.label(RichText::new(short(&name, 70)).weak());
-                if ui.button("Load WAV…").clicked() {
-                    load = true;
-                }
-            });
         }
         ui.add_space(4.0);
         let moved = block_knobs(ui, &mut edited, false, reduction);
@@ -2515,10 +2546,6 @@ impl GuitarScoreApp {
                                 }
                                 actions.chain = Some(changed);
                                 window.selected = place.saturating_add(1);
-                                // A room needs its file; a cab starts on its built-in response.
-                                if choice == BlockChoice::Room {
-                                    actions.load = Some(place);
-                                }
                             }
                             if let Some(place) = board.bypass
                                 && let Some(block) = chain.blocks.get(place)

@@ -5834,3 +5834,21 @@ regenerated.
 - Tests: `a_b_switches_to_the_tone_as_it_was_and_back` (a slow drag through every step of
   Stiffness strength, then A/B on and off; it replaces the hold test),
   `the_add_menu_shows_each_blocks_symbol` (snapshot).
+
+## 2026-11-15 — The Room block's built-in room
+
+A Room block without a file plays a built-in room, as a Cab block without one plays its
+built-in cabinet; a WAV file is an option in its dropdown ("Built-in room" / "Load
+file…"), and adding a Room no longer opens the file dialog (in the Sound chain window, the
+track panel, the master's chain and the reverb bus).
+
+- The built-in room is the kit room's computed room: `gscore_guitar::BUILT_IN_ROOM` holds
+  its reverb knobs (the drum kit's room starts on them, `default_drum_room`), and
+  `built_in_room()` renders that reverb, all wet, answering one impulse, into a 1.2 s
+  stereo response at 48 kHz, made once and shared. Length, mix, gain, the cuts and width
+  work on it as on a file's.
+- The reverb bus's choice reads "Room" (built-in or a file) instead of "Room (impulse
+  response)"; its file row is the same dropdown (`response_choice`, shared with the Cab).
+- Tests: the built-in room rings in stereo and dies away; a room without a file plays it
+  (chain spec); `a_room_block_starts_on_the_built_in_room` (snapshot); the reverb bus test
+  chooses Room without a dialog.
