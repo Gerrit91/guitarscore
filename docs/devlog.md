@@ -5784,3 +5784,27 @@ actions as the trash can and the mute button. `take_sound_chain_keys` runs befor
 score's keys and takes those keys (and the character M types) out of the frame's input,
 so they do not move the score's cursor or delete a note; Ctrl+Z, Space and the rest still
 reach the app. Test: `the_board_takes_the_arrows_delete_and_m_after_a_click`.
+
+## 2026-11-15 — Export and import a single tone
+
+Two buttons in the Sound chain window's tone row: Export tone writes the track's tone into
+a `.gstone` file (a save dialog), Import tone reads one (an open dialog), adds it to the
+saved tones and plays it on the track at once.
+
+- The file (`tone_file.rs`) is JSON: `"format": "guitarscore-tone"`, a version, and the
+  tone as a saved tone keeps it (name, kind of string, string sound, chain, what plays
+  it). The impulse responses its blocks load (a Room, a cab or body from a WAV) travel
+  inside it in Base64, so the tone sounds the same on another machine; importing keeps
+  them in an `impulses` folder beside the settings file, named by their content's
+  checksum (the same file is kept once), and points the blocks there. Base64 is written
+  out here (a few lines) rather than adding a dependency.
+- Another JSON file, a damaged one or one from a newer version is refused with a message.
+  A WAV that cannot be read on export, or that a file did not bring, is named in a
+  message; the tone is still exported or imported.
+- The same tone imported twice is saved once; another tone with a saved tone's name gets
+  a number ("Lead (2)"). A sound from before pickups existed gets its kind's on import,
+  so the saved tone and the one playing are the same.
+- The browser build says the dialogs are not available yet (as for impulse responses).
+- Tests: Base64 round trips, a tone with its impulse response coming back on "another
+  machine", missing files and refused files (`tone_file` unit tests), and
+  `an_imported_tone_file_is_saved_and_plays_on_the_track`.

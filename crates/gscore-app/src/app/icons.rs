@@ -22,6 +22,10 @@ pub(crate) enum Icon {
     Copy,
     /// Paste (a clipboard with a sheet on it).
     Paste,
+    /// Export to a file (an arrow rising out of a tray).
+    Export,
+    /// Import from a file (an arrow coming down into a tray).
+    Import,
     /// Back to the start on Stop (a start bar and an arrow turning back to it).
     ReturnOnStop,
     /// Go to the top of the score (a bar and a left-pointing triangle).
@@ -370,6 +374,29 @@ pub(crate) fn paint(painter: &Painter, rect: Rect, color: Color32, icon: Icon) {
                     Stroke::new((stroke.width * 0.8).max(1.0), color),
                 );
             }
+        }
+        Icon::Export | Icon::Import => {
+            // A tray open at the top, and an arrow leaving it or coming into it.
+            let at = |x: f32, y: f32| pos2(center.x + x * size, center.y + y * size);
+            painter.add(Shape::line(
+                vec![
+                    at(-0.36, 0.08),
+                    at(-0.36, 0.38),
+                    at(0.36, 0.38),
+                    at(0.36, 0.08),
+                ],
+                stroke,
+            ));
+            let (tip, wings) = if icon == Icon::Export {
+                (-0.42, -0.24)
+            } else {
+                (0.18, 0.0)
+            };
+            painter.line_segment([at(0.0, -0.42), at(0.0, 0.18)], stroke);
+            painter.add(Shape::line(
+                vec![at(-0.17, wings), at(0.0, tip), at(0.17, wings)],
+                stroke,
+            ));
         }
         Icon::ReturnOnStop => {
             // Where playback started, as a bar on the left; an arrow comes round from

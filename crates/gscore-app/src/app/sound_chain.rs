@@ -89,6 +89,8 @@ pub(super) struct SoundChainWindow {
     pending_keys: Vec<BoardKey>,
     /// Where the window was drawn last, for telling a click outside it.
     rect: Option<Rect>,
+    /// A tone just imported from a file: the track switches to it on the next frame.
+    imported: Option<ChainPreset>,
 }
 
 /// A key the board handles while it has the keyboard.
@@ -165,6 +167,10 @@ struct Actions {
     paste_chain: bool,
     /// The A/B button is held down: the tone as the window found it plays.
     comparing: bool,
+    /// Export the track's tone to a file, under this name.
+    export_tone: Option<String>,
+    /// Import a tone from a file.
+    import_tone: bool,
     /// A block or chain copied from a board, for the app's clipboard.
     copy: Option<SoundClip>,
     /// A block dropped on a drum part's button (or the kit's), before that part's chain.
@@ -179,6 +185,23 @@ struct ChosenPreset {
     chain: ChainSetting,
     /// What plays the strings, when the tone names it (older ones do not).
     engine: Option<TrackEngine>,
+}
+
+impl ChosenPreset {
+    /// A saved tone as a choice, for a track whose strings are `kind` now: its own kind
+    /// and engine when it names a modelled one.
+    fn of_saved(preset: &ChainPreset, kind: StringKind) -> Self {
+        let target = match engine_from_id(&preset.kind) {
+            Some(TrackEngine::Modelled(saved)) => saved,
+            _ => kind,
+        };
+        ChosenPreset {
+            kind: target,
+            sound: preset.sound,
+            chain: preset.chain.clone(),
+            engine: Some(engine_from_id(&preset.engine).unwrap_or(TrackEngine::Modelled(target))),
+        }
+    }
 }
 
 /// What editing the selected block asked for.
@@ -520,11 +543,19 @@ fn tone_buttons(
 }
 
 /// The chain's copy and paste buttons, at the right end of the header.
-/// `compare`: the A/B button too (`Some(enabled)`), for a track's own tone.
+/// The buttons only a track's own tone has (not a drum part's chain).
+struct ToneRowButtons<'a> {
+    /// Whether A/B has something to compare.
+    compare: bool,
+    /// The tone's name, which an exported file is named after.
+    name: &'a str,
+}
+
+/// `tone`: the A/B, export and import buttons too, for a track's own tone.
 fn clip_buttons(
     ui: &mut egui::Ui,
     has_chain_clip: bool,
-    compare: Option<bool>,
+    tone: Option<ToneRowButtons<'_>>,
     actions: &mut Actions,
 ) {
     use super::icons::{self, Icon};
@@ -552,21 +583,44 @@ fn clip_buttons(
         {
             actions.copy_chain = true;
         }
-        if let Some(enabled) = compare {
-            ui.add_space(8.0);
-            let button = ui
-                .add_enabled(enabled, egui::Button::new("A/B").sense(Sense::drag()))
-                .on_hover_text(
-                    "Hold to hear the tone as it was when this window opened; let go for \
-                     the tone as it is now",
-                )
-                .on_disabled_hover_text("The tone is as it was when this window opened");
-            ui.ctx().accesskit_node_builder(button.id, |node| {
-                node.set_label("Compare with the tone as it was");
-            });
-            if enabled && button.is_pointer_button_down_on() {
-                actions.comparing = true;
-            }
+        let Some(tone) = tone else {
+            return;
+        };
+        ui.add_space(8.0);
+        if icons::toolbar_button(
+            ui,
+            Icon::Import,
+            "Import tone",
+            "Import a tone from a file (.gstone) into your saved tones, and play it on this track",
+        )
+        .clicked()
+        {
+            actions.import_tone = true;
+        }
+        if icons::toolbar_button(
+            ui,
+            Icon::Export,
+            "Export tone",
+            "Export this tone to a file (.gstone) to share it: the strings' sound, the chain \
+             and the impulse responses it loads",
+        )
+        .clicked()
+        {
+            actions.export_tone = Some(tone.name.trim_end_matches(" (changed)").to_owned());
+        }
+        ui.add_space(8.0);
+        let button = ui
+            .add_enabled(tone.compare, egui::Button::new("A/B").sense(Sense::drag()))
+            .on_hover_text(
+                "Hold to hear the tone as it was when this window opened; let go for the tone \
+                 as it is now",
+            )
+            .on_disabled_hover_text("The tone is as it was when this window opened");
+        ui.ctx().accesskit_node_builder(button.id, |node| {
+            node.set_label("Compare with the tone as it was");
+        });
+        if tone.compare && button.is_pointer_button_down_on() {
+            actions.comparing = true;
         }
     });
 }
@@ -670,7 +724,15 @@ fn preset_row(
         tone_buttons(
             ui, program, kind, changed, built_in, working, window, actions,
         );
-        clip_buttons(ui, has_chain_clip, Some(shown.compare), actions);
+        clip_buttons(
+            ui,
+            has_chain_clip,
+            Some(ToneRowButtons {
+                compare: shown.compare,
+                name: &shown_name,
+            }),
+            actions,
+        );
     });
     if let Some(choice) = chosen {
         use super::tone_picker::PickerChoice;
@@ -694,19 +756,8 @@ fn preset_row(
                     .iter()
                     .find(|preset| preset.kind == saved_kind && preset.name == name)
                 {
-                    let target = match engine_from_id(&preset.kind) {
-                        Some(TrackEngine::Modelled(saved)) => saved,
-                        _ => kind,
-                    };
                     window.preset = Some((program, preset.name.clone()));
-                    actions.preset = Some(ChosenPreset {
-                        kind: target,
-                        sound: preset.sound,
-                        chain: preset.chain.clone(),
-                        engine: Some(
-                            engine_from_id(&preset.engine).unwrap_or(TrackEngine::Modelled(target)),
-                        ),
-                    });
+                    actions.preset = Some(ChosenPreset::of_saved(preset, kind));
                 }
             }
             PickerChoice::Program(_) | PickerChoice::DrumKit(_) => {}
@@ -1818,6 +1869,7 @@ impl GuitarScoreApp {
                     board_keys: false,
                     pending_keys: Vec::new(),
                     rect: None,
+                    imported: None,
                 });
             }
         }
@@ -1885,6 +1937,116 @@ impl GuitarScoreApp {
         if !taken.is_empty() {
             window.pending_keys.extend(taken);
             ctx.request_repaint();
+        }
+    }
+
+    /// Writes `track`'s tone (as `kind`'s strings, with what plays them) into a tone file
+    /// named `name`, chosen in a save dialog.
+    fn export_track_tone(
+        &mut self,
+        track: usize,
+        kind: StringKind,
+        name: String,
+        ctx: &egui::Context,
+    ) {
+        let tone = self.track_tone(track, kind);
+        let engine = self
+            .track_player(track)
+            .map_or(TrackEngine::Modelled(kind), |player| player.engine);
+        let name = if name.trim().is_empty() || name == "Unsaved tone" {
+            "My tone".to_owned()
+        } else {
+            name
+        };
+        let preset = ChainPreset {
+            name: name.clone(),
+            kind: kind_id(tone.kind).to_owned(),
+            sound: tone.sound,
+            chain: tone.chain,
+            engine: engine_id(engine).to_owned(),
+        };
+        match crate::tone_file::write(&preset) {
+            Ok((bytes, unreadable)) => {
+                if !unreadable.is_empty() {
+                    self.notice = Some(format!(
+                        "The tone is exported without {}: the file could not be read, so the \
+                         block needs it on the other machine too.",
+                        unreadable.join(", ")
+                    ));
+                }
+                if let Err(error) = self.tasks.export_tone(name, bytes, ctx) {
+                    self.notice = Some(error);
+                }
+            }
+            Err(error) => self.notice = Some(format!("Not exported: {error}")),
+        }
+    }
+
+    /// What the Import tone dialog does with the file it read (a `.gstone` file's bytes):
+    /// its tone joins the saved tones (under a name of its own if another saved tone has
+    /// its name already) and, while the Sound chain window is open, plays on its track.
+    /// Its impulse responses are kept in an `impulses` folder beside the settings file.
+    pub fn import_tone_file(&mut self, bytes: &[u8]) {
+        let dir = self
+            .settings_path
+            .as_deref()
+            .and_then(std::path::Path::parent)
+            .map(|dir| dir.join("impulses"));
+        let imported = match crate::tone_file::read(bytes, dir.as_deref()) {
+            Ok(imported) => imported,
+            Err(error) => {
+                self.notice = Some(format!("Not imported: {error}"));
+                return;
+            }
+        };
+        let mut preset = imported.preset;
+        // A sound written before pickups existed gets its kind's, as the track will play
+        // it, so the saved tone and the one playing are the same.
+        if let Some(kind) = crate::settings::kind_from_id(&preset.kind) {
+            preset.sound = preset.sound.for_kind(kind);
+        }
+        let presets = &mut self.settings.string_presets;
+        // The same tone imported again is the one already saved; another tone of that name
+        // gets a number.
+        let same = presets.iter().any(|old| {
+            old.kind == preset.kind
+                && old.name == preset.name
+                && old.sound == preset.sound
+                && old.chain == preset.chain
+        });
+        if !same {
+            let base = preset.name.clone();
+            let mut number = 2_u32;
+            while presets
+                .iter()
+                .any(|old| old.kind == preset.kind && old.name == preset.name)
+            {
+                preset.name = format!("{base} ({number})");
+                number = number.saturating_add(1);
+            }
+            if presets.len() >= MAX_STRING_PRESETS {
+                self.notice = Some(format!(
+                    "Not imported: there are {MAX_STRING_PRESETS} saved tones already; delete one \
+                     first"
+                ));
+                return;
+            }
+            presets.push(preset.clone());
+            self.playback
+                .store_string_presets(self.settings.string_presets.clone());
+            self.save_settings();
+        }
+        self.status = Some(format!("Imported the tone “{}”", preset.name));
+        if !imported.missing.is_empty() {
+            self.notice = Some(format!(
+                "The tone “{}” was imported without {}: its blocks need those impulse \
+                 responses, which the file did not bring.",
+                preset.name,
+                imported.missing.join(", ")
+            ));
+        }
+        if let Some(window) = &mut self.sound_chain {
+            window.imported = Some(preset);
         }
     }
 
@@ -1965,6 +2127,19 @@ impl GuitarScoreApp {
         let Some(player) = self.track_player(window.track) else {
             return;
         };
+        // A tone imported from a file plays on this track at once, as a saved tone chosen
+        // in the list would.
+        if let Some(preset) = window.imported.take() {
+            let kind = match player.engine {
+                TrackEngine::Modelled(kind) => kind,
+                TrackEngine::SoundFont | TrackEngine::MidiOut => {
+                    player.preset_kind.unwrap_or(StringKind::Steel)
+                }
+            };
+            window.preset = Some((player.program, preset.name.clone()));
+            window.part = None;
+            actions.preset = Some(ChosenPreset::of_saved(&preset, kind));
+        }
         // The chain of the kind that plays the track; for the SoundFont, the kind its preset
         // stands for (the mixer runs a SoundFont track's chain too).
         let (kind, modelled) = match player.engine {
@@ -2547,6 +2722,14 @@ impl GuitarScoreApp {
             self.playback
                 .store_string_presets(self.settings.string_presets.clone());
             self.save_settings();
+        }
+        if let Some(name) = actions.export_tone {
+            self.export_track_tone(track, active_kind, name, ctx);
+        }
+        if actions.import_tone
+            && let Err(error) = self.tasks.import_tone(ctx)
+        {
+            self.notice = Some(error);
         }
         if let Some((preset_kind, name)) = actions.delete_preset {
             self.settings

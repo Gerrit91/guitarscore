@@ -15,6 +15,7 @@ mod rse_sound;
 mod settings;
 mod state;
 mod tasks;
+mod tone_file;
 mod tone_library;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod tone_tool;

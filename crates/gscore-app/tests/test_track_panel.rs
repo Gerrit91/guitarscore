@@ -1220,6 +1220,64 @@ fn the_board_takes_the_arrows_delete_and_m_after_a_click() {
 }
 
 #[test]
+fn an_imported_tone_file_is_saved_and_plays_on_the_track() {
+    let mut harness = app_with("basic/note_lengths.gp");
+    open_sound_chain(&mut harness);
+    // What Export tone writes: the format's name and version, and the tone.
+    let file = serde_json::json!({
+        "format": "guitarscore-tone",
+        "version": 1,
+        "tone": {
+            "name": "Friend's Lead",
+            "kind": "electric",
+            "sound": { "level": 0.4, "pick_position": 0.2 },
+            "chain": { "blocks": [{ "choice": "drive" }, { "choice": "amp" }, {}, {}, {}] },
+            "engine": "electric",
+        },
+    });
+    let bytes = serde_json::to_vec(&file).expect("the file");
+    harness.state_mut().import_tone_file(&bytes);
+    harness.run();
+    harness.run();
+    let saved: Vec<String> = harness
+        .state()
+        .settings()
+        .string_presets
+        .iter()
+        .map(|preset| preset.name.clone())
+        .collect();
+    assert_eq!(saved, ["Friend's Lead"]);
+    assert_eq!(preset_shown(&harness), "Friend's Lead");
+    harness.get_by_label("Block 1: Drive");
+    harness.get_by_label("Block 2: Amp");
+
+    // The same file again is the same tone; another tone of that name gets a number.
+    harness.state_mut().import_tone_file(&bytes);
+    harness.run();
+    assert_eq!(harness.state().settings().string_presets.len(), 1);
+    let mut other = file;
+    other["tone"]["chain"]["blocks"][0]["choice"] = serde_json::json!("reverb");
+    harness
+        .state_mut()
+        .import_tone_file(&serde_json::to_vec(&other).expect("the file"));
+    harness.run();
+    harness.run();
+    assert_eq!(preset_shown(&harness), "Friend's Lead (2)");
+    harness.get_by_label("Block 1: Reverb");
+
+    // Not a tone file: nothing is imported, and the user is told.
+    harness.state_mut().import_tone_file(b"{}");
+    harness.run();
+    assert_eq!(harness.state().settings().string_presets.len(), 2);
+    assert!(
+        harness
+            .state()
+            .notice()
+            .is_some_and(|notice| notice.contains("Not imported"))
+    );
+}
+
+#[test]
 fn escape_closes_the_sound_chain_window() {
     let mut harness = app_with("basic/note_lengths.gp");
     open_sound_chain(&mut harness);

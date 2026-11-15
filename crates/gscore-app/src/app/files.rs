@@ -526,6 +526,17 @@ impl GuitarScoreApp {
                 Event::Exported(Err(error)) => {
                     self.notice = Some(format!("Not exported: {error}"));
                 }
+                Event::ExportedTone(Some(Ok(path))) => {
+                    self.status = Some(format!("Exported the tone to {}", path.display()));
+                }
+                Event::ExportedTone(Some(Err(error))) => {
+                    self.notice = Some(format!("Not exported: {error}"));
+                }
+                Event::PickedTone(Some(Ok(bytes))) => self.import_tone_file(&bytes),
+                Event::PickedTone(Some(Err(error))) => {
+                    self.notice = Some(format!("Not imported: {error}"));
+                }
+                Event::ExportedTone(None) | Event::PickedTone(None) => {}
                 Event::Saved {
                     path,
                     revision,
