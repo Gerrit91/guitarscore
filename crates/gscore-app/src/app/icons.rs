@@ -22,8 +22,8 @@ pub(crate) enum Icon {
     Copy,
     /// Paste (a clipboard with a sheet on it).
     Paste,
-    /// The gliding playing cursor (a cursor bar with motion lines behind it).
-    GlidingCursor,
+    /// Back to the start on Stop (a start bar and an arrow turning back to it).
+    ReturnOnStop,
     /// Go to the top of the score (a bar and a left-pointing triangle).
     ToStart,
     /// One bar back (two left-pointing triangles).
@@ -371,22 +371,28 @@ pub(crate) fn paint(painter: &Painter, rect: Rect, color: Color32, icon: Icon) {
                 );
             }
         }
-        Icon::GlidingCursor => {
-            // The playing cursor as a bar, moving right: three motion lines trail behind
-            // it, shorter the further they are from the bar.
-            let bar_x = center.x + size * 0.22;
+        Icon::ReturnOnStop => {
+            // Where playback started, as a bar on the left; an arrow comes round from
+            // below and turns back towards it at the top.
+            let bar_x = center.x - size * 0.36;
             painter.line_segment(
                 [
-                    pos2(bar_x, center.y - size * 0.42),
-                    pos2(bar_x, center.y + size * 0.42),
+                    pos2(bar_x, center.y - size * 0.4),
+                    pos2(bar_x, center.y + size * 0.4),
                 ],
-                Stroke::new(stroke.width * 1.6, color),
+                Stroke::new(stroke.width * 1.4, color),
             );
-            for (dy, length) in [(-0.22_f32, 0.38_f32), (0.0, 0.52), (0.22, 0.38)] {
-                let y = center.y + size * dy;
-                let end = bar_x - size * 0.14;
-                painter.line_segment([pos2(end - size * length, y), pos2(end, y)], stroke);
-            }
+            let deg = |d: f32| d.to_radians();
+            let turn = center + vec2(size * 0.1, 0.0);
+            paint_arc_arrow(
+                painter,
+                turn,
+                size * 0.3,
+                deg(120.0),
+                deg(-90.0),
+                size,
+                color,
+            );
         }
         Icon::ToStart => {
             let x = rect.left() + size * 0.22;

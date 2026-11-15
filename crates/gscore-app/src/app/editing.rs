@@ -607,6 +607,24 @@ impl GuitarScoreApp {
         }
     }
 
+    /// After a jump while playing (a click in the score or the grid, a bar back or on):
+    /// the place jumped to is where Stop goes back to, not where playback first started.
+    pub(super) fn move_play_origin_to_cursor(&mut self) {
+        let playing =
+            self.playback.state() == PlayState::Playing || self.playback.count_in_pending();
+        let Some(tab) = self.tabs.get_mut(self.active) else {
+            return;
+        };
+        if !playing || tab.play_origin.is_none() {
+            return;
+        }
+        tab.play_origin = Some(super::tab::PlayOrigin {
+            cursor: tab.document.editor().cursor(),
+            selection: tab.document.editor().selection(),
+            measures: tab.selection,
+        });
+    }
+
     /// Starts the song when its count-in bar has finished.
     pub(super) fn poll_count_in(&mut self) {
         if !self.playback.count_in_pending() {
@@ -713,6 +731,7 @@ impl GuitarScoreApp {
             if let Err(error) = self.playback.jump_to(document.song(), target) {
                 self.notice = Some(error);
             }
+            self.move_play_origin_to_cursor();
             return;
         }
         let Some(sequence) = self.playback.sequence().cloned() else {
@@ -734,6 +753,7 @@ impl GuitarScoreApp {
         {
             self.notice = Some(error);
         }
+        self.move_play_origin_to_cursor();
     }
 
     /// Moves to the previous bar (and seeks there while playing or paused).

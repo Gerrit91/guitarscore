@@ -1511,6 +1511,44 @@ fn stop_goes_back_to_where_playback_started_when_asked() {
     );
 }
 
+#[test]
+fn a_jump_while_playing_is_where_stop_goes_back_to() {
+    // Plays a sine-wave SoundFont on the default audio device; skipped where there is none.
+    let dir = temp_dir("return-after-jump");
+    let path = dir.join("sine.sf2");
+    std::fs::write(&path, gscore_audio::testing::sine_soundfont("Sine")).unwrap();
+    let mut harness = wide_app_with(Some(testdata("basic/note_lengths.gp")));
+    harness.state_mut().playback_mut().use_soundfont(path);
+    harness.state_mut().set_return_on_stop(true);
+    let measure = |app: &GuitarScoreApp| app.document().unwrap().editor().cursor().measure.get();
+
+    cursor_to_measure(&mut harness, 0);
+    harness.state_mut().play_pause();
+    let started = step_until(&mut harness, 10, |app| {
+        app.playback().state() == gscore_play::PlayState::Playing || app.notice().is_some()
+    });
+    assert!(started, "did not start");
+    if let Some(notice) = harness.state().notice() {
+        eprintln!("skipped: no usable audio device ({notice})");
+        return;
+    }
+    // Two bars on while playing: playback goes on from bar 3, and Stop goes back there,
+    // not to bar 1 where it started.
+    harness.state_mut().next_bar();
+    harness.state_mut().next_bar();
+    for _ in 0..5 {
+        std::thread::sleep(Duration::from_millis(50));
+        harness.step();
+    }
+    harness.get_by_label("Stop").click();
+    harness.step();
+    for _ in 0..5 {
+        std::thread::sleep(Duration::from_millis(20));
+        harness.step();
+        assert_eq!(measure(harness.state()), 2);
+    }
+}
+
 /// The first track of the open document.
 fn first_track<'a>(harness: &'a Harness<'static, GuitarScoreApp>) -> gscore_model::TrackView<'a> {
     harness
@@ -1883,17 +1921,17 @@ fn the_empty_workspace_suggests_recent_files() {
     );
 }
 
-/// The player bar's gliding-cursor button switches the setting the Settings window has.
+/// The player bar's "back to start" button switches the setting the Settings window has.
 #[test]
-fn the_player_bar_switches_the_gliding_cursor() {
+fn the_player_bar_switches_going_back_to_the_start_on_stop() {
     let mut harness = wide_app_with(Some(testdata("basic/note_lengths.gp")));
-    let gliding = harness.state().settings().flowing_cursor;
-    harness.get_by_label("Gliding cursor").click();
+    let back = harness.state().settings().return_on_stop;
+    harness.get_by_label("Back to start on stop").click();
     harness.run();
-    assert_eq!(harness.state().settings().flowing_cursor, !gliding);
-    harness.get_by_label("Gliding cursor").click();
+    assert_eq!(harness.state().settings().return_on_stop, !back);
+    harness.get_by_label("Back to start on stop").click();
     harness.run();
-    assert_eq!(harness.state().settings().flowing_cursor, gliding);
+    assert_eq!(harness.state().settings().return_on_stop, back);
 }
 
 #[test]

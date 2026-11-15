@@ -5728,3 +5728,13 @@ paths; the symbol snapshot and every snapshot that shows a symbol were regenerat
   so a click on it seemed to do nothing. It now also says what the SoundFont plays
   (program and name, or the drum kit) and that the instrument is chosen in the track
   panel. Test: `the_first_box_names_what_the_midi_synth_plays`.
+
+## 2026-11-15 — "Back to start on stop" in the player bar
+
+- The player bar's toggle after Loop is now "Back to start on stop" (the Settings
+  window's "Go back to where playback started when it stops"), with an icon of a start
+  bar and an arrow turning back to it. The gliding cursor stays in Settings only.
+- A jump while playing (a click in the score or the track grid, a bar back or on) makes
+  the place jumped to the one Stop goes back to (`move_play_origin_to_cursor`), instead
+  of where playback first started. Test: `a_jump_while_playing_is_where_stop_goes_back_to`
+  (it fails without the change); snapshots with the player bar regenerated.

@@ -221,6 +221,7 @@ impl GuitarScoreApp {
         let scale = POINTS_PER_SPACE * zoom;
         let theme = self.view.theme.palette();
         let mut clicked: Option<Point> = None;
+        let mut jumped = false;
         let mut drag_to: Option<Cursor> = None;
         let mut choices: Vec<MenuChoice> = Vec::new();
         // The header text being typed in place: committed (field and text) or cancelled,
@@ -661,11 +662,12 @@ impl GuitarScoreApp {
                 beat: hit.beat,
                 string: hit.string,
             });
-            // While playing, a click moves playback there too.
+            // While playing, a click moves playback there too, and Stop goes back there.
             let at = document.editor().cursor().position();
             if let Err(error) = self.playback.jump_to(document.song(), at) {
                 self.notice = Some(error);
             }
+            jumped = true;
         }
         // The design mode's edits, once the page's own borrows are done: a drag continues
         // one undo step; a button's batch is one step of its own.
@@ -691,6 +693,9 @@ impl GuitarScoreApp {
             if !text_opened && let Some(tab) = self.tabs.get_mut(self.active) {
                 tab.song_text = None;
             }
+        }
+        if jumped {
+            self.move_play_origin_to_cursor();
         }
         if let Some(kind) = mark_clicked {
             self.open_score_mark(kind);
