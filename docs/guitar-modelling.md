@@ -141,7 +141,12 @@ described in the literature below:
   they or the pitch change), so the highs fade at the same rate on every string. Before
   (first version) a fixed filter let a low string's highs ring about four times longer
   than a high string's: the owner heard the low notes as "a synthesizer with slight
-  distortion" (2026-11-06).
+  distortion" (2026-11-06). The loop's gain must stay below 1 (its zero-frequency mode has
+  to decay), and a loss filter that takes a lot off the fundamental needs the loop to make
+  it up; when the asked-for brilliance would need more than that room (a long sustain and
+  very dark highs on a high note, where the fundamental is only an octave below 2 kHz),
+  the highs are relaxed just enough instead and the fundamental keeps its sustain
+  (2026-11-15: the 80s Lead preset's high solo bends died within about a second).
 - **Palm mute** (2026-11-09, after the owner found it thin and only percussive): a
   palm-muted loop runs a shelf instead of the one-pole: pole and zero, flat up to its
   corner, twice in series (the second section exists only while the palm mutes; with no
