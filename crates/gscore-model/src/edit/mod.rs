@@ -355,6 +355,11 @@ enum ChangeKind {
         previous: gscore_gp::TripletFeel,
         previous_initial: Option<gscore_gp::TripletFeel>,
     },
+    /// A measure's navigation signs changed; `previous` is the whole list.
+    Directions {
+        measure: MeasureIndex,
+        previous: Vec<gscore_gp::DirectionSign>,
+    },
     /// A measure's fermatas changed; `previous` is the whole list.
     Fermata {
         measure: MeasureIndex,
@@ -523,6 +528,7 @@ impl Change {
             | ChangeKind::FreeTime { .. }
             | ChangeKind::Clef { .. }
             | ChangeKind::SimileMark { .. } => 0,
+            ChangeKind::Directions { previous, .. } => previous.len(),
             ChangeKind::Fermata { previous, .. } => previous
                 .iter()
                 .map(|(kind, offset)| kind.len().saturating_add(offset.len()))
@@ -1143,6 +1149,14 @@ impl Song {
                 if let Some(initial) = previous_initial {
                     inner.triplet_feel = initial.clone();
                 }
+                Ok(())
+            }),
+            ChangeKind::Directions { measure, previous } => self.edit_headers(|inner| {
+                let header = inner
+                    .measure_headers
+                    .get_mut(measure.get())
+                    .ok_or_else(|| ModelError::Invalid(format!("{measure}: no such measure")))?;
+                header.directions.clone_from(previous);
                 Ok(())
             }),
             ChangeKind::Fermata { measure, previous } => self.edit_headers(|inner| {

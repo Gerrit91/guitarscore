@@ -9,9 +9,10 @@ use std::collections::BTreeMap;
 use std::fmt;
 
 use gscore_model::{
-    BeatEffect, BeatIndex, BeatPosition, Clef, Dynamic, Feel, Fermata, Fret, MAX_BARS_PER_SYSTEM,
-    MAX_STRINGS, MAX_TEMPO, MeasureIndex, NoteEffect, NoteValue, PageSetup, Pitch, Repeat,
-    SimileMark, SongTextField, StringNumber, SystemBreak, TrackIndex, TrackStaves, VoiceIndex,
+    BeatEffect, BeatIndex, BeatPosition, Clef, Direction, Dynamic, Feel, Fermata, Fret,
+    MAX_BARS_PER_SYSTEM, MAX_STRINGS, MAX_TEMPO, MeasureIndex, NoteEffect, NoteValue, PageSetup,
+    Pitch, Repeat, SimileMark, SongTextField, StringNumber, SystemBreak, TrackIndex, TrackStaves,
+    VoiceIndex,
 };
 
 use crate::command::Command;
@@ -508,6 +509,34 @@ fn build(info: &'static CommandInfo, args: &mut Args) -> Result<Command, ParseEr
             Ok(Command::SetFermata {
                 measure: MeasureIndex::new(required_position(args, "measure")?),
                 fermata,
+            })
+        }
+        "set_directions" => {
+            let text = args.required("directions")?;
+            let mut directions = Vec::new();
+            if text != "none" {
+                for id in text.split(',').map(str::trim) {
+                    let direction = Direction::from_id(id).ok_or_else(|| {
+                        bad(
+                            args.command,
+                            "directions",
+                            &text,
+                            "none, or sign ids joined by commas (segno,da_coda)",
+                        )
+                    })?;
+                    if !directions.contains(&direction) {
+                        directions.push(direction);
+                    }
+                }
+            }
+            // One order whatever was typed: the line written back is the same.
+            let directions = Direction::ALL
+                .into_iter()
+                .filter(|direction| directions.contains(direction))
+                .collect();
+            Ok(Command::SetDirections {
+                measure: MeasureIndex::new(required_position(args, "measure")?),
+                directions,
             })
         }
         "set_clef" => {

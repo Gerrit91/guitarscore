@@ -273,6 +273,21 @@ pub enum DirectionSign {
     DaDoubleCoda,
 }
 
+impl DirectionSign {
+    /// GuitarScore addition: true for a sign the music jumps to or stops at (coda, segno,
+    /// fine: GPIF's `<Target>`), false for a jump (D.C., D.S., to coda: `<Jump>`).
+    pub fn is_target(&self) -> bool {
+        matches!(
+            self,
+            DirectionSign::Coda
+                | DirectionSign::DoubleCoda
+                | DirectionSign::Segno
+                | DirectionSign::SegnoSegno
+                | DirectionSign::Fine
+        )
+    }
+}
+
 /// An enumeration of all supported slide types.
 #[repr(i8)]
 #[derive(Debug, Clone, PartialEq, Eq)]

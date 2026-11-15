@@ -48,7 +48,9 @@ pub struct MeasureHeader {
     pub repeat_alternative: u8,
     pub repeat_close: i8,
     pub triplet_feel: TripletFeel,
-    pub direction: Option<DirectionSign>,
+    /// GuitarScore fix: every navigation sign of the measure (a GP7 bar can hold a segno and
+    /// a "to coda", say), targets first; was one sign, the others were lost.
+    pub directions: Vec<DirectionSign>,
     /// Tonality of the measure
     pub key_signature: KeySignature,
     pub double_bar: bool,
@@ -84,7 +86,7 @@ impl Default for MeasureHeader {
             repeat_alternative: 0,
             repeat_close: -1,
             triplet_feel: TripletFeel::None,
-            direction: None,
+            directions: Vec::new(),
             key_signature: KeySignature::default(),
             double_bar: false,
             marker: None,

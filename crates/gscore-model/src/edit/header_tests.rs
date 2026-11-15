@@ -350,6 +350,33 @@ fn a_fermata_is_set_and_undone() {
 }
 
 #[test]
+fn directions_are_set_in_order_and_undone() {
+    use crate::Direction as D;
+    let mut song = from_gp(test_song(vec![track(
+        "Guitar",
+        GUITAR_6,
+        vec![measure((4, 4), vec![]), measure((4, 4), vec![])],
+    )]))
+    .unwrap();
+    let before = song.clone();
+    // Kept in the canonical order (targets first), each sign once.
+    let change = song
+        .set_directions(MeasureIndex::new(1), &[D::DaCoda, D::Segno, D::DaCoda])
+        .unwrap();
+    assert_eq!(song.directions(MeasureIndex::new(1)), [D::Segno, D::DaCoda]);
+    let clear = song.set_directions(MeasureIndex::new(1), &[]).unwrap();
+    assert!(song.directions(MeasureIndex::new(1)).is_empty());
+    song.revert(&clear).unwrap();
+    assert_eq!(song.directions(MeasureIndex::new(1)), [D::Segno, D::DaCoda]);
+    song.revert(&change).unwrap();
+    assert_unchanged(&before, &song);
+    assert!(
+        song.set_directions(MeasureIndex::new(9), &[D::Fine])
+            .is_err()
+    );
+}
+
+#[test]
 fn a_batch_undoes_its_parts_in_reverse() {
     let mut song = from_gp(test_song(vec![track(
         "Guitar",

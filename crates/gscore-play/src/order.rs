@@ -78,7 +78,7 @@ fn repeat_order(song: &Song) -> Vec<MeasureIndex> {
 fn target(order: &[MeasureIndex], song: &Song, direction: Direction) -> Option<usize> {
     order
         .iter()
-        .position(|&measure| song.direction(measure) == Some(direction))
+        .position(|&measure| song.has_direction(measure, direction))
 }
 
 /// Which navigation signs have been seen, so a jump happens once.
@@ -96,14 +96,34 @@ struct Navigation {
     stop_at_fine: bool,
 }
 
+/// Where the jump targets are in the repeated order.
+#[derive(Debug, Clone, Copy)]
+struct Targets {
+    coda: Option<usize>,
+    double_coda: Option<usize>,
+    segno: Option<usize>,
+    segno_segno: Option<usize>,
+}
+
+/// What a sign does on this pass.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Flow {
+    /// Go on at this position of the order.
+    Jump(usize),
+    /// The song ends after this measure.
+    Stop,
+}
+
 /// Applies the navigation signs of `song` to the repeated `order`.
 fn direction_order(song: &Song, order: &[MeasureIndex]) -> Vec<MeasureIndex> {
     let limit = order.len().saturating_mul(MAX_PLAYED_PER_MEASURE);
     let mut played = Vec::with_capacity(order.len());
-    let coda = target(order, song, Direction::Coda);
-    let double_coda = target(order, song, Direction::DoubleCoda);
-    let segno = target(order, song, Direction::Segno);
-    let segno_segno = target(order, song, Direction::SegnoSegno);
+    let targets = Targets {
+        coda: target(order, song, Direction::Coda),
+        double_coda: target(order, song, Direction::DoubleCoda),
+        segno: target(order, song, Direction::Segno),
+        segno_segno: target(order, song, Direction::SegnoSegno),
+    };
     let mut navigation = Navigation::default();
     let mut at = 0;
 
@@ -112,85 +132,72 @@ fn direction_order(song: &Song, order: &[MeasureIndex]) -> Vec<MeasureIndex> {
             break;
         };
         played.push(measure);
-        let direction = song.direction(measure);
-        let mut next = at.saturating_add(1);
-        match direction {
-            Some(
-                Direction::DaCapo
-                | Direction::DaCapoAlCoda
-                | Direction::DaCapoAlDoubleCoda
-                | Direction::DaCapoAlFine,
-            ) if !navigation.returned => {
-                navigation.returned = true;
-                navigation.stop_at_fine = direction == Some(Direction::DaCapoAlFine);
-                navigation.wants_coda = matches!(
-                    direction,
-                    Some(Direction::DaCapoAlCoda | Direction::DaSegnoAlCoda)
-                );
-                navigation.wants_double_coda = matches!(
-                    direction,
-                    Some(Direction::DaCapoAlDoubleCoda | Direction::DaSegnoAlDoubleCoda)
-                );
-                next = 0;
-            }
-            Some(
-                Direction::DaSegno
-                | Direction::DaSegnoAlCoda
-                | Direction::DaSegnoAlDoubleCoda
-                | Direction::DaSegnoAlFine,
-            ) if !navigation.returned => {
-                if let Some(segno) = segno {
-                    navigation.returned = true;
-                    navigation.stop_at_fine = direction == Some(Direction::DaSegnoAlFine);
-                    navigation.wants_coda = direction == Some(Direction::DaSegnoAlCoda);
-                    navigation.wants_double_coda =
-                        direction == Some(Direction::DaSegnoAlDoubleCoda);
-                    next = segno;
-                }
-            }
-            Some(
-                Direction::DaSegnoSegno
-                | Direction::DaSegnoSegnoAlCoda
-                | Direction::DaSegnoSegnoAlDoubleCoda
-                | Direction::DaSegnoSegnoAlFine,
-            ) if !navigation.returned => {
-                if let Some(segno) = segno_segno {
-                    navigation.returned = true;
-                    navigation.stop_at_fine = direction == Some(Direction::DaSegnoSegnoAlFine);
-                    navigation.wants_coda = direction == Some(Direction::DaSegnoSegnoAlCoda);
-                    navigation.wants_double_coda =
-                        direction == Some(Direction::DaSegnoSegnoAlDoubleCoda);
-                    next = segno;
-                }
-            }
-            Some(Direction::DaCoda)
-                if navigation.returned
-                    && navigation.wants_coda
-                    && !navigation.to_coda
-                    && coda.is_some() =>
-            {
-                navigation.to_coda = true;
-                if let Some(coda) = coda {
-                    next = coda;
-                }
-            }
-            Some(Direction::DaDoubleCoda)
-                if navigation.returned
-                    && navigation.wants_double_coda
-                    && !navigation.to_coda
-                    && double_coda.is_some() =>
-            {
-                navigation.to_coda = true;
-                if let Some(coda) = double_coda {
-                    next = coda;
-                }
-            }
-            Some(Direction::Fine) if navigation.returned && navigation.stop_at_fine => break,
-            _ => {}
+        // A measure may hold several signs (a fine and a D.C. al fine, a segno and a to
+        // coda): the first that acts on this pass wins, a fine before any jump.
+        let flow = song
+            .directions(measure)
+            .into_iter()
+            .find_map(|direction| apply(direction, &mut navigation, targets));
+        match flow {
+            Some(Flow::Stop) => break,
+            Some(Flow::Jump(next)) => at = next,
+            None => at = at.saturating_add(1),
         }
-        at = next;
     }
     played
+}
+
+/// What `direction` does with `navigation` as it is, updating it when the sign acts.
+fn apply(direction: Direction, navigation: &mut Navigation, targets: Targets) -> Option<Flow> {
+    use Direction as D;
+    match direction {
+        D::Fine if navigation.returned && navigation.stop_at_fine => Some(Flow::Stop),
+        D::DaCapo | D::DaCapoAlCoda | D::DaCapoAlDoubleCoda | D::DaCapoAlFine
+            if !navigation.returned =>
+        {
+            navigation.returned = true;
+            navigation.stop_at_fine = direction == D::DaCapoAlFine;
+            navigation.wants_coda = direction == D::DaCapoAlCoda;
+            navigation.wants_double_coda = direction == D::DaCapoAlDoubleCoda;
+            Some(Flow::Jump(0))
+        }
+        D::DaSegno | D::DaSegnoAlCoda | D::DaSegnoAlDoubleCoda | D::DaSegnoAlFine
+            if !navigation.returned =>
+        {
+            let segno = targets.segno?;
+            navigation.returned = true;
+            navigation.stop_at_fine = direction == D::DaSegnoAlFine;
+            navigation.wants_coda = direction == D::DaSegnoAlCoda;
+            navigation.wants_double_coda = direction == D::DaSegnoAlDoubleCoda;
+            Some(Flow::Jump(segno))
+        }
+        D::DaSegnoSegno
+        | D::DaSegnoSegnoAlCoda
+        | D::DaSegnoSegnoAlDoubleCoda
+        | D::DaSegnoSegnoAlFine
+            if !navigation.returned =>
+        {
+            let segno = targets.segno_segno?;
+            navigation.returned = true;
+            navigation.stop_at_fine = direction == D::DaSegnoSegnoAlFine;
+            navigation.wants_coda = direction == D::DaSegnoSegnoAlCoda;
+            navigation.wants_double_coda = direction == D::DaSegnoSegnoAlDoubleCoda;
+            Some(Flow::Jump(segno))
+        }
+        D::DaCoda if navigation.returned && navigation.wants_coda && !navigation.to_coda => {
+            let coda = targets.coda?;
+            navigation.to_coda = true;
+            Some(Flow::Jump(coda))
+        }
+        D::DaDoubleCoda
+            if navigation.returned && navigation.wants_double_coda && !navigation.to_coda =>
+        {
+            let coda = targets.double_coda?;
+            navigation.to_coda = true;
+            Some(Flow::Jump(coda))
+        }
+        _ => None,
+    }
 }
 
 #[cfg(test)]
@@ -310,6 +317,32 @@ mod tests {
                 ]
             ),
             [0, 1, 2, 3, 4, 0, 1, 2, 3, 4]
+        );
+    }
+
+    #[test]
+    fn one_measure_may_hold_a_segno_and_a_to_coda() {
+        // 0 1[Segno, To coda] 2 3[D.S. al coda] 4 Coda: back to 1, then to the coda.
+        assert_eq!(
+            directions_of(
+                5,
+                &[
+                    (1, Direction::Segno),
+                    (1, Direction::DaCoda),
+                    (3, Direction::DaSegnoAlCoda),
+                    (4, Direction::Coda),
+                ]
+            ),
+            [0, 1, 2, 3, 1, 4]
+        );
+    }
+
+    #[test]
+    fn a_fine_and_a_da_capo_al_fine_in_one_measure() {
+        // The first pass jumps back, the second stops there.
+        assert_eq!(
+            directions_of(3, &[(1, Direction::Fine), (1, Direction::DaCapoAlFine)]),
+            [0, 1, 0, 1]
         );
     }
 }

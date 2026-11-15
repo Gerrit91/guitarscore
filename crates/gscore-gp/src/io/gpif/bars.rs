@@ -141,10 +141,12 @@ pub(crate) struct Section {
 
 #[derive(Debug, Deserialize)]
 pub(crate) struct DirectionsWrapper {
+    /// GuitarScore fix: a bar may hold several targets and jumps (one each failed to open
+    /// a file with two).
     #[serde(rename = "Target", default)]
-    pub target: Option<String>,
+    pub targets: Vec<String>,
     #[serde(rename = "Jump", default)]
-    pub jump: Option<String>,
+    pub jumps: Vec<String>,
 }
 
 #[derive(Debug, Deserialize)]

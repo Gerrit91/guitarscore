@@ -545,11 +545,17 @@ impl WriteGpifInGpifStringOrder for Song {
             if mh.free_time {
                 xml.push_str("<FreeTime/>");
             }
-            if let Some(dir) = &mh.direction {
-                xml.push_str(&format!(
-                    "<Directions><Jump>{}</Jump></Directions>",
-                    direction_sign_str(dir)
-                ));
+            // GuitarScore fix: codas, segnos and fine are targets (all were written as jumps),
+            // and every sign of the bar is written.
+            if !mh.directions.is_empty() {
+                xml.push_str("<Directions>");
+                for sign in mh.directions.iter().filter(|sign| sign.is_target()) {
+                    xml.push_str(&format!("<Target>{}</Target>", direction_sign_str(sign)));
+                }
+                for sign in mh.directions.iter().filter(|sign| !sign.is_target()) {
+                    xml.push_str(&format!("<Jump>{}</Jump>", direction_sign_str(sign)));
+                }
+                xml.push_str("</Directions>");
             }
             // GuitarScore addition: Guitar Pro's layout properties (the design mode's
             // song-wide bar width, beaming rules), written back as they were read.

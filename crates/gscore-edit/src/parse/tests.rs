@@ -349,6 +349,20 @@ fn parses_every_command_and_fills_defaults() {
             },
         ),
         (
+            "set_directions measure=2 directions=da_coda,segno",
+            Command::SetDirections {
+                measure: MeasureIndex::new(1),
+                directions: vec![Direction::Segno, Direction::DaCoda],
+            },
+        ),
+        (
+            "set_directions measure=2 directions=none",
+            Command::SetDirections {
+                measure: MeasureIndex::new(1),
+                directions: Vec::new(),
+            },
+        ),
+        (
             "set_fermata measure=3 fermata=long",
             Command::SetFermata {
                 measure: MeasureIndex::new(2),
@@ -793,6 +807,10 @@ fn every_command_writes_a_line_that_parses_back_to_it() {
         Command::SetFermata {
             measure: MeasureIndex::new(1),
             fermata: Some(Fermata::VeryLong),
+        },
+        Command::SetDirections {
+            measure: MeasureIndex::new(1),
+            directions: vec![Direction::Fine, Direction::DaCapoAlFine],
         },
         Command::SetClef {
             track: TrackIndex::new(1),

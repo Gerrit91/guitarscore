@@ -323,6 +323,17 @@ const FEEL: ParamInfo = ParamInfo {
     help: "none, eighth, sixteenth, dotted_eighth, dotted_sixteenth, scottish_eighth or scottish_sixteenth",
 };
 
+const DIRECTIONS: ParamInfo = ParamInfo {
+    name: "directions",
+    required: true,
+    default: None,
+    help: "none, or ids joined by commas: coda, double_coda, segno, segno_segno, fine, \
+           da_capo, da_capo_al_coda, da_capo_al_double_coda, da_capo_al_fine, da_segno, \
+           da_segno_al_coda, da_segno_al_double_coda, da_segno_al_fine, da_segno_segno, \
+           da_segno_segno_al_coda, da_segno_segno_al_double_coda, da_segno_segno_al_fine, \
+           da_coda, da_double_coda",
+};
+
 const FERMATA: ParamInfo = ParamInfo {
     name: "fermata",
     required: true,
@@ -994,6 +1005,15 @@ pub(crate) const SET_FEEL: CommandInfo = CommandInfo {
     params: &[MEASURE, FEEL],
 };
 
+pub(crate) const SET_DIRECTIONS: CommandInfo = CommandInfo {
+    id: "set_directions",
+    aliases: &["set_direction"],
+    label: "Set the jumps and codas",
+    help: "Sets the measure's navigation signs: where the music jumps to (segno, coda, fine) \
+           and where it jumps from (D.C., D.S., to coda), or none.",
+    params: &[MEASURE, DIRECTIONS],
+};
+
 pub(crate) const SET_FERMATA: CommandInfo = CommandInfo {
     id: "set_fermata",
     aliases: &["set_fermatas"],
@@ -1128,6 +1148,7 @@ pub const COMMANDS: &[CommandInfo] = &[
     SET_DOUBLE_BAR,
     SET_FEEL,
     SET_FERMATA,
+    SET_DIRECTIONS,
     SET_CLEF,
     SET_FREE_TIME,
     SET_SIMILE_MARK,
