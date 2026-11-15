@@ -444,6 +444,36 @@ fn the_outer_bands_switch_between_shelf_and_bell() {
     assert!(harness.query_all_by_label("4 Q").next().is_none());
 }
 
+/// Ctrl+Z and Ctrl+Y work while the Sound chain window is in front, also right after a
+/// click in it.
+#[test]
+fn the_undo_keys_work_in_the_sound_chain_window() {
+    let mut harness = app_with("basic/note_lengths.gp");
+    open_sound_chain(&mut harness);
+    let first = empty_block_index(&harness);
+    harness.get_by_label(&format!("Block {first}: +")).click();
+    harness.run();
+    harness.get_by_label("Reverb").click();
+    harness.run();
+    let reverb = |harness: &Harness<'static, GuitarScoreApp>| {
+        harness
+            .query_by_label(&format!("Block {first}: Reverb"))
+            .is_some()
+    };
+    assert!(reverb(&harness));
+    // A click on the block first, so the window has the pointer's last click.
+    harness
+        .get_by_label(&format!("Block {first}: Reverb"))
+        .click();
+    harness.run();
+    undo(&mut harness);
+    harness.run();
+    assert!(!reverb(&harness), "Ctrl+Z takes the block out");
+    harness.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::Y);
+    harness.run();
+    assert!(reverb(&harness), "Ctrl+Y puts it back");
+}
+
 #[test]
 fn a_chain_change_is_an_undo_step_and_marks_the_song_modified() {
     use gscore_play::StringKind;
