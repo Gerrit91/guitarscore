@@ -5724,3 +5724,7 @@ paths; the symbol snapshot and every snapshot that shows a symbol were regenerat
   them); a block's right-click menu still does.
 - Tests follow the new names ("Built-in tone", "Save tone as", the Tone dropdown reports
   the tone's name as its value); snapshots regenerated.
+- The first block (the source) of a MIDI-synth track showed only its "Played by" switch,
+  so a click on it seemed to do nothing. It now also says what the SoundFont plays
+  (program and name, or the drum kit) and that the instrument is chosen in the track
+  panel. Test: `the_first_box_names_what_the_midi_synth_plays`.

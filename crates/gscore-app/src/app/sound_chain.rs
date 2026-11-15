@@ -290,6 +290,27 @@ fn strings_editor(
         }
         return changed;
     }
+    if player.engine == TrackEngine::SoundFont {
+        // What the synth plays, so the box says more than its switch: the instrument
+        // itself is the track's, and the blocks to the right shape its sound.
+        let instrument = if player.drums {
+            "its drum kit".to_owned()
+        } else {
+            format!(
+                "program {}: {}",
+                player.program,
+                gscore_model::program_name(player.program)
+            )
+        };
+        ui.label(format!("The SoundFont plays {instrument}."));
+        ui.label(
+            RichText::new(
+                "The instrument is the track's, chosen in the track panel; the blocks to the \
+                 right shape its sound.",
+            )
+            .weak(),
+        );
+    }
     if !player.strings {
         ui.label(
             RichText::new("Only string instruments can be played by modelled strings.").weak(),

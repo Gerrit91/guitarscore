@@ -1047,6 +1047,24 @@ fn a_block_added_to_a_midi_synth_track_is_its_only_block() {
 }
 
 #[test]
+fn the_first_box_names_what_the_midi_synth_plays() {
+    let mut harness = app_with("basic/note_lengths.gp");
+    open_sound_chain(&mut harness);
+    harness.get_by_label("Block 0: Strings").click();
+    harness.run();
+    // The window's own switch (the track panel has one too, under the window).
+    harness
+        .query_all_by_label("MIDI synth")
+        .last()
+        .expect("the sound source switch")
+        .click();
+    harness.run();
+    // The box stays selected and now says which instrument the SoundFont plays.
+    harness.get_by_label("Block 0: MIDI");
+    harness.get_by_label_contains("The SoundFont plays program");
+}
+
+#[test]
 fn escape_closes_the_sound_chain_window() {
     let mut harness = app_with("basic/note_lengths.gp");
     open_sound_chain(&mut harness);
