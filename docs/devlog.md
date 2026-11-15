@@ -5817,3 +5817,20 @@ so it is smooth at its 20-pixel size. Its text field now opens right beside it: 
 field's right edge is placed next to the icon (a right-anchored area), where before its
 left edge was placed a fixed width away and left a gap. Snapshots showing the icon
 regenerated.
+
+## 2026-11-15 — A/B as a switch, knobs in steps, symbols in the block menus
+
+- A/B was a button to hold: a click only blipped, and the knobs kept showing the new
+  values, so it looked broken. Now it is a switch: on, the track plays the tone as the
+  window found it and the window shows it (the board, the knobs and the tone's name);
+  the board, the knobs and the tone row's other buttons are greyed then, so that tone is
+  not edited by mistake. Off, the tone as it is now. Still only what is heard changes.
+- A knob in steps (Stiffness strength, 0 to 4) never left its step with a slow drag: each
+  frame's small movement was added to the rounded value and rounded back. `round_knob`
+  now keeps where the drag has got to apart from the value, so movements add up; it also
+  follows the mouse up and down (up is more), as knobs usually do.
+- The "+" menu of an empty place and the track panel's "Add a block" menu show each
+  block's symbol beside its name (`block_menu_item`).
+- Tests: `a_b_switches_to_the_tone_as_it_was_and_back` (a slow drag through every step of
+  Stiffness strength, then A/B on and off; it replaces the hold test),
+  `the_add_menu_shows_each_blocks_symbol` (snapshot).

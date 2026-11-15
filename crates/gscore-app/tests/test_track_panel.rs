@@ -1277,6 +1277,19 @@ fn an_imported_tone_file_is_saved_and_plays_on_the_track() {
     );
 }
 
+/// An empty place's "+" menu lists the blocks with their symbols, as the board shows them.
+#[test]
+fn the_add_menu_shows_each_blocks_symbol() {
+    let _gpu = common::lock_gpu();
+    let mut harness = app_with("basic/note_lengths.gp");
+    open_sound_chain(&mut harness);
+    let first = empty_block_index(&harness);
+    harness.get_by_label(&format!("Block {first}: +")).click();
+    harness.run();
+    harness.get_by_label("Reverb");
+    harness.snapshot("sound_chain_add_menu");
+}
+
 #[test]
 fn escape_closes_the_sound_chain_window() {
     let mut harness = app_with("basic/note_lengths.gp");
@@ -1518,10 +1531,10 @@ fn choose_chain_tone(harness: &mut Harness<'static, GuitarScoreApp>, name: &str)
     harness.run();
 }
 
+/// What the owner did: the strings' Stiffness strength turned with slow, small movements
+/// (a knob in steps once never left its step that way), then A/B switched on and off.
 #[test]
-fn holding_a_b_plays_the_tone_the_window_found() {
-    use gscore_app::chain_settings::BlockChoice;
-
+fn a_b_switches_to_the_tone_as_it_was_and_back() {
     let mut harness = app_with("basic/note_lengths.gp");
     open_sound_chain(&mut harness);
     // Nothing changed yet: nothing to compare.
@@ -1531,56 +1544,68 @@ fn holding_a_b_plays_the_tone_the_window_found() {
             .accesskit_node()
             .is_disabled()
     );
-    let first = empty_block_index(&harness);
-    harness.get_by_label(&format!("Block {first}: +")).click();
+    harness.get_by_label("Block 0: Strings").click();
     harness.run();
-    harness.get_by_label("Reverb").click();
+    click_in_chain(&harness, "String");
     harness.run();
-    harness.run();
-    let heard_reverb = |harness: &Harness<'static, GuitarScoreApp>| {
+    let knob = |harness: &Harness<'static, GuitarScoreApp>| {
+        harness
+            .get_by_label("Stiffness strength")
+            .accesskit_node()
+            .numeric_value()
+            .expect("the knob's value")
+    };
+    let heard = |harness: &Harness<'static, GuitarScoreApp>| {
         harness
             .state()
             .playback()
             .track_tones()
             .get(&0)
-            .is_some_and(|tone| {
-                tone.chain
-                    .blocks
-                    .iter()
-                    .any(|block| block.choice == BlockChoice::Reverb)
-            })
+            .map(|tone| tone.sound.stiffness_stages)
     };
-    assert!(heard_reverb(&harness), "the new block is heard");
+    let before = knob(&harness);
+    assert!(before < 4.0, "{before}");
+
+    // A slow drag to the right, two pixels a frame, goes through every step to the top
+    // (240 pixels cover the range).
+    let centre = harness.get_by_label("Stiffness strength").rect().center();
+    harness.hover_at(centre);
+    harness.run();
+    harness.drag_at(centre);
+    harness.step();
+    for step in 1..=130 {
+        harness.hover_at(centre + egui::vec2(2.0 * step as f32, 0.0));
+        harness.step();
+    }
+    harness.drop_at(centre + egui::vec2(260.0, 0.0));
+    harness.run();
+    assert_eq!(knob(&harness), 4.0, "the slow drag reached the end");
+    assert_eq!(heard(&harness), Some(4));
     let revision = harness.state().document().unwrap().editor().revision();
 
-    // Held: the tone as the window found it plays, and the song keeps its change.
-    let button = harness
+    // A/B on: the tone as the window found it is heard and shown; the song keeps its
+    // change.
+    harness
         .get_by_label("Compare with the tone as it was")
-        .rect();
-    harness.hover_at(button.center());
-    harness.input_mut().events.push(egui::Event::PointerButton {
-        pos: button.center(),
-        button: egui::PointerButton::Primary,
-        pressed: true,
-        modifiers: egui::Modifiers::NONE,
-    });
+        .click();
     harness.run();
-    assert!(!heard_reverb(&harness), "A/B plays the tone as it was");
+    harness.run();
+    assert_ne!(heard(&harness), Some(4), "A/B plays the tone as it was");
+    assert_eq!(knob(&harness), before, "and shows it");
     assert_eq!(
         harness.state().document().unwrap().editor().revision(),
         revision,
         "comparing is not an edit"
     );
 
-    // Let go: the tone as it is now again.
-    harness.input_mut().events.push(egui::Event::PointerButton {
-        pos: button.center(),
-        button: egui::PointerButton::Primary,
-        pressed: false,
-        modifiers: egui::Modifiers::NONE,
-    });
+    // A/B off: the tone as it is now again.
+    harness
+        .get_by_label("Compare with the tone as it was")
+        .click();
     harness.run();
-    assert!(heard_reverb(&harness), "letting go plays the tone as it is");
+    harness.run();
+    assert_eq!(heard(&harness), Some(4));
+    assert_eq!(knob(&harness), 4.0);
 }
 
 #[test]

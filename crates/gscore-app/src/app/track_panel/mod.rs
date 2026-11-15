@@ -697,7 +697,7 @@ fn chain_rows(
     let response = response.on_hover_text("Add a block to this track's sound chain");
     egui::Popup::menu(&response).show(|ui| {
         for (choice, label, tip) in super::sound_chain::block_choices() {
-            if ui.button(label).on_hover_text(tip).clicked() {
+            if super::sound_chain::block_menu_item(ui, choice, label, tip).clicked() {
                 actions.add = Some((place, choice));
                 ui.close();
             }
