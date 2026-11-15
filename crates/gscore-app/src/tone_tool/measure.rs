@@ -127,7 +127,8 @@ fn chain_spec(
             (BlockChoice::Delay, _) => Some(BlockKind::Delay),
             // A cabinet without a file of its own plays the built-in one.
             (BlockChoice::Cabinet, None) => block.built_in_cabinet().map(BlockKind::Impulse),
-            (BlockChoice::Room, None) => None,
+            // A room without a file plays the built-in one.
+            (BlockChoice::Room, None) => block.built_in_room(),
             (choice, Some(file)) => match impulse(file, impulses) {
                 Ok(response) if choice == BlockChoice::Room => {
                     Some(BlockKind::room(response, block.room_length()))

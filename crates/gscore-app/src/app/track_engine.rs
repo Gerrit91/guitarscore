@@ -50,6 +50,9 @@ pub(super) struct SoundPanel {
     pub(super) chain: ChainSetting,
     /// The built-in or saved tone that matches `tone` exactly, when one does.
     pub(super) current: Option<PickerChoice>,
+    /// The name the tone shows under: a built-in or saved tone's, or the one it was
+    /// dialed in from with "(changed)".
+    pub(super) tone_name: String,
     /// The built-in tone the track's program starts on, if it has one.
     pub(super) default_tone: Option<String>,
     /// The user's saved tones, for the picker's own group.
@@ -112,14 +115,17 @@ impl GuitarScoreApp {
         let default_tone = self
             .playback
             .track_default_tone_name(track, player.program, kind);
+        let current = current_tone_choice(
+            &tone,
+            default_tone.as_deref(),
+            &self.settings.string_presets,
+        );
+        let tone_name = self.track_tone_name(track, current.as_ref());
         Some(SoundPanel {
             player,
             chain: tone.chain.clone(),
-            current: current_tone_choice(
-                &tone,
-                default_tone.as_deref(),
-                &self.settings.string_presets,
-            ),
+            current,
+            tone_name,
             default_tone,
             saved: self.settings.string_presets.clone(),
             ports: self.playback.ports().to_vec(),
@@ -297,12 +303,46 @@ impl GuitarScoreApp {
         let Some(player) = self.track_player(track) else {
             return;
         };
+        self.note_tone_basis(track, &player, &tone);
         let Some(mut sound) = self.open_track_sound(track) else {
             return;
         };
         // The song keeps what this track now plays, undoable at once.
         sound.tone = Some(crate::settings::PresetTone::of(player.program, &tone));
         self.set_track_sound(track, sound, merge);
+    }
+
+    /// Before `track`'s tone becomes `tone`: when the tone it plays now is a built-in or
+    /// saved one, that is the tone the new one was dialed in from (a choice from a list
+    /// becomes the basis of the next change). A tone that is itself named needs none.
+    fn note_tone_basis(&mut self, track: usize, player: &TrackPlayer, tone: &Tone) {
+        let old = self.track_chain_tone(track, player, tone.kind);
+        let default_tone = self
+            .playback
+            .track_default_tone_name(track, player.program, tone.kind);
+        let presets = &self.settings.string_presets;
+        let named = |tone: &Tone| match current_tone_choice(tone, default_tone.as_deref(), presets)
+        {
+            Some(PickerChoice::BuiltIn(name) | PickerChoice::Saved { name, .. }) => Some(name),
+            _ => None,
+        };
+        let new_name = named(tone);
+        let old_name = named(&old);
+        let Some(tab) = self.tabs.get_mut(self.active) else {
+            return;
+        };
+        if let Some(name) = new_name.or(old_name) {
+            tab.tone_basis.insert(track, name);
+        }
+    }
+
+    /// The name `track`'s tone shows under (see [`tone_display_name`]).
+    pub(super) fn track_tone_name(&self, track: usize, current: Option<&PickerChoice>) -> String {
+        let basis = self
+            .tabs
+            .get(self.active)
+            .and_then(|tab| tab.tone_basis.get(&track));
+        super::tone_picker::tone_display_name(current, basis.map(String::as_str))
     }
 
     /// Puts `block` into the first empty place of `track`'s chain: a block dropped on the
@@ -520,13 +560,24 @@ impl GuitarScoreApp {
         let Some(tab) = self.tabs.get(self.active) else {
             return;
         };
-        let tones: std::collections::BTreeMap<usize, Tone> = tab
+        let mut tones: std::collections::BTreeMap<usize, Tone> = tab
             .sound()
             .tracks
             .iter()
             .enumerate()
             .filter_map(|(track, sound)| Some((track, sound.tone.as_ref()?.tone()?)))
             .collect();
+        // A/B on: the track plays the tone it is compared with (its built-in one when it had
+        // no tone of its own, through playback's own default, levelled as it was heard).
+        match &self.compare_tone {
+            Some((track, Some(tone))) => {
+                tones.insert(*track, tone.clone());
+            }
+            Some((track, None)) => {
+                tones.remove(track);
+            }
+            None => {}
+        }
         // A track made with a Guitar Pro sound the tone library maps to a tone starts on
         // that tone instead of its program's.
         let song = tab.document.song();

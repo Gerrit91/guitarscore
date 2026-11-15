@@ -18,6 +18,16 @@ pub(crate) enum Icon {
     CountIn,
     /// Loop (two arrows going round a circle).
     Loop,
+    /// Copy (two overlapping sheets).
+    Copy,
+    /// Paste (a clipboard with a sheet on it).
+    Paste,
+    /// Export to a file (an arrow rising out of a tray).
+    Export,
+    /// Import from a file (an arrow coming down into a tray).
+    Import,
+    /// Back to the start on Stop (a start bar and an arrow turning back to it).
+    ReturnOnStop,
     /// Go to the top of the score (a bar and a left-pointing triangle).
     ToStart,
     /// One bar back (two left-pointing triangles).
@@ -334,6 +344,82 @@ pub(crate) fn paint(painter: &Painter, rect: Rect, color: Color32, icon: Icon) {
             let deg = |d: f32| d.to_radians();
             paint_arc_arrow(painter, center, radius, deg(195.0), deg(325.0), size, color);
             paint_arc_arrow(painter, center, radius, deg(15.0), deg(145.0), size, color);
+        }
+        Icon::Copy => {
+            // Two sheets, the front one offset down and to the right.
+            let sheet = vec2(size * 0.5, size * 0.62);
+            let back = Rect::from_min_size(center - vec2(size * 0.36, size * 0.42), sheet);
+            let front = back.translate(vec2(size * 0.22, size * 0.22));
+            painter.rect_stroke(back, size * 0.06, stroke, egui::StrokeKind::Inside);
+            painter.rect_filled(front.expand(stroke.width), 0.0, Color32::TRANSPARENT);
+            painter.rect_stroke(front, size * 0.06, stroke, egui::StrokeKind::Inside);
+        }
+        Icon::Paste => {
+            // A clipboard: the board, the clip at its top, and a sheet's lines on it.
+            let board = Rect::from_center_size(
+                center + vec2(0.0, size * 0.05),
+                vec2(size * 0.62, size * 0.78),
+            );
+            painter.rect_stroke(board, size * 0.06, stroke, egui::StrokeKind::Inside);
+            let clip =
+                Rect::from_center_size(pos2(center.x, board.top()), vec2(size * 0.3, size * 0.14));
+            painter.rect_filled(clip, size * 0.03, color);
+            for share in [0.42_f32, 0.6, 0.78] {
+                let y = board.top() + board.height() * share;
+                painter.line_segment(
+                    [
+                        pos2(board.left() + size * 0.14, y),
+                        pos2(board.right() - size * 0.14, y),
+                    ],
+                    Stroke::new((stroke.width * 0.8).max(1.0), color),
+                );
+            }
+        }
+        Icon::Export | Icon::Import => {
+            // A tray open at the top, and an arrow leaving it or coming into it.
+            let at = |x: f32, y: f32| pos2(center.x + x * size, center.y + y * size);
+            painter.add(Shape::line(
+                vec![
+                    at(-0.36, 0.08),
+                    at(-0.36, 0.38),
+                    at(0.36, 0.38),
+                    at(0.36, 0.08),
+                ],
+                stroke,
+            ));
+            let (tip, wings) = if icon == Icon::Export {
+                (-0.42, -0.24)
+            } else {
+                (0.18, 0.0)
+            };
+            painter.line_segment([at(0.0, -0.42), at(0.0, 0.18)], stroke);
+            painter.add(Shape::line(
+                vec![at(-0.17, wings), at(0.0, tip), at(0.17, wings)],
+                stroke,
+            ));
+        }
+        Icon::ReturnOnStop => {
+            // Where playback started, as a bar on the left; an arrow comes round from
+            // below and turns back towards it at the top.
+            let bar_x = center.x - size * 0.36;
+            painter.line_segment(
+                [
+                    pos2(bar_x, center.y - size * 0.4),
+                    pos2(bar_x, center.y + size * 0.4),
+                ],
+                Stroke::new(stroke.width * 1.4, color),
+            );
+            let deg = |d: f32| d.to_radians();
+            let turn = center + vec2(size * 0.1, 0.0);
+            paint_arc_arrow(
+                painter,
+                turn,
+                size * 0.3,
+                deg(120.0),
+                deg(-90.0),
+                size,
+                color,
+            );
         }
         Icon::ToStart => {
             let x = rect.left() + size * 0.22;
@@ -691,18 +777,10 @@ pub(crate) fn paint(painter: &Painter, rect: Rect, color: Color32, icon: Icon) {
             ));
         }
         Icon::Filter => {
-            // The same magnifying glass as ZoomIn and ZoomOut (without their sign): the
-            // clearest small sign for narrowing a list.
-            let radius = size * 0.32;
-            let lens = center + vec2(-size * 0.08, -size * 0.08);
-            painter.circle_stroke(lens, radius, stroke);
-            painter.line_segment(
-                [
-                    lens + Vec2::angled(std::f32::consts::FRAC_PI_4) * radius,
-                    rect.right_bottom() - vec2(size * 0.08, size * 0.08),
-                ],
-                stroke,
-            );
+            // A magnifying glass, the clearest small sign for narrowing a list: drawn from
+            // outlines (a ring and a round-ended handle) so its curve stays smooth at the
+            // small sizes it is shown at.
+            super::vector_icon::paint(painter, rect, "filter", MAGNIFIER, color);
         }
         Icon::StompBox => {
             // A pedal from the front: a tall rounded box with four corner screws, a meter
@@ -1021,6 +1099,17 @@ fn paint_metronome(painter: &Painter, center: Pos2, size: f32, color: Color32) {
     let weight = foot + (end - foot) * 0.62;
     painter.circle_filled(weight, size * 0.1, color);
 }
+
+/// The filter's magnifying glass in a 100 by 100 box: a ring (lens) and its handle.
+const MAGNIFIER: &[super::vector_icon::Part] = &[
+    super::vector_icon::Part::Fill(&[
+        "M 42 12 C 58.6 12 72 25.4 72 42 C 72 58.6 58.6 72 42 72 C 25.4 72 12 58.6 12 42 \
+         C 12 25.4 25.4 12 42 12 Z",
+        "M 42 21 C 53.6 21 63 30.4 63 42 C 63 53.6 53.6 63 42 63 C 30.4 63 21 53.6 21 42 \
+         C 21 30.4 30.4 21 42 21 Z",
+    ]),
+    super::vector_icon::Part::Line("M 64 64 L 86 86", 11.0),
+];
 
 /// An arc around `center` from angle `from` to `to` (radians; increasing is clockwise on
 /// screen) with a filled arrowhead at `to`, pointing the way the arc runs.

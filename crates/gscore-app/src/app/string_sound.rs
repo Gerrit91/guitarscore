@@ -101,9 +101,22 @@ pub(super) fn round_knob(
         }
         edit.released = true;
     } else if response.dragged() {
-        let delta = ui.input(|input| input.pointer.delta().x);
-        // A drag across the knob's whole width turns it a little; 240 px cover the range.
-        let new = to_value(fraction(*value) + delta / 240.0);
+        // Right or up turns it up; 240 px of movement cover the range. Where the drag has
+        // got to is kept apart from the value: a knob in steps (a count) rounds its value,
+        // and small movements added to the rounded value would never reach the next step.
+        let drag_id = response.id.with("drag_share");
+        let movement = ui.input(|input| {
+            let delta = input.pointer.delta();
+            delta.x - delta.y
+        });
+        let start = if response.drag_started() {
+            None
+        } else {
+            ui.ctx().data(|data| data.get_temp::<f32>(drag_id))
+        };
+        let share = (start.unwrap_or_else(|| fraction(*value)) + movement / 240.0).clamp(0.0, 1.0);
+        ui.ctx().data_mut(|data| data.insert_temp(drag_id, share));
+        let new = to_value(share);
         if (new - *value).abs() > f32::EPSILON {
             *value = new;
             edit.changed = true;
@@ -111,6 +124,8 @@ pub(super) fn round_knob(
     }
     if response.drag_stopped() {
         edit.released = true;
+        ui.ctx()
+            .data_mut(|data| data.remove::<f32>(response.id.with("drag_share")));
     }
     // The knob: a faint disc, its arc filled from the minimum, and a pointer.
     let centre = pos2(rect.center().x, rect.top() + CENTRE_Y);

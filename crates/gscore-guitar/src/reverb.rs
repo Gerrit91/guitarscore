@@ -25,8 +25,74 @@
 
 use std::f32::consts::{FRAC_1_SQRT_2, TAU};
 
+use std::sync::{Arc, LazyLock};
+
 use crate::delay::DelayLine;
+use crate::impulse::ImpulseResponse;
 use crate::knobs::ReverbKnobs;
+
+/// The built-in room: one short room, as a drum kit's room glues the kit together. A
+/// drum kit's room starts on these knobs, and a Room block without a file of its own plays
+/// this room as an impulse response ([`built_in_room`]).
+pub const BUILT_IN_ROOM: ReverbKnobs = ReverbKnobs {
+    size: 0.25,
+    decay: 0.6,
+    pre_delay: 5.0,
+    damping: 0.5,
+    modulation: 0.3,
+    width: 0.6,
+    mix: 1.0,
+    low_cut: 120.0,
+    high_cut: 9_000.0,
+};
+
+/// The rate the built-in room is rendered at (a response is resampled to the output's).
+const ROOM_RATE: u32 = 48_000;
+/// How long the built-in room's response is: past its decay time it is far below hearing.
+const ROOM_SECONDS: f32 = 1.2;
+
+/// The built-in room as a stereo impulse response (rendered once, shared): the computed
+/// reverb with [`BUILT_IN_ROOM`]'s knobs, all wet, answering one impulse. A Room block
+/// without a file plays it, as a Cab block without one plays its built-in cabinet.
+pub fn built_in_room() -> Arc<ImpulseResponse> {
+    static ROOM: LazyLock<Option<Arc<ImpulseResponse>>> = LazyLock::new(|| {
+        let mut reverb = Reverb::new(ROOM_RATE);
+        reverb.set_knobs(&BUILT_IN_ROOM);
+        // Start at the knobs' lengths rather than gliding there from the defaults.
+        reverb.pre_length = reverb.target_pre;
+        reverb.lengths = reverb.targets;
+        for diffuser in &mut reverb.diffusers {
+            diffuser.lengths = diffuser.targets;
+        }
+        let frames = (ROOM_SECONDS * ROOM_RATE as f32) as usize;
+        let mut left = Vec::with_capacity(frames);
+        let mut right = Vec::with_capacity(frames);
+        for index in 0..frames {
+            let input = if index == 0 { 1.0 } else { 0.0 };
+            let (l, r) = reverb.process(input, input);
+            // A short fade over the last tenth, so the response ends at silence.
+            let fade = ((frames - index) as f32 / (frames as f32 * 0.1)).min(1.0);
+            left.push(l * fade);
+            right.push(r * fade);
+        }
+        ImpulseResponse::from_channels(vec![left, right], ROOM_RATE)
+            .ok()
+            .map(Arc::new)
+    });
+    ROOM.clone().unwrap_or_else(|| {
+        // The rendering above cannot fail; should it ever, the built-in cabinet's fallback
+        // (a plain impulse) keeps the block playing.
+        Arc::new(
+            ImpulseResponse::from_samples(&[1.0, 0.0], ROOM_RATE)
+                .unwrap_or_else(|_| fallback_response()),
+        )
+    })
+}
+
+/// Never reached: a two-sample impulse is a valid response.
+fn fallback_response() -> ImpulseResponse {
+    ImpulseResponse::from_samples(&[1.0], ROOM_RATE).unwrap_or_else(|_| fallback_response())
+}
 
 /// The network's width.
 const CHANNELS: usize = 8;
@@ -459,5 +525,26 @@ mod tests {
             })
             .unwrap_or(usize::MAX);
         assert!(first >= 4_800, "nothing before 100 ms: {first}");
+    }
+
+    #[test]
+    fn the_built_in_room_is_a_stereo_response_that_rings_then_dies_away() {
+        let room = built_in_room();
+        assert_eq!(room.sample_rate(), ROOM_RATE);
+        assert!(Arc::ptr_eq(&room, &built_in_room()), "made once");
+        assert_eq!(room.channel_count(), 2);
+        let channels = [room.channel(0).unwrap(), room.channel(1).unwrap()];
+        for channel in channels {
+            let energy = |range: std::ops::Range<usize>| -> f32 {
+                channel[range].iter().map(|sample| sample * sample).sum()
+            };
+            let tenth = channel.len() / 10;
+            assert!(energy(0..tenth) > 0.0, "it rings");
+            assert!(
+                energy(9 * tenth..channel.len()) < energy(0..tenth) * 1e-4,
+                "and dies away"
+            );
+        }
+        assert_ne!(channels[0], channels[1], "a room is wider than mono");
     }
 }

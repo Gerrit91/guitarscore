@@ -33,7 +33,7 @@ use crate::settings::{
 /// Width of the window's content.
 const WIDTH: f32 = 700.0;
 /// The height of the slot above the board (the tone's two rows, or a drum part's level).
-const HEADER_HEIGHT: f32 = 58.0;
+const HEADER_HEIGHT: f32 = 30.0;
 /// The height of the chosen box's knobs: the tallest editor's but the EQ's, so the window
 /// keeps one size whichever box is chosen; a chain with an EQ in it (its curve and
 /// columns) takes the taller one...
@@ -46,9 +46,16 @@ const EDITOR_MIN_HEIGHT: f32 = 200.0;
 /// How far a track's input trim goes either way, in dB.
 const TRIM_RANGE: (f32, f32) = (-24.0, 24.0);
 /// A box on the board, the gap between boxes (where the cable runs), the board's height.
-const BOX: egui::Vec2 = vec2(86.0, 60.0);
+const BOX: egui::Vec2 = vec2(78.0, 70.0);
+/// The widest gap between two boxes (the cable between them).
 const GAP: f32 = 36.0;
-const BOARD_HEIGHT: f32 = 96.0;
+/// The input trim's and the chain output's boxes: narrow, at the chain's two ends.
+const END_WIDTH: f32 = 44.0;
+const BOARD_HEIGHT: f32 = 114.0;
+/// The board's [`SoundChainWindow::selected`] value for the input trim's box.
+pub(super) const SELECT_INPUT: usize = BLOCKS + 1;
+/// The board's [`SoundChainWindow::selected`] value for the chain output's box.
+pub(super) const SELECT_OUTPUT: usize = BLOCKS + 2;
 /// The window's [`egui::Area`] id: stable even when the track named in its title changes.
 const WINDOW_ID: &str = "gscore_sound_chain";
 
@@ -70,6 +77,57 @@ pub(super) struct SoundChainWindow {
     part: Option<DrumPart>,
     /// The string sound's tab shown in the strings' box.
     strings_tab: super::string_sound::StringsTab,
+    /// The track's tone as the window found it: what A/B switches to.
+    reference: Option<Tone>,
+    /// Whether the track had a tone of its own then (else it played its built-in one).
+    reference_own: bool,
+    /// A/B is on: the track plays (and the window shows) the tone as the window found it,
+    /// until A/B is clicked again.
+    comparing: bool,
+    /// The first box's list of instruments (General MIDI programs), for a synth.
+    programs: super::tone_picker::TonePickerState,
+    /// Whether the board has the keyboard: from a click on one of its boxes until a click
+    /// outside the window. The arrows then move between the boxes, Delete empties the
+    /// selected place and M mutes its block, instead of moving the score's cursor.
+    board_keys: bool,
+    /// The board's keys taken from this frame's input, before the score saw them.
+    pending_keys: Vec<BoardKey>,
+    /// Where the window was drawn last, for telling a click outside it.
+    rect: Option<Rect>,
+    /// A tone just imported from a file: the track switches to it on the next frame.
+    imported: Option<ChainPreset>,
+}
+
+/// A key the board handles while it has the keyboard.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum BoardKey {
+    Previous,
+    Next,
+    Remove,
+    Mute,
+}
+
+/// The boxes in the order the arrows go through them: the source, the input trim, the
+/// places, the output.
+fn box_order() -> Vec<usize> {
+    let mut order = vec![0, SELECT_INPUT];
+    order.extend(1..=BLOCKS);
+    order.push(SELECT_OUTPUT);
+    order
+}
+
+/// The box after (or before) `selected` in [`box_order`], staying at the ends.
+fn next_box(selected: usize, forward: bool) -> usize {
+    let order = box_order();
+    let Some(at) = order.iter().position(|&index| index == selected) else {
+        return selected;
+    };
+    let to = if forward {
+        at.saturating_add(1).min(order.len().saturating_sub(1))
+    } else {
+        at.saturating_sub(1)
+    };
+    order.get(to).copied().unwrap_or(selected)
 }
 
 /// What the user did this frame.
@@ -83,6 +141,8 @@ struct Actions {
     rebuild: bool,
     /// What plays the track was chosen in the first box.
     engine: Option<TrackEngine>,
+    /// The instrument (General MIDI program or drum kit) chosen in the first box.
+    program: Option<u8>,
     /// A MIDI-out track's port or channel changed in the first box.
     midi_out: Option<MidiOutRoute>,
     /// The strings' sound changed (in the first box's editor).
@@ -106,6 +166,19 @@ struct Actions {
     /// string and its name, since names are unique within a kind only).
     save_preset: Option<String>,
     delete_preset: Option<(String, String)>,
+    /// The header's copy menu: the selected block, or the whole chain shown, goes on the
+    /// clipboard.
+    copy_block: bool,
+    copy_chain: bool,
+    /// The header's paste button: what the clipboard holds goes in (a block into the
+    /// selected place or the first free one, a chain over the whole board).
+    paste: bool,
+    /// A/B was clicked: switch between the tone as the window found it and as it is now.
+    toggle_compare: bool,
+    /// Export the track's tone to a file, under this name.
+    export_tone: Option<String>,
+    /// Import a tone from a file.
+    import_tone: bool,
     /// A block or chain copied from a board, for the app's clipboard.
     copy: Option<SoundClip>,
     /// A block dropped on a drum part's button (or the kit's), before that part's chain.
@@ -120,6 +193,23 @@ struct ChosenPreset {
     chain: ChainSetting,
     /// What plays the strings, when the tone names it (older ones do not).
     engine: Option<TrackEngine>,
+}
+
+impl ChosenPreset {
+    /// A saved tone as a choice, for a track whose strings are `kind` now: its own kind
+    /// and engine when it names a modelled one.
+    fn of_saved(preset: &ChainPreset, kind: StringKind) -> Self {
+        let target = match engine_from_id(&preset.kind) {
+            Some(TrackEngine::Modelled(saved)) => saved,
+            _ => kind,
+        };
+        ChosenPreset {
+            kind: target,
+            sound: preset.sound,
+            chain: preset.chain.clone(),
+            engine: Some(engine_from_id(&preset.engine).unwrap_or(TrackEngine::Modelled(target))),
+        }
+    }
 }
 
 /// What editing the selected block asked for.
@@ -164,7 +254,7 @@ fn box_text(block: &BlockSetting) -> (String, String) {
                     if block.choice == BlockChoice::Cabinet {
                         block.cabinet.label().to_owned()
                     } else {
-                        "no file".to_owned()
+                        "built-in".to_owned()
                     }
                 },
                 |name| name.to_string_lossy().into_owned(),
@@ -252,45 +342,91 @@ pub(super) fn midi_out_controls(
     }
 }
 
-/// The first box: what plays the track (the internal synth, or physical modelling), the
-/// kind of string and - for modelled strings - their sound, all in this window.
+/// The first box: what plays the track (the internal synth, physical modelling or a MIDI
+/// output) and then, for a synth, the instrument it plays (its General MIDI program) or,
+/// for modelled strings, the kind of string and their sound, all in this window.
+#[allow(clippy::too_many_arguments)]
 fn strings_editor(
     ui: &mut egui::Ui,
     player: &TrackPlayer,
     sound: &mut StringSound,
     ports: &[String],
     tab: &mut super::string_sound::StringsTab,
+    programs: &mut super::tone_picker::TonePickerState,
     actions: &mut Actions,
 ) -> bool {
     let mut changed = false;
-    ui.label(RichText::new("Played by").strong());
     // PM keeps the kind it had (or the one the track's preset stands for).
     let modelled_kind = match player.engine {
         TrackEngine::Modelled(kind) => Some(kind),
         TrackEngine::SoundFont | TrackEngine::MidiOut => player.preset_kind,
     };
     let pm = TrackEngine::Modelled(modelled_kind.unwrap_or(StringKind::Steel));
-    if let Some(engine) = super::tone_picker::source_switch(ui, player.engine, pm, player.strings) {
-        actions.engine = Some(engine);
-    }
-    if player.engine == TrackEngine::MidiOut {
-        if let Some(route) = midi_out_controls(ui, player, ports) {
-            actions.midi_out = Some(route);
+    let source = |ui: &mut egui::Ui, actions: &mut Actions| {
+        ui.label(RichText::new("Played by").strong());
+        if let Some(engine) =
+            super::tone_picker::source_switch(ui, player.engine, pm, player.strings)
+        {
+            actions.engine = Some(engine);
         }
-        return changed;
-    }
-    if !player.strings {
-        ui.label(
-            RichText::new("Only string instruments can be played by modelled strings.").weak(),
-        );
-        return changed;
-    }
+    };
     let Some(kind) = (match player.engine {
         TrackEngine::Modelled(kind) => Some(kind),
         TrackEngine::SoundFont | TrackEngine::MidiOut => None,
     }) else {
+        // A synth (the SoundFont or a hardware one): what plays it on the left, the
+        // instrument it plays on the right, the same list as the track panel's.
+        ui.horizontal_top(|ui| {
+            ui.vertical(|ui| {
+                ui.set_width(300.0);
+                source(ui, actions);
+                if player.engine == TrackEngine::MidiOut {
+                    if let Some(route) = midi_out_controls(ui, player, ports) {
+                        actions.midi_out = Some(route);
+                    }
+                } else {
+                    ui.add_space(6.0);
+                    ui.label(
+                        RichText::new(if player.strings {
+                            "The blocks to the right shape the instrument's sound."
+                        } else {
+                            "The blocks to the right shape the instrument's sound. Only \
+                             string instruments can be played by modelled strings."
+                        })
+                        .weak(),
+                    );
+                }
+            });
+            ui.separator();
+            ui.vertical(|ui| {
+                ui.label(
+                    RichText::new(if player.drums {
+                        "Drum kit"
+                    } else {
+                        "Instrument"
+                    })
+                    .strong(),
+                );
+                let rows = super::tone_picker::general_midi_rows(player.program, player.drums);
+                if let Some(
+                    super::tone_picker::PickerChoice::Program(program)
+                    | super::tone_picker::PickerChoice::DrumKit(program),
+                ) = super::tone_picker::picker_rows(
+                    ui,
+                    "chain_program_picker",
+                    "programs",
+                    &rows,
+                    programs,
+                    6,
+                    None,
+                ) {
+                    actions.program = Some(program);
+                }
+            });
+        });
         return changed;
     };
+    source(ui, actions);
     // The string sound on tabs, apart from what plays the track: which strings first (the
     // Kind tab), then their knobs.
     ui.separator();
@@ -309,6 +445,258 @@ fn strings_editor(
 struct ShownPreset {
     program: u8,
     kind: StringKind,
+    /// What the header's copy and paste buttons can do.
+    clip: ClipState,
+    /// Whether the tone differs from the one the window found (A/B has something to
+    /// compare).
+    compare: bool,
+    /// A/B is on: the tone shown is the one the window found, not to be edited.
+    comparing: bool,
+    /// The built-in or saved tone the track's tone was dialed in from, if known.
+    basis: Option<String>,
+}
+
+/// The tone's buttons beside its dropdown: save (active once the tone changed; it saves
+/// over the saved tone being worked on, or asks for a name), save under a new name,
+/// delete the saved tone, and go back to the built-in tone.
+#[allow(clippy::too_many_arguments)]
+fn tone_buttons(
+    ui: &mut egui::Ui,
+    program: u8,
+    kind: StringKind,
+    changed: bool,
+    built_in: bool,
+    working: Option<String>,
+    window: &mut SoundChainWindow,
+    actions: &mut Actions,
+) {
+    use super::icons::{self, Icon};
+    if let Some(name) = &mut window.saving {
+        // Naming a tone: the field takes the place of the buttons.
+        let field = ui.add(
+            egui::TextEdit::singleline(name)
+                .char_limit(MAX_STRING_PRESET_NAME)
+                .hint_text("Name of the tone")
+                .desired_width(150.0),
+        );
+        ui.ctx()
+            .accesskit_node_builder(field.id, |node| node.set_label("Tone name"));
+        // The field takes the keyboard while it is empty, so the name can be typed at once.
+        if !field.has_focus() && name.is_empty() {
+            field.request_focus();
+        }
+        let name_ok = !name.trim().is_empty();
+        let enter = field.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
+        if ui.add_enabled(name_ok, egui::Button::new("Save")).clicked() || (enter && name_ok) {
+            let name = name.trim().to_owned();
+            actions.save_preset = Some(name.clone());
+            window.preset = Some((program, name));
+            window.saving = None;
+        } else if ui.button("Cancel").clicked() {
+            window.saving = None;
+        }
+        return;
+    }
+    let save_tip = match &working {
+        _ if !changed => "Nothing to save: the tone is as it was chosen".to_owned(),
+        Some(name) => format!("Save over \"{name}\" (its knobs as they are now)"),
+        None => "Save this tone under a name, for other tracks".to_owned(),
+    };
+    let save = ui
+        .add_enabled_ui(changed, |ui| {
+            icons::toolbar_button(ui, Icon::Save, "Save tone", &save_tip)
+        })
+        .inner;
+    if save.clicked() {
+        match &working {
+            Some(name) => {
+                actions.save_preset = Some(name.clone());
+                window.preset = Some((program, name.clone()));
+            }
+            None => window.saving = Some(String::new()),
+        }
+    }
+    let save_as = ui
+        .button("Save as…")
+        .on_hover_text("Save this tone under a new name, for other tracks");
+    ui.ctx()
+        .accesskit_node_builder(save_as.id, |node| node.set_label("Save tone as"));
+    if save_as.clicked() {
+        window.saving = Some(String::new());
+    }
+    if let Some(name) = &working
+        && icons::toolbar_button(
+            ui,
+            Icon::Delete,
+            "Delete tone",
+            &format!("Delete \"{name}\""),
+        )
+        .clicked()
+    {
+        actions.delete_preset = Some((kind_id(kind).to_owned(), name.clone()));
+        window.preset = None;
+    }
+    let revert = ui
+        .add_enabled_ui(!built_in, |ui| {
+            icons::toolbar_button(
+                ui,
+                Icon::Revert,
+                "Built-in tone",
+                "Back to the built-in tone (forgets this track's own tone)",
+            )
+        })
+        .inner;
+    if revert.clicked() {
+        window.preset = None;
+        actions.reset_tone = true;
+    }
+}
+
+/// The chain's copy and paste buttons, at the right end of the header.
+/// The buttons only a track's own tone has (not a drum part's chain).
+struct ToneRowButtons<'a> {
+    /// Whether A/B has something to compare.
+    compare: bool,
+    /// A/B is on.
+    comparing: bool,
+    /// The tone's name, which an exported file is named after.
+    name: &'a str,
+}
+
+/// What the header's copy and paste buttons can do: what the clipboard holds, and whether
+/// a block is selected to copy.
+#[derive(Debug, Clone, Copy)]
+struct ClipState {
+    /// `Some(true)`: a chain; `Some(false)`: a block; `None`: nothing.
+    clipboard: Option<bool>,
+    block_selected: bool,
+}
+
+/// `tone`: the A/B, export and import buttons too, for a track's own tone.
+fn clip_buttons(
+    ui: &mut egui::Ui,
+    clip: ClipState,
+    tone: Option<ToneRowButtons<'_>>,
+    actions: &mut Actions,
+) {
+    use super::icons::{self, Icon};
+    // While A/B shows the tone as it was, only A/B itself acts: that tone is not edited.
+    let comparing = tone.as_ref().is_some_and(|tone| tone.comparing);
+    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+        // Paste puts in whatever was copied last: a block, or a whole chain.
+        let paste = ui
+            .add_enabled_ui(clip.clipboard.is_some() && !comparing, |ui| {
+                icons::toolbar_button(
+                    ui,
+                    Icon::Paste,
+                    "Paste",
+                    match clip.clipboard {
+                        Some(true) => "Paste the copied chain: it replaces every block of this one",
+                        Some(false) => {
+                            "Paste the copied block into the selected place (or the first free \
+                             one)"
+                        }
+                        None => "Copy a block or a chain first",
+                    },
+                )
+            })
+            .inner;
+        if paste.clicked() {
+            actions.paste = true;
+        }
+        // Copy offers the selected block or the whole chain.
+        let copy = ui
+            .add_enabled_ui(!comparing, |ui| {
+                icons::toolbar_button(
+                    ui,
+                    Icon::Copy,
+                    "Copy",
+                    "Copy the selected block or the whole chain, to paste into another place, \
+                     track, part or the master",
+                )
+            })
+            .inner;
+        egui::Popup::menu(&copy).show(|ui| {
+            let block = ui
+                .add_enabled_ui(clip.block_selected, |ui| {
+                    icon_menu_item(
+                        ui,
+                        Icon::Copy,
+                        "Copy block",
+                        "Copy the block selected on the board",
+                    )
+                })
+                .inner;
+            if block.clicked() {
+                actions.copy_block = true;
+                ui.close();
+            }
+            if menu_row(
+                ui,
+                "Copy chain",
+                "Copy every block of this chain",
+                |_, _, _| {},
+            )
+            .clicked()
+            {
+                actions.copy_chain = true;
+                ui.close();
+            }
+        });
+        let Some(tone) = tone else {
+            return;
+        };
+        ui.add_space(8.0);
+        ui.add_enabled_ui(!comparing, |ui| {
+            if icons::toolbar_button(
+                ui,
+                Icon::Import,
+                "Import tone",
+                "Import a tone from a file (.json) into your saved tones, and play it on this \
+                 track",
+            )
+            .clicked()
+            {
+                actions.import_tone = true;
+            }
+            if icons::toolbar_button(
+                ui,
+                Icon::Export,
+                "Export tone",
+                "Export this tone to a file (.json) to share it: the strings' sound, the chain \
+                 and the impulse responses it loads",
+            )
+            .clicked()
+            {
+                actions.export_tone = Some(tone.name.trim_end_matches(" (changed)").to_owned());
+            }
+        });
+        ui.add_space(8.0);
+        let button = ui
+            .add_enabled(
+                tone.compare || tone.comparing,
+                egui::Button::new("A/B").selected(tone.comparing),
+            )
+            .on_hover_text(if tone.comparing {
+                "You hear and see the tone as it was when this window opened: click to go back \
+                 to the tone as it is now"
+            } else {
+                "Click to hear and see the tone as it was when this window opened; click again \
+                 to go back to your changes"
+            })
+            .on_disabled_hover_text("The tone is as it was when this window opened");
+        ui.ctx().accesskit_node_builder(button.id, |node| {
+            node.set_label("Compare with the tone as it was");
+            node.set_toggled(if tone.comparing {
+                egui::accesskit::Toggled::True
+            } else {
+                egui::accesskit::Toggled::False
+            });
+        });
+        if button.clicked() {
+            actions.toggle_compare = true;
+        }
+    });
 }
 
 /// The saved tones: the one this track plays, saving it (over it or under a new name),
@@ -325,158 +713,110 @@ fn preset_row(
     window: &mut SoundChainWindow,
     actions: &mut Actions,
 ) {
-    let (program, kind) = (shown.program, shown.kind);
+    let (program, kind, clip) = (shown.program, shown.kind, shown.clip);
     let current = super::tone_picker::current_tone_choice(tone, default_tone, presets);
-    let shown_name = match &current {
-        Some(super::tone_picker::PickerChoice::BuiltIn(name)) => name.clone(),
-        Some(super::tone_picker::PickerChoice::Saved { name, .. }) => name.clone(),
-        // The tone was saved under this name and its knobs moved since.
-        None => match window
-            .preset
-            .as_ref()
-            .filter(|(saved, _)| *saved == program)
-        {
-            Some((_, name)) => format!("{name} *"),
-            None => "Changed".to_owned(),
-        },
-        Some(
-            super::tone_picker::PickerChoice::Program(_)
-            | super::tone_picker::PickerChoice::DrumKit(_),
-        ) => "Changed".to_owned(),
-    };
-    ui.horizontal(|ui| {
-        let _ = ui.selectable_label(false, format!("Tone: {shown_name}"));
-        if ui
-            .button("Built-in")
-            .on_hover_text(
-                "Forget this track's tone (and its preset's local one); the built-in tone \
-                 plays again",
+    // The saved tone being worked on, if one was chosen or saved for this preset.
+    let working = window
+        .preset
+        .as_ref()
+        .filter(|(saved, _)| *saved == program)
+        .map(|(_, name)| name.clone());
+    // Changed: the tone is neither a built-in one nor a saved one as it was saved.
+    let changed = current.is_none()
+        || matches!(
+            current,
+            Some(
+                super::tone_picker::PickerChoice::Program(_)
+                    | super::tone_picker::PickerChoice::DrumKit(_)
             )
-            .clicked()
-        {
-            window.preset = None;
-            actions.reset_tone = true;
-        }
-        match &mut window.saving {
-            None => {
-                // Saving over the tone being worked on, and deleting it.
-                if let Some(name) = window
-                    .preset
-                    .as_ref()
-                    .filter(|(saved, _)| *saved == program)
-                    .map(|(_, name)| name.clone())
-                {
-                    let save = ui
-                        .button("Save")
-                        .on_hover_text(format!("Save over \"{name}\" (its knobs as they are now)"));
-                    ui.ctx().accesskit_node_builder(save.id, |node| {
-                        node.set_label("Save tone");
-                    });
-                    if save.clicked() {
-                        actions.save_preset = Some(name.clone());
-                        window.preset = Some((program, name.clone()));
-                    }
-                    let delete = ui
-                        .button("Delete")
-                        .on_hover_text(format!("Delete \"{name}\""));
-                    ui.ctx().accesskit_node_builder(delete.id, |node| {
-                        node.set_label("Delete tone");
-                    });
-                    if delete.clicked() {
-                        actions.delete_preset = Some((kind_id(kind).to_owned(), name));
-                        window.preset = None;
-                    }
-                }
-                if ui
-                    .button("Save as…")
-                    .on_hover_text(
-                        "Save this track's tone (its chain and string sound) under a new name, \
-                         for other tracks",
-                    )
-                    .clicked()
-                {
-                    window.saving = Some(String::new());
-                }
-            }
-            Some(name) => {
-                let field = ui.add(
-                    egui::TextEdit::singleline(name)
-                        .char_limit(MAX_STRING_PRESET_NAME)
-                        .hint_text("Name")
-                        .desired_width(120.0),
-                );
-                ui.ctx()
-                    .accesskit_node_builder(field.id, |node| node.set_label("Tone name"));
-                let name_ok = !name.trim().is_empty();
-                let enter = field.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
-                if ui.add_enabled(name_ok, egui::Button::new("Save")).clicked()
-                    || (enter && name_ok)
-                {
-                    let name = name.trim().to_owned();
-                    actions.save_preset = Some(name.clone());
-                    window.preset = Some((program, name));
-                    window.saving = None;
-                } else if ui.button("Cancel").clicked() {
-                    window.saving = None;
-                }
-            }
-        }
-    });
+        );
+    let shown_name = super::tone_picker::tone_display_name(
+        current.as_ref(),
+        working.as_deref().or(shown.basis.as_deref()),
+    );
+    let built_in = matches!(
+        (&current, default_tone),
+        (Some(super::tone_picker::PickerChoice::BuiltIn(name)), Some(default))
+            if name == default
+    );
     // Built-in tones by family, then the user's saved ones; compact here so the window
     // keeps its height (the track panel shows the full table).
     let mut chosen: Option<super::tone_picker::PickerChoice> = None;
-    let combo = egui::ComboBox::from_id_salt("sound_chain_tone")
-        .selected_text(if shown_name == "Changed" {
-            "Changed".to_owned()
-        } else {
-            shown_name.clone()
-        })
-        .show_ui(ui, |ui| {
-            if ui.selectable_label(false, "Built-in").clicked() {
-                window.preset = None;
-                actions.reset_tone = true;
+    ui.horizontal(|ui| {
+        // While A/B shows the tone as it was, the dropdown names it but cannot change it.
+        let combo = ui
+            .add_enabled_ui(!shown.comparing, |ui| {
+                egui::ComboBox::from_id_salt("sound_chain_tone")
+                    .width(230.0)
+                    .selected_text(shown_name.clone())
+                    .show_ui(ui, |ui| {
+                        if ui.selectable_label(false, "Built-in").clicked() {
+                            window.preset = None;
+                            actions.reset_tone = true;
+                        }
+                        // The user's saved tones first (the list is long), then the built-in ones.
+                        if !presets.is_empty() {
+                            ui.label(RichText::new("Saved").weak());
+                            for preset in presets {
+                                let selected = preset.name == shown_name;
+                                if ui.selectable_label(selected, &preset.name).clicked() {
+                                    chosen = Some(super::tone_picker::PickerChoice::Saved {
+                                        kind: preset.kind.clone(),
+                                        name: preset.name.clone(),
+                                    });
+                                }
+                            }
+                        }
+                        for family in crate::tone_library::ToneFamily::ALL {
+                            ui.label(RichText::new(family.label()).weak());
+                            for tone in crate::tone_library::all()
+                                .iter()
+                                .filter(|tone| tone.family == family)
+                            {
+                                let selected = tone.name == shown_name;
+                                let response = ui
+                                    .selectable_label(selected, &tone.name)
+                                    .on_hover_text(&tone.description);
+                                if response.clicked() {
+                                    chosen = Some(super::tone_picker::PickerChoice::BuiltIn(
+                                        tone.name.clone(),
+                                    ));
+                                }
+                            }
+                        }
+                    })
+            })
+            .inner;
+        combo.response.clone().on_hover_text(format!(
+            "The tone this track's preset ({}: {}) plays; {}",
+            program,
+            gscore_model::program_name(program),
+            match default_tone {
+                Some(name) => format!("its built-in one is {name}"),
+                None => "it has no built-in one, so without a tone it plays its plain strings"
+                    .to_owned(),
             }
-            // The user's saved tones first (the list is long), then the built-in ones.
-            if !presets.is_empty() {
-                ui.label(RichText::new("Saved").weak());
-                for preset in presets {
-                    let selected = preset.name == shown_name;
-                    if ui.selectable_label(selected, &preset.name).clicked() {
-                        chosen = Some(super::tone_picker::PickerChoice::Saved {
-                            kind: preset.kind.clone(),
-                            name: preset.name.clone(),
-                        });
-                    }
-                }
-            }
-            for family in crate::tone_library::ToneFamily::ALL {
-                ui.label(RichText::new(family.label()).weak());
-                for tone in crate::tone_library::all()
-                    .iter()
-                    .filter(|tone| tone.family == family)
-                {
-                    let selected = tone.name == shown_name;
-                    let response = ui
-                        .selectable_label(selected, &tone.name)
-                        .on_hover_text(&tone.description);
-                    if response.clicked() {
-                        chosen = Some(super::tone_picker::PickerChoice::BuiltIn(tone.name.clone()));
-                    }
-                }
-            }
+        ));
+        ui.ctx().accesskit_node_builder(combo.response.id, |node| {
+            node.set_label("Tone");
+            node.set_value(shown_name.clone());
         });
-    combo.response.clone().on_hover_text(format!(
-        "The tone this track's preset ({}: {}) plays; {}",
-        program,
-        gscore_model::program_name(program),
-        match default_tone {
-            Some(name) => format!("its built-in one is {name}"),
-            None =>
-                "it has no built-in one, so without a tone it plays its plain strings".to_owned(),
-        }
-    ));
-    ui.ctx()
-        .accesskit_node_builder(combo.response.id, |node| node.set_label("Tone"));
+        ui.add_enabled_ui(!shown.comparing, |ui| {
+            tone_buttons(
+                ui, program, kind, changed, built_in, working, window, actions,
+            );
+        });
+        clip_buttons(
+            ui,
+            clip,
+            Some(ToneRowButtons {
+                compare: shown.compare,
+                comparing: shown.comparing,
+                name: &shown_name,
+            }),
+            actions,
+        );
+    });
     if let Some(choice) = chosen {
         use super::tone_picker::PickerChoice;
         match choice {
@@ -499,19 +839,8 @@ fn preset_row(
                     .iter()
                     .find(|preset| preset.kind == saved_kind && preset.name == name)
                 {
-                    let target = match engine_from_id(&preset.kind) {
-                        Some(TrackEngine::Modelled(saved)) => saved,
-                        _ => kind,
-                    };
                     window.preset = Some((program, preset.name.clone()));
-                    actions.preset = Some(ChosenPreset {
-                        kind: target,
-                        sound: preset.sound,
-                        chain: preset.chain.clone(),
-                        engine: Some(
-                            engine_from_id(&preset.engine).unwrap_or(TrackEngine::Modelled(target)),
-                        ),
-                    });
+                    actions.preset = Some(ChosenPreset::of_saved(preset, kind));
                 }
             }
             PickerChoice::Program(_) | PickerChoice::DrumKit(_) => {}
@@ -651,10 +980,13 @@ fn parts_row(
             && dialed_in.contains(&part)
         {
             ui.add_space(6.0);
-            if ui
-                .button("Built-in")
-                .on_hover_text("Forget this part's own tone: the built-in one plays again")
-                .clicked()
+            if super::icons::button(
+                ui,
+                super::icons::Icon::Revert,
+                "Built-in tone",
+                "Back to the built-in tone (forgets this part's own tone)",
+            )
+            .clicked()
             {
                 actions.reset_part = true;
             }
@@ -673,6 +1005,66 @@ fn parts_row(
             actions.open_room = true;
         }
     });
+}
+
+/// One row of a menu of blocks: the block's symbol (as on the board) and its name.
+pub(super) fn block_menu_item(
+    ui: &mut egui::Ui,
+    choice: BlockChoice,
+    label: &str,
+    tip: &str,
+) -> egui::Response {
+    menu_row(ui, label, tip, |painter, rect, color| {
+        super::block_icons::paint(painter, rect, choice, color);
+    })
+}
+
+/// One row of a board's menu with one of the app's icons (copy, paste) beside its name, in
+/// the same column as the blocks' symbols.
+fn icon_menu_item(
+    ui: &mut egui::Ui,
+    icon: super::icons::Icon,
+    label: &str,
+    tip: &str,
+) -> egui::Response {
+    menu_row(ui, label, tip, |painter, rect, color| {
+        super::icons::paint(painter, rect, color, icon);
+    })
+}
+
+/// A menu row: a symbol drawn by `symbol` in an 18-point square on the left, then `label`.
+fn menu_row(
+    ui: &mut egui::Ui,
+    label: &str,
+    tip: &str,
+    symbol: impl FnOnce(&egui::Painter, Rect, Color32),
+) -> egui::Response {
+    let height = ui.spacing().interact_size.y.max(22.0);
+    // A fixed width: a menu grows to whatever its rows ask for.
+    let width = 150.0;
+    let (rect, response) = ui.allocate_exact_size(vec2(width, height), Sense::click());
+    ui.ctx().accesskit_node_builder(response.id, |node| {
+        node.set_role(egui::Role::Button);
+        node.set_label(label);
+    });
+    let visuals = ui.style().interact(&response);
+    if response.hovered() || response.has_focus() {
+        ui.painter()
+            .rect_filled(rect, visuals.corner_radius, visuals.weak_bg_fill);
+    }
+    let square = Rect::from_center_size(
+        pos2(rect.left() + 4.0 + 9.0, rect.center().y),
+        vec2(18.0, 18.0),
+    );
+    symbol(ui.painter(), square, visuals.text_color());
+    ui.painter().text(
+        pos2(square.right() + 8.0, rect.center().y),
+        Align2::LEFT_CENTER,
+        label,
+        egui::TextStyle::Button.resolve(ui.style()),
+        visuals.text_color(),
+    );
+    response.on_hover_text(tip)
 }
 
 /// What an empty place can hold: the block, the name its menu shows, and what it does.
@@ -721,8 +1113,8 @@ pub(super) fn block_choices() -> [(BlockChoice, &'static str, &'static str); 9] 
         (
             BlockChoice::Room,
             "Room",
-            "A room's impulse response from a WAV file (stereo if recorded so): a convolution \
-             reverb",
+            "A convolution reverb: the built-in short room, or a room's impulse response from \
+             a WAV file (stereo if recorded so)",
         ),
         (
             BlockChoice::Reverb,
@@ -736,6 +1128,8 @@ pub(super) fn block_choices() -> [(BlockChoice, &'static str, &'static str); 9] 
 struct BoxFace<'a> {
     /// An empty place: just its "+".
     empty: bool,
+    /// The block's symbol, drawn above its name.
+    icon: Option<BlockChoice>,
     /// The block passes the sound unchanged: weak text and "off" in the corner.
     bypassed: bool,
     title: &'a str,
@@ -761,19 +1155,39 @@ fn paint_box(
         tokens.text
     };
     let inside = painter.with_clip_rect(rect.shrink(3.0));
-    let title_size = if face.empty { 22.0 } else { 13.0 };
+    if face.empty {
+        inside.text(
+            rect.center(),
+            Align2::CENTER_CENTER,
+            short(face.title, 13),
+            FontId::proportional(22.0),
+            text,
+        );
+        return;
+    }
+    // The symbol at the top, then the name, then what it is set to.
+    let narrow = rect.width() < BOX.x;
+    let (title_y, detail_y) = match face.icon {
+        Some(choice) => {
+            let icon =
+                Rect::from_center_size(pos2(rect.center().x, rect.top() + 18.0), vec2(22.0, 22.0));
+            super::block_icons::paint(&inside, icon, choice, text);
+            (rect.top() + 41.0, rect.top() + 57.0)
+        }
+        None => (rect.center().y - 8.0, rect.center().y + 12.0),
+    };
     inside.text(
-        rect.center() - vec2(0.0, if face.empty { 0.0 } else { 8.0 }),
+        pos2(rect.center().x, title_y),
         Align2::CENTER_CENTER,
-        short(face.title, 13),
-        FontId::proportional(title_size),
+        short(face.title, if narrow { 5 } else { 12 }),
+        FontId::proportional(if narrow { 12.0 } else { 13.0 }),
         text,
     );
     if !face.detail.is_empty() {
         inside.text(
-            rect.center() + vec2(0.0, 12.0),
+            pos2(rect.center().x, detail_y),
             Align2::CENTER_CENTER,
-            short(face.detail, 12),
+            short(face.detail, if narrow { 7 } else { 12 }),
             FontId::proportional(10.0),
             tokens.text_weak,
         );
@@ -789,9 +1203,64 @@ fn paint_box(
     }
 }
 
-/// The board: the boxes, the cables between them and, under each block, its mute. A block
-/// can be dragged to another place; the block follows the mouse and the place it would
-/// land in is outlined, until it is let go there.
+/// The levels at a track chain's two ends, shown as narrow boxes on its board: the input
+/// trim before the first block and the chain's output after the last.
+#[derive(Debug, Clone, Copy)]
+pub(super) struct ChainEnds {
+    pub(super) input_db: f32,
+    pub(super) output_db: f32,
+}
+
+/// What stands where on a board, left to right.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Slot {
+    /// A box: 0 the source, 1 to 5 a place.
+    Box(usize),
+    Input,
+    Output,
+}
+
+/// A small button with an icon, in a rect of its own (the trash can under a block).
+fn small_icon_button(
+    ui: &mut egui::Ui,
+    rect: Rect,
+    icon: super::icons::Icon,
+    label: &str,
+    tip: &str,
+) -> egui::Response {
+    let tokens = style::tokens(ui);
+    let response = ui
+        .interact(
+            rect,
+            ui.scope_id().with(("small_icon", label)),
+            Sense::click(),
+        )
+        .on_hover_text(tip);
+    let fill = if response.hovered() {
+        tokens.control_hover
+    } else {
+        tokens.control
+    };
+    ui.painter().rect_filled(rect, 3.0, fill);
+    let side = rect.height() - 4.0;
+    super::icons::paint(
+        ui.painter(),
+        Rect::from_center_size(rect.center(), vec2(side, side)),
+        tokens.text_weak,
+        icon,
+    );
+    ui.ctx().accesskit_node_builder(response.id, |node| {
+        node.set_label(label);
+        node.set_role(egui::Role::Button);
+    });
+    response
+}
+
+/// The board on a dark ground: the source, the input trim's narrow box, the five places
+/// and the output's narrow box, joined by cables; under each block its mute and a trash
+/// can. A block can be dragged to another place; the block follows the mouse and the
+/// place it would land in is outlined, until it is let go there. `ends` is `None` for a
+/// board without them (the master's).
 pub(super) fn board(
     ui: &mut egui::Ui,
     source: (&str, &str),
@@ -799,28 +1268,117 @@ pub(super) fn board(
     selected: usize,
     origin: usize,
     clipboard: Option<&SoundClip>,
+    ends: Option<ChainEnds>,
 ) -> BoardActions {
     let tokens = style::tokens(ui);
     let (area, _) = ui.allocate_exact_size(vec2(WIDTH, BOARD_HEIGHT), Sense::hover());
     let count = BLOCKS.saturating_add(1);
-    let row = BOX.x * count as f32 + GAP * BLOCKS as f32;
-    let left = area.left() + (WIDTH - row) / 2.0;
-    let top = area.top() + 4.0;
-    let rect_of =
-        |index: usize| Rect::from_min_size(pos2(left + index as f32 * (BOX.x + GAP), top), BOX);
+    // The slots left to right, with their widths.
+    let mut slots = vec![(Slot::Box(0), BOX.x)];
+    if ends.is_some() {
+        slots.push((Slot::Input, END_WIDTH));
+    }
+    slots.extend((1..count).map(|index| (Slot::Box(index), BOX.x)));
+    if ends.is_some() {
+        slots.push((Slot::Output, END_WIDTH));
+    }
+    let boxes: f32 = slots.iter().map(|(_, width)| width).sum();
+    let gaps = slots.len().saturating_sub(1).max(1) as f32;
+    let gap = ((area.width() - 24.0 - boxes) / gaps).clamp(8.0, GAP);
+    let row = boxes + gap * gaps;
+    let top = area.top() + 10.0;
+    let mut x = area.left() + (area.width() - row) / 2.0;
+    let placed: Vec<(Slot, Rect)> = slots
+        .iter()
+        .map(|&(slot, width)| {
+            let rect = Rect::from_min_size(pos2(x, top), vec2(width, BOX.y));
+            x += width + gap;
+            (slot, rect)
+        })
+        .collect();
+    let rect_of = |index: usize| {
+        placed
+            .iter()
+            .find(|(slot, _)| *slot == Slot::Box(index))
+            .map_or(Rect::NOTHING, |(_, rect)| *rect)
+    };
     let painter = ui.painter_at(area);
+    // The dark ground the pedals stand on.
+    painter.rect_filled(area, 8.0, tokens.chrome);
     // Cables first, under the boxes: a straight line from one box's output jack to the next
     // box's input jack.
     let cable = Stroke::new(2.5, tokens.text_weak.gamma_multiply(0.8));
-    for index in 0..BLOCKS {
-        let from = rect_of(index).right_center();
-        let to = rect_of(index.saturating_add(1)).left_center();
+    for pair in placed.windows(2) {
+        let [(_, a), (_, b)] = pair else {
+            continue;
+        };
+        let (from, to) = (a.right_center(), b.left_center());
         painter.line_segment([from, to], cable);
         for end in [from, to] {
             painter.circle_filled(end, 3.5, tokens.text_weak);
         }
     }
     let mut actions = BoardActions::default();
+    // The input trim's and the output's boxes: a click shows their knob and meter.
+    if let Some(ends) = ends {
+        for (slot, rect) in &placed {
+            let (select, title, db, tip, label) = match slot {
+                Slot::Input => (
+                    SELECT_INPUT,
+                    "In",
+                    ends.input_db,
+                    "The input trim, before the first block: how hard the chain is fed",
+                    "Block in: input trim",
+                ),
+                Slot::Output => (
+                    SELECT_OUTPUT,
+                    "Out",
+                    ends.output_db,
+                    "The chain's output level, after every block and before the fader",
+                    "Block out: chain output",
+                ),
+                Slot::Box(_) => continue,
+            };
+            let response = ui
+                .interact(
+                    *rect,
+                    ui.scope_id().with(("chain_end", select)),
+                    Sense::click(),
+                )
+                .on_hover_text(tip);
+            ui.ctx().accesskit_node_builder(response.id, |node| {
+                node.set_label(label);
+                node.set_role(egui::Role::Button);
+            });
+            let fill = if response.hovered() {
+                tokens.control_hover
+            } else {
+                tokens.control
+            };
+            let outline = if selected == select {
+                Stroke::new(2.0, tokens.accent)
+            } else {
+                Stroke::new(1.0, tokens.line)
+            };
+            paint_box(
+                &painter,
+                *rect,
+                &BoxFace {
+                    empty: false,
+                    icon: None,
+                    bypassed: false,
+                    title,
+                    detail: &format!("{db:+.1}"),
+                },
+                fill,
+                outline,
+                tokens,
+            );
+            if response.clicked() {
+                actions.select = Some(select);
+            }
+        }
+    }
     // The block being dragged, while one is.
     let dragging = egui::DragAndDrop::payload::<DraggedBlock>(ui.ctx());
     for index in 0..count {
@@ -915,6 +1473,7 @@ pub(super) fn board(
             rect,
             &BoxFace {
                 empty,
+                icon: block.map(|block| block.choice),
                 bypassed,
                 title: &title,
                 detail: &detail,
@@ -932,38 +1491,20 @@ pub(super) fn board(
                 // keeps showing what it showed.
                 egui::Popup::menu(&response).show(|ui| {
                     if let Some(SoundClip::Block(_)) = clipboard
-                        && ui
-                            .button("Paste block")
-                            .on_hover_text("Put the copied block in this place")
-                            .clicked()
+                        && icon_menu_item(
+                            ui,
+                            super::icons::Icon::Paste,
+                            "Paste block",
+                            "Put the copied block in this place",
+                        )
+                        .clicked()
                     {
                         actions.paste_block = Some(place);
                         ui.close();
                     }
                     for (choice, label, tip) in block_choices() {
-                        if ui.button(label).on_hover_text(tip).clicked() {
+                        if block_menu_item(ui, choice, label, tip).clicked() {
                             actions.fill = Some((place, choice));
-                            ui.close();
-                        }
-                    }
-                    if ui
-                        .button("Copy chain")
-                        .on_hover_text(
-                            "Keep every block of this chain to paste into another track or part",
-                        )
-                        .clicked()
-                    {
-                        actions.copy = Some(SoundClip::Chain(Box::new(chain.clone())));
-                        ui.close();
-                    }
-                    if let Some(SoundClip::Chain(_)) = clipboard {
-                        ui.separator();
-                        if ui
-                            .button("Paste chain")
-                            .on_hover_text("Replace every place of this chain with the copied one")
-                            .clicked()
-                        {
-                            actions.paste_chain = true;
                             ui.close();
                         }
                     }
@@ -980,58 +1521,72 @@ pub(super) fn board(
                     } else {
                         "Let the sound pass this block unchanged"
                     };
-                    if ui
-                        .button(if bypassed { "Hear it again" } else { "Bypass" })
-                        .on_hover_text(tip)
-                        .clicked()
+                    if menu_row(
+                        ui,
+                        if bypassed { "Hear it again" } else { "Bypass" },
+                        tip,
+                        |_, _, _| {},
+                    )
+                    .clicked()
                     {
                         actions.bypass = Some(place);
                         ui.close();
                     }
-                    if ui
-                        .button("Remove")
-                        .on_hover_text("Empty this place of the board")
-                        .clicked()
+                    if icon_menu_item(
+                        ui,
+                        super::icons::Icon::Delete,
+                        "Remove",
+                        "Empty this place of the board",
+                    )
+                    .clicked()
                     {
                         actions.remove = Some(place);
                         ui.close();
                     }
                     ui.separator();
                     if let Some(block) = block
-                        && ui
-                            .button("Copy block")
-                            .on_hover_text(
-                                "Keep this block to paste into another place, track or part",
-                            )
-                            .clicked()
+                        && icon_menu_item(
+                            ui,
+                            super::icons::Icon::Copy,
+                            "Copy block",
+                            "Keep this block to paste into another place, track or part",
+                        )
+                        .clicked()
                     {
                         actions.copy = Some(SoundClip::Block(block.clone()));
                         ui.close();
                     }
-                    if ui
-                        .button("Copy chain")
-                        .on_hover_text(
-                            "Keep every block of this chain to paste into another track or part",
-                        )
-                        .clicked()
+                    if menu_row(
+                        ui,
+                        "Copy chain",
+                        "Keep every block of this chain to paste into another track or part",
+                        |_, _, _| {},
+                    )
+                    .clicked()
                     {
                         actions.copy = Some(SoundClip::Chain(Box::new(chain.clone())));
                         ui.close();
                     }
                     if let Some(SoundClip::Block(_)) = clipboard
-                        && ui
-                            .button("Paste block")
-                            .on_hover_text("Replace this place with the copied block")
-                            .clicked()
+                        && icon_menu_item(
+                            ui,
+                            super::icons::Icon::Paste,
+                            "Paste block",
+                            "Replace this place with the copied block",
+                        )
+                        .clicked()
                     {
                         actions.paste_block = Some(place);
                         ui.close();
                     }
                     if let Some(SoundClip::Chain(_)) = clipboard
-                        && ui
-                            .button("Paste chain")
-                            .on_hover_text("Replace every place of this chain with the copied one")
-                            .clicked()
+                        && menu_row(
+                            ui,
+                            "Paste chain",
+                            "Replace every place of this chain with the copied one",
+                            |_, _, _| {},
+                        )
+                        .clicked()
                     {
                         actions.paste_chain = true;
                         ui.close();
@@ -1043,9 +1598,24 @@ pub(super) fn board(
                 continue;
             }
             let mute = Rect::from_center_size(
-                pos2(rect.center().x, rect.bottom() + 12.0),
-                vec2(26.0, 16.0),
+                pos2(rect.center().x - 13.0, rect.bottom() + 13.0),
+                vec2(24.0, 16.0),
             );
+            let trash = Rect::from_center_size(
+                pos2(rect.center().x + 13.0, rect.bottom() + 13.0),
+                vec2(24.0, 16.0),
+            );
+            if small_icon_button(
+                ui,
+                trash,
+                super::icons::Icon::Delete,
+                &format!("Remove block {}", place.saturating_add(1)),
+                "Remove this block (empty its place)",
+            )
+            .clicked()
+            {
+                actions.remove = Some(place);
+            }
             let response = ui
                 .put(mute, style::mute_button(bypassed))
                 .on_hover_text(if bypassed {
@@ -1075,6 +1645,7 @@ pub(super) fn board(
             Rect::from_center_size(pointer, BOX),
             &BoxFace {
                 empty: false,
+                icon: Some(drag.block.choice),
                 bypassed: drag.block.bypass,
                 title: &title,
                 detail: &detail,
@@ -1087,18 +1658,30 @@ pub(super) fn board(
     actions
 }
 
-/// What was picked in a Cab block's dropdown.
-enum CabChoice {
-    BuiltIn(CabinetSetting),
+/// What was picked in a Cab or Room block's dropdown.
+pub(super) enum ResponseChoice {
+    /// One of the built-in cabinets.
+    Cabinet(CabinetSetting),
+    /// The built-in room.
+    Room,
+    /// A WAV file, from the file dialog.
     Load,
 }
 
-/// A Cab block's dropdown: the built-in responses, then loading a file; the file's name
-/// while one is loaded.
-fn cabinet_choice(ui: &mut egui::Ui, block: &BlockSetting) -> Option<CabChoice> {
+/// A Cab or Room block's dropdown: its built-in responses (the cabinets, or the one room),
+/// then loading a file; the file's name while one is loaded.
+pub(super) fn response_choice(ui: &mut egui::Ui, block: &BlockSetting) -> Option<ResponseChoice> {
+    const BUILT_IN_ROOM: &str = "Built-in room";
+    let room = block.choice == BlockChoice::Room;
     let mut picked = None;
     let shown = block.file.as_ref().map_or_else(
-        || block.cabinet.label().to_owned(),
+        || {
+            if room {
+                BUILT_IN_ROOM.to_owned()
+            } else {
+                block.cabinet.label().to_owned()
+            }
+        },
         |file| {
             file.file_name().map_or_else(
                 || file.display().to_string(),
@@ -1107,10 +1690,28 @@ fn cabinet_choice(ui: &mut egui::Ui, block: &BlockSetting) -> Option<CabChoice> 
         },
     );
     ui.horizontal(|ui| {
-        let combo = egui::ComboBox::from_id_salt("cab response")
-            .selected_text(shown)
-            .width(260.0)
-            .show_ui(ui, |ui| {
+        let combo = egui::ComboBox::from_id_salt(if room {
+            "room response"
+        } else {
+            "cab response"
+        })
+        .selected_text(shown)
+        .width(260.0)
+        .show_ui(ui, |ui| {
+            if room {
+                let chosen = block.file.is_none();
+                if ui
+                    .selectable_label(chosen, BUILT_IN_ROOM)
+                    .on_hover_text(
+                        "A short room, computed: the one a drum kit's room starts on. No \
+                             file needed.",
+                    )
+                    .clicked()
+                    && !chosen
+                {
+                    picked = Some(ResponseChoice::Room);
+                }
+            } else {
                 for cabinet in CabinetSetting::ALL {
                     let chosen = block.file.is_none() && block.cabinet == cabinet;
                     if ui
@@ -1119,20 +1720,29 @@ fn cabinet_choice(ui: &mut egui::Ui, block: &BlockSetting) -> Option<CabChoice> 
                         .clicked()
                         && !chosen
                     {
-                        picked = Some(CabChoice::BuiltIn(cabinet));
+                        picked = Some(ResponseChoice::Cabinet(cabinet));
                     }
                 }
-                ui.separator();
-                if ui
-                    .selectable_label(false, "Load file…")
-                    .on_hover_text("An impulse response from a WAV file: a cabinet or a body")
-                    .clicked()
-                {
-                    picked = Some(CabChoice::Load);
-                }
-            });
+            }
+            ui.separator();
+            if ui
+                .selectable_label(false, "Load file…")
+                .on_hover_text(if room {
+                    "A room recorded in a WAV file (an impulse response)"
+                } else {
+                    "An impulse response from a WAV file: a cabinet or a body"
+                })
+                .clicked()
+            {
+                picked = Some(ResponseChoice::Load);
+            }
+        });
         ui.ctx().accesskit_node_builder(combo.response.id, |node| {
-            node.set_label("Cab response");
+            node.set_label(if room {
+                "Room response"
+            } else {
+                "Cab response"
+            });
         });
         if let Some(file) = &block.file {
             combo.response.on_hover_text(file.display().to_string());
@@ -1162,28 +1772,20 @@ pub(super) fn editor(
         );
     } else {
         ui.label(RichText::new(block.choice.label()).strong());
-        if block.choice == BlockChoice::Cabinet {
-            let picked = cabinet_choice(ui, block);
-            match picked {
-                Some(CabChoice::BuiltIn(cabinet)) => {
+        if block.choice.uses_file() {
+            match response_choice(ui, block) {
+                Some(ResponseChoice::Cabinet(cabinet)) => {
                     edited.cabinet = cabinet;
                     edited.file = None;
                     changed = true;
                 }
-                Some(CabChoice::Load) => load = true,
+                Some(ResponseChoice::Room) => {
+                    edited.file = None;
+                    changed = true;
+                }
+                Some(ResponseChoice::Load) => load = true,
                 None => {}
             }
-        } else if block.choice.uses_file() {
-            ui.horizontal(|ui| {
-                let name = block.file.as_ref().map_or_else(
-                    || "No impulse response loaded".to_owned(),
-                    |file| file.display().to_string(),
-                );
-                ui.label(RichText::new(short(&name, 70)).weak());
-                if ui.button("Load WAV…").clicked() {
-                    load = true;
-                }
-            });
         }
         ui.add_space(4.0);
         let moved = block_knobs(ui, &mut edited, false, reduction);
@@ -1440,6 +2042,8 @@ impl GuitarScoreApp {
             Some(window) => {
                 if window.track != track {
                     window.part = None;
+                    window.reference = None;
+                    window.comparing = false;
                 }
                 window.track = track;
             }
@@ -1452,8 +2056,198 @@ impl GuitarScoreApp {
                     preset: None,
                     part: None,
                     strings_tab: super::string_sound::StringsTab::default(),
+                    reference: None,
+                    reference_own: false,
+                    comparing: false,
+                    programs: super::tone_picker::TonePickerState::new(),
+                    board_keys: false,
+                    pending_keys: Vec::new(),
+                    rect: None,
+                    imported: None,
                 });
             }
+        }
+    }
+
+    /// Before the score's keys: while the Sound chain board has the keyboard, takes the
+    /// keys it handles (the arrows, Delete or Backspace, M) out of this frame's input for
+    /// the window, so they do not move the score's cursor or delete a note. A click
+    /// outside the window gives the keyboard back to the score.
+    pub(super) fn take_sound_chain_keys(&mut self, ctx: &egui::Context) {
+        let Some(window) = self.sound_chain.as_mut() else {
+            return;
+        };
+        let pressed_outside = ctx.input(|input| {
+            input.pointer.any_pressed()
+                && input
+                    .pointer
+                    .interact_pos()
+                    .is_some_and(|pos| window.rect.is_none_or(|rect| !rect.contains(pos)))
+        });
+        if pressed_outside {
+            window.board_keys = false;
+        }
+        if !window.board_keys || ctx.egui_wants_keyboard_input() || egui::Popup::is_any_open(ctx) {
+            return;
+        }
+        let mut taken = Vec::new();
+        ctx.input_mut(|input| {
+            input.events.retain(|event| {
+                let key = match event {
+                    egui::Event::Key {
+                        key,
+                        pressed,
+                        modifiers,
+                        ..
+                    } if modifiers.is_none() || *modifiers == egui::Modifiers::SHIFT => {
+                        let key = match key {
+                            egui::Key::ArrowLeft => Some(BoardKey::Previous),
+                            egui::Key::ArrowRight => Some(BoardKey::Next),
+                            egui::Key::Delete | egui::Key::Backspace => Some(BoardKey::Remove),
+                            egui::Key::M => Some(BoardKey::Mute),
+                            _ => None,
+                        };
+                        match key {
+                            // Only the press acts; its release is taken too.
+                            Some(key) if *pressed => Some(Some(key)),
+                            Some(_) => Some(None),
+                            None => None,
+                        }
+                    }
+                    // The character M types is the key's, not the score's.
+                    egui::Event::Text(text) if text.eq_ignore_ascii_case("m") => Some(None),
+                    _ => None,
+                };
+                match key {
+                    Some(Some(key)) => {
+                        taken.push(key);
+                        false
+                    }
+                    Some(None) => false,
+                    None => true,
+                }
+            });
+        });
+        if !taken.is_empty() {
+            window.pending_keys.extend(taken);
+            ctx.request_repaint();
+        }
+    }
+
+    /// Writes `track`'s tone (as `kind`'s strings, with what plays them) into a tone file
+    /// named `name`, chosen in a save dialog.
+    fn export_track_tone(
+        &mut self,
+        track: usize,
+        kind: StringKind,
+        name: String,
+        ctx: &egui::Context,
+    ) {
+        let tone = self.track_tone(track, kind);
+        let engine = self
+            .track_player(track)
+            .map_or(TrackEngine::Modelled(kind), |player| player.engine);
+        let name = if name.trim().is_empty() || name == "Unsaved tone" {
+            "My tone".to_owned()
+        } else {
+            name
+        };
+        let preset = ChainPreset {
+            name: name.clone(),
+            kind: kind_id(tone.kind).to_owned(),
+            sound: tone.sound,
+            chain: tone.chain,
+            engine: engine_id(engine).to_owned(),
+        };
+        match crate::tone_file::write(&preset) {
+            Ok((bytes, unreadable)) => {
+                if !unreadable.is_empty() {
+                    self.notice = Some(format!(
+                        "The tone is exported without {}: the file could not be read, so the \
+                         block needs it on the other machine too.",
+                        unreadable.join(", ")
+                    ));
+                }
+                if let Err(error) = self.tasks.export_tone(name, bytes, ctx) {
+                    self.notice = Some(error);
+                }
+            }
+            Err(error) => self.notice = Some(format!("Not exported: {error}")),
+        }
+    }
+
+    /// What the Import tone dialog does with the file it read (a tone file's bytes (JSON)):
+    /// its tone joins the saved tones (under a name of its own if another saved tone has
+    /// its name already) and, while the Sound chain window is open, plays on its track.
+    /// Its impulse responses are kept in an `impulses` folder beside the settings file.
+    pub fn import_tone_file(&mut self, bytes: &[u8]) {
+        let dir = self
+            .settings_path
+            .as_deref()
+            .and_then(std::path::Path::parent)
+            .map(|dir| dir.join("impulses"));
+        let imported = match crate::tone_file::read(bytes, dir.as_deref()) {
+            Ok(imported) => imported,
+            Err(error) => {
+                self.notice = Some(format!("Not imported: {error}"));
+                return;
+            }
+        };
+        let mut preset = imported.preset;
+        // A sound written before pickups existed gets its kind's, as the track will play
+        // it, so the saved tone and the one playing are the same.
+        if let Some(kind) = crate::settings::kind_from_id(&preset.kind) {
+            preset.sound = preset.sound.for_kind(kind);
+        }
+        let presets = &mut self.settings.string_presets;
+        // The same tone imported again is the one already saved; another tone of that name
+        // gets a number.
+        let same = presets.iter().any(|old| {
+            old.kind == preset.kind
+                && old.name == preset.name
+                && old.sound == preset.sound
+                && old.chain == preset.chain
+        });
+        if !same {
+            let base = preset.name.clone();
+            let mut number = 2_u32;
+            while presets
+                .iter()
+                .any(|old| old.kind == preset.kind && old.name == preset.name)
+            {
+                preset.name = format!("{base} ({number})");
+                number = number.saturating_add(1);
+            }
+            if presets.len() >= MAX_STRING_PRESETS {
+                self.notice = Some(format!(
+                    "Not imported: there are {MAX_STRING_PRESETS} saved tones already; delete one \
+                     first"
+                ));
+                return;
+            }
+            presets.push(preset.clone());
+            self.playback
+                .store_string_presets(self.settings.string_presets.clone());
+            self.save_settings();
+        }
+        self.status = Some(format!("Imported the tone “{}”", preset.name));
+        if !imported.missing.is_empty() {
+            self.notice = Some(format!(
+                "The tone “{}” was imported without {}: its blocks need those impulse \
+                 responses, which the file did not bring.",
+                preset.name,
+                imported.missing.join(", ")
+            ));
+        }
+        if let Some(window) = &mut self.sound_chain {
+            window.imported = Some(preset);
+        }
+    }
+
+    /// Lets go of A/B: the compared track plays its own tone again.
+    fn stop_comparing(&mut self) {
+        if self.compare_tone.take().is_some() {
+            self.sync_track_tones();
         }
     }
 
@@ -1509,6 +2303,7 @@ impl GuitarScoreApp {
     /// The Sound chain window, while it is open.
     pub(super) fn show_sound_chain(&mut self, ctx: &egui::Context) {
         let Some(mut window) = self.sound_chain.take() else {
+            self.stop_comparing();
             return;
         };
         // A change applied while the window is drawn (a knob, a block, a source) must be
@@ -1526,6 +2321,19 @@ impl GuitarScoreApp {
         let Some(player) = self.track_player(window.track) else {
             return;
         };
+        // A tone imported from a file plays on this track at once, as a saved tone chosen
+        // in the list would.
+        if let Some(preset) = window.imported.take() {
+            let kind = match player.engine {
+                TrackEngine::Modelled(kind) => kind,
+                TrackEngine::SoundFont | TrackEngine::MidiOut => {
+                    player.preset_kind.unwrap_or(StringKind::Steel)
+                }
+            };
+            window.preset = Some((player.program, preset.name.clone()));
+            window.part = None;
+            actions.preset = Some(ChosenPreset::of_saved(&preset, kind));
+        }
         // The chain of the kind that plays the track; for the SoundFont, the kind its preset
         // stands for (the mixer runs a SoundFont track's chain too).
         let (kind, modelled) = match player.engine {
@@ -1546,6 +2354,33 @@ impl GuitarScoreApp {
         // On the SoundFont only a tone the song carries brings a chain (the defaults are
         // the modelled strings'); a drum track's own chain is its bus.
         let tone = self.track_chain_tone(window.track, &player, kind);
+        // What A/B compares with: the tone as the window found it.
+        if window.reference.is_none() {
+            window.reference = Some(tone.clone());
+            window.reference_own = self
+                .tabs
+                .get(self.active)
+                .is_some_and(|tab| tab.track_sound(window.track).tone.is_some());
+        }
+        // A/B has something to compare when the tone changed since (not for a drum part's
+        // own chain); while it is on, the window shows the tone as it was.
+        let can_compare = window.part.is_none()
+            && window
+                .reference
+                .as_ref()
+                .is_some_and(|reference| *reference != tone);
+        if !can_compare {
+            window.comparing = false;
+        }
+        let comparing = window.comparing;
+        let tone = match (&window.reference, comparing) {
+            (Some(reference), true) => reference.clone(),
+            _ => tone,
+        };
+        if comparing {
+            // The board's keys would edit the tone shown, which is not the one to change.
+            window.pending_keys.clear();
+        }
         // How far the track's compressors work, for the block's meter (and a repaint while
         // the needle moves).
         let meters = self.playback.meters();
@@ -1575,6 +2410,25 @@ impl GuitarScoreApp {
             })
             .unwrap_or_default();
         let clipboard = self.sound_clipboard.clone();
+        // What the header's copy and paste can do: the board shows the drum part's chain or
+        // the tone's, and a selected place may hold a block to copy.
+        let clip = ClipState {
+            clipboard: clipboard
+                .as_ref()
+                .map(|clip| matches!(clip, SoundClip::Chain(_))),
+            block_selected: window
+                .selected
+                .checked_sub(1)
+                .filter(|place| *place < BLOCKS)
+                .and_then(|place| {
+                    part_chain
+                        .as_ref()
+                        .map_or(&tone.chain, |own| &own.chain)
+                        .blocks
+                        .get(place)
+                })
+                .is_some_and(|block| block.choice != BlockChoice::Empty),
+        };
         // The track's input trim and the level before its chain, for setting how hard an
         // amp or a compressor is driven.
         let trim_db = self
@@ -1588,7 +2442,7 @@ impl GuitarScoreApp {
         let output = meters
             .as_ref()
             .map_or_else(Default::default, |meters| meters.chain_output(window.track));
-        egui::Window::new(&title)
+        let shown = egui::Window::new(&title)
             .id(egui::Id::unique(WINDOW_ID))
             .title_bar(false)
             .collapsible(false)
@@ -1638,8 +2492,7 @@ impl GuitarScoreApp {
                                     }
                                     ui.add_space(16.0);
                                     ui.label(
-                                        RichText::new("Room")
-                                            .color(style::tokens(ui).text_weak),
+                                        RichText::new("Room").color(style::tokens(ui).text_weak),
                                     );
                                     let mut room = part_room.unwrap_or(0);
                                     if ui
@@ -1652,6 +2505,7 @@ impl GuitarScoreApp {
                                     {
                                         actions.part_room = Some(room);
                                     }
+                                    clip_buttons(ui, clip, None, &mut actions);
                                 });
                             } else {
                                 let default_tone = self.playback.track_default_tone_name(
@@ -1664,6 +2518,14 @@ impl GuitarScoreApp {
                                     ShownPreset {
                                         program: player.program,
                                         kind,
+                                        clip,
+                                        compare: can_compare,
+                                        comparing,
+                                        basis: self
+                                            .tabs
+                                            .get(self.active)
+                                            .and_then(|tab| tab.tone_basis.get(&window.track))
+                                            .cloned(),
                                     },
                                     default_tone.as_deref(),
                                     &tone,
@@ -1674,219 +2536,299 @@ impl GuitarScoreApp {
                             }
                         });
                         ui.separator();
-                        let chain = part_chain
-                            .as_ref()
-                            .map(|own| own.chain.clone())
-                            .unwrap_or_else(|| tone.chain.clone());
-                        let sound = tone.sound;
-                        // The first box names what plays the track: the strings, the MIDI
-                        // synth or a hardware port.
-                        let source = match player.engine {
-                            TrackEngine::Modelled(kind) => {
-                                ("Strings".to_owned(), kind_name(kind).to_owned())
-                            }
-                            TrackEngine::SoundFont => (
-                                "MIDI".to_owned(),
-                                format!(
-                                    "{}: {}",
-                                    player.program,
-                                    gscore_model::program_name(player.program)
+                        // While A/B shows the tone as it was, its board and knobs are
+                        // shown but not edited.
+                        ui.add_enabled_ui(!comparing, |ui| {
+                            let chain = part_chain
+                                .as_ref()
+                                .map(|own| own.chain.clone())
+                                .unwrap_or_else(|| tone.chain.clone());
+                            let sound = tone.sound;
+                            // The first box names what plays the track: the strings, the MIDI
+                            // synth or a hardware port.
+                            let source = match player.engine {
+                                TrackEngine::Modelled(kind) => {
+                                    ("Strings".to_owned(), kind_name(kind).to_owned())
+                                }
+                                TrackEngine::SoundFont => (
+                                    "MIDI".to_owned(),
+                                    format!(
+                                        "{}: {}",
+                                        player.program,
+                                        gscore_model::program_name(player.program)
+                                    ),
                                 ),
-                            ),
-                            TrackEngine::MidiOut => {
-                                ("MIDI out".to_owned(), player.midi_out.label())
-                            }
-                        };
-                        let board = board(
-                            ui,
-                            (source.0.as_str(), source.1.as_str()),
-                            &chain,
-                            window.selected,
-                            board_origin(window.track, window.part),
-                            clipboard.as_ref(),
-                        );
-                        if let Some(index) = board.select {
-                            window.selected = index;
-                            // The first box is the track's source: the kit's, not a part's.
-                            if index == 0 && window.part.is_some() {
-                                window.part = None;
-                            }
-                        }
-                        if let Some(clip) = board.copy {
-                            actions.copy = Some(clip);
-                        }
-                        if let Some(place) = board.paste_block
-                            && let Some(SoundClip::Block(block)) = &clipboard
-                        {
-                            let mut changed = chain.clone();
-                            if let Some(slot) = changed.blocks.get_mut(place) {
-                                *slot = block.clone();
-                            }
-                            actions.chain = Some(changed);
-                            window.selected = place.saturating_add(1);
-                        }
-                        if board.paste_chain
-                            && let Some(SoundClip::Chain(copied)) = &clipboard
-                        {
-                            actions.chain = Some(copied.as_ref().clone());
-                        }
-                        if let Some((place, block)) = board.dropped {
-                            let mut changed = chain.clone();
-                            if let Some(slot) = changed.blocks.get_mut(place) {
-                                *slot = block.clone();
-                            }
-                            actions.chain = Some(changed);
-                            window.selected = place.saturating_add(1);
-                        }
-                        if let Some(place) = board.remove {
-                            let mut changed = chain.clone();
-                            if let Some(slot) = changed.blocks.get_mut(place) {
-                                *slot = BlockSetting::default();
-                            }
-                            actions.chain = Some(changed);
-                            window.selected = place.saturating_add(1);
-                        }
-                        if let Some((place, choice)) = board.fill {
-                            let mut changed = chain.clone();
-                            if let Some(slot) = changed.blocks.get_mut(place) {
-                                *slot = BlockSetting::of(choice);
-                            }
-                            actions.chain = Some(changed);
-                            window.selected = place.saturating_add(1);
-                            // A room needs its file; a cab starts on its built-in response.
-                            if choice == BlockChoice::Room {
-                                actions.load = Some(place);
-                            }
-                        }
-                        if let Some(place) = board.bypass
-                            && let Some(block) = chain.blocks.get(place)
-                        {
-                            let mut changed = chain.clone();
-                            if let Some(slot) = changed.blocks.get_mut(place) {
-                                slot.bypass = !block.bypass;
-                            }
-                            actions.chain = Some(changed);
-                        }
-                        // A block dragged to another place: the chain follows the board, so
-                        // the sound passes the blocks in the order shown.
-                        if let Some((from, to)) = board.moved {
-                            let mut changed = chain.clone();
-                            if move_block(&mut changed.blocks, from, to) {
-                                actions.chain = Some(changed);
-                                window.selected = to.saturating_add(1);
-                            }
-                        }
-                        // The input trim and its meter (how hard the chain is fed) on the
-                        // left; the chain's output level on the right: the tone's own
-                        // loudness, after every block and before the mixer's fader.
-                        ui.add_space(2.0);
-                        ui.horizontal(|ui| {
-                            let mut trim = trim_db;
-                            if round_knob(
+                                TrackEngine::MidiOut => {
+                                    ("MIDI out".to_owned(), player.midi_out.label())
+                                }
+                            };
+                            let board = board(
                                 ui,
-                                &mut trim,
-                                TRIM_RANGE,
-                                "Input trim",
-                                " dB",
-                                default_trim,
-                                false,
-                                "The track's input trim, before its chain's first block: turn it up \
-                                 to drive an amp or a compressor harder, or down to clean \
-                                 them up. It does not change the track's level.",
-                            )
-                            .changed
-                            {
-                                actions.trim = Some(trim);
-                            }
-                            let (rect, response) =
-                                ui.allocate_exact_size(vec2(10.0, 30.0), Sense::hover());
-                            strips::paint_meter(ui, rect, strips::Reading::measured(input));
-                            response.on_hover_text(
-                                "The level before the chain (after the input trim), left and \
-                                 right",
+                                (source.0.as_str(), source.1.as_str()),
+                                &chain,
+                                window.selected,
+                                board_origin(window.track, window.part),
+                                clipboard.as_ref(),
+                                Some(ChainEnds {
+                                    input_db: trim_db,
+                                    output_db: chain.output_db,
+                                }),
                             );
-                            ui.with_layout(egui::Layout::right_to_left(egui::Align::TOP), |ui| {
-                                let mut output_db = chain.output_db;
-                                if round_knob(
-                                    ui,
-                                    &mut output_db,
-                                    knob_ranges::OUTPUT,
-                                    "Chain output",
-                                    " dB",
-                                    0.0,
-                                    false,
-                                    "The chain's output level, after every block and \
-                                         before the mixer's fader. It is the tone's own \
-                                         loudness: turning it does not change how hard an \
-                                         amp or a drive is fed.",
-                                )
-                                .changed
-                                {
-                                    let mut changed = chain.clone();
-                                    changed.output_db = output_db;
-                                    actions.chain = Some(changed);
-                                }
-                                // What leaves the chain, just left of the knob.
-                                let (rect, response) = ui
-                                    .allocate_exact_size(vec2(10.0, 30.0), Sense::hover());
-                                strips::paint_meter(
-                                    ui,
-                                    rect,
-                                    strips::Reading::measured(output),
-                                );
-                                response.on_hover_text(
-                                    "The level after the chain (with its output level), left \
-                                     and right, before the fader",
-                                );
-                            });
-                        });
-                        ui.separator();
-                        // The chosen box's knobs, in an area of one height for every box of
-                        // the chain (taller only for a chain with an EQ, if the screen has
-                        // room), so the window keeps its size when another box is chosen.
-                        let tallest = if chain
-                            .blocks
-                            .iter()
-                            .any(|block| block.choice == BlockChoice::Eq)
-                        {
-                            EQ_EDITOR_HEIGHT
-                        } else {
-                            EDITOR_HEIGHT
-                        };
-                        let editor_height = (ctx.content_rect().height() - EDITOR_ROOM)
-                            .clamp(EDITOR_MIN_HEIGHT, tallest);
-                        egui::ScrollArea::vertical()
-                            .id_salt("sound chain editor")
-                            .auto_shrink([false, false])
-                            .max_height(editor_height)
-                            .show(ui, |ui| {
-                                ui.set_min_height(editor_height);
-                                match window.selected.checked_sub(1) {
-                                    None => {
-                                        let mut sound = sound;
-                                        if strings_editor(
-                                            ui,
-                                            &player,
-                                            &mut sound,
-                                            &ports,
-                                            &mut window.strings_tab,
-                                            &mut actions,
-                                        ) {
-                                            actions.sound = Some(sound);
-                                        }
+                            let mut board = board;
+                            // The board's keys, as the clicks they stand for.
+                            for key in std::mem::take(&mut window.pending_keys) {
+                                let place = window
+                                    .selected
+                                    .checked_sub(1)
+                                    .filter(|place| *place < BLOCKS)
+                                    .filter(|place| {
+                                        chain
+                                            .blocks
+                                            .get(*place)
+                                            .is_some_and(|block| block.choice != BlockChoice::Empty)
+                                    });
+                                match key {
+                                    BoardKey::Previous | BoardKey::Next => {
+                                        board.select = Some(next_box(
+                                            board.select.unwrap_or(window.selected),
+                                            key == BoardKey::Next,
+                                        ));
                                     }
-                                    Some(place) => {
-                                        let edited = editor(ui, &chain, place, reduction);
-                                        if let Some(changed) = edited.chain {
+                                    BoardKey::Remove => board.remove = board.remove.or(place),
+                                    BoardKey::Mute => board.bypass = board.bypass.or(place),
+                                }
+                            }
+                            if board.select.is_some() {
+                                window.board_keys = true;
+                            }
+                            if let Some(index) = board.select {
+                                window.selected = index;
+                                // The first box is the track's source: the kit's, not a part's.
+                                if index == 0 && window.part.is_some() {
+                                    window.part = None;
+                                }
+                            }
+                            if let Some(clip) = board.copy {
+                                actions.copy = Some(clip);
+                            }
+                            // The header's copy menu: the selected block or the whole chain.
+                            let selected_place = window
+                                .selected
+                                .checked_sub(1)
+                                .filter(|place| *place < BLOCKS);
+                            if actions.copy_block
+                                && let Some(block) = selected_place
+                                    .and_then(|place| chain.blocks.get(place))
+                                    .filter(|block| block.choice != BlockChoice::Empty)
+                            {
+                                actions.copy = Some(SoundClip::Block(block.clone()));
+                            }
+                            if actions.copy_chain {
+                                actions.copy = Some(SoundClip::Chain(Box::new(chain.clone())));
+                            }
+                            // Its paste: whatever was copied last.
+                            if actions.paste {
+                                match &clipboard {
+                                    Some(SoundClip::Chain(copied)) => {
+                                        actions.chain = Some(copied.as_ref().clone());
+                                    }
+                                    Some(SoundClip::Block(block)) => {
+                                        if let Some(place) =
+                                            selected_place.or_else(|| first_empty(&chain))
+                                        {
+                                            let mut changed = chain.clone();
+                                            if let Some(slot) = changed.blocks.get_mut(place) {
+                                                *slot = block.clone();
+                                            }
                                             actions.chain = Some(changed);
-                                        }
-                                        actions.rebuild |= edited.rebuild;
-                                        if edited.load {
-                                            actions.load = Some(place);
+                                            window.selected = place.saturating_add(1);
                                         }
                                     }
+                                    None => {}
                                 }
-                            });
+                            }
+                            if let Some(place) = board.paste_block
+                                && let Some(SoundClip::Block(block)) = &clipboard
+                            {
+                                let mut changed = chain.clone();
+                                if let Some(slot) = changed.blocks.get_mut(place) {
+                                    *slot = block.clone();
+                                }
+                                actions.chain = Some(changed);
+                                window.selected = place.saturating_add(1);
+                            }
+                            if board.paste_chain
+                                && let Some(SoundClip::Chain(copied)) = &clipboard
+                            {
+                                actions.chain = Some(copied.as_ref().clone());
+                            }
+                            if let Some((place, block)) = board.dropped {
+                                let mut changed = chain.clone();
+                                if let Some(slot) = changed.blocks.get_mut(place) {
+                                    *slot = block.clone();
+                                }
+                                actions.chain = Some(changed);
+                                window.selected = place.saturating_add(1);
+                            }
+                            if let Some(place) = board.remove {
+                                let mut changed = chain.clone();
+                                if let Some(slot) = changed.blocks.get_mut(place) {
+                                    *slot = BlockSetting::default();
+                                }
+                                actions.chain = Some(changed);
+                                window.selected = place.saturating_add(1);
+                            }
+                            if let Some((place, choice)) = board.fill {
+                                let mut changed = chain.clone();
+                                if let Some(slot) = changed.blocks.get_mut(place) {
+                                    *slot = BlockSetting::of(choice);
+                                }
+                                actions.chain = Some(changed);
+                                window.selected = place.saturating_add(1);
+                            }
+                            if let Some(place) = board.bypass
+                                && let Some(block) = chain.blocks.get(place)
+                            {
+                                let mut changed = chain.clone();
+                                if let Some(slot) = changed.blocks.get_mut(place) {
+                                    slot.bypass = !block.bypass;
+                                }
+                                actions.chain = Some(changed);
+                            }
+                            // A block dragged to another place: the chain follows the board, so
+                            // the sound passes the blocks in the order shown.
+                            if let Some((from, to)) = board.moved {
+                                let mut changed = chain.clone();
+                                if move_block(&mut changed.blocks, from, to) {
+                                    actions.chain = Some(changed);
+                                    window.selected = to.saturating_add(1);
+                                }
+                            }
+                            ui.separator();
+                            // The chosen box's knobs, in an area of one height for every box of
+                            // the chain (taller only for a chain with an EQ, if the screen has
+                            // room), so the window keeps its size when another box is chosen.
+                            let tallest = if chain
+                                .blocks
+                                .iter()
+                                .any(|block| block.choice == BlockChoice::Eq)
+                            {
+                                EQ_EDITOR_HEIGHT
+                            } else {
+                                EDITOR_HEIGHT
+                            };
+                            let editor_height = (ctx.content_rect().height() - EDITOR_ROOM)
+                                .clamp(EDITOR_MIN_HEIGHT, tallest);
+                            egui::ScrollArea::vertical()
+                                .id_salt("sound chain editor")
+                                .auto_shrink([false, false])
+                                .max_height(editor_height)
+                                .show(ui, |ui| {
+                                    ui.set_min_height(editor_height);
+                                    if window.selected == SELECT_INPUT {
+                                        ui.label(RichText::new("Input trim").strong());
+                                        ui.horizontal(|ui| {
+                                            let mut trim = trim_db;
+                                            if round_knob(
+                                                ui,
+                                                &mut trim,
+                                                TRIM_RANGE,
+                                                "Input trim",
+                                                " dB",
+                                                default_trim,
+                                                false,
+                                                "The track's input trim, before its chain's first \
+                                             block: turn it up to drive an amp or a compressor \
+                                             harder, or down to clean them up. It does not \
+                                             change the track's level.",
+                                            )
+                                            .changed
+                                            {
+                                                actions.trim = Some(trim);
+                                            }
+                                            let (rect, response) = ui.allocate_exact_size(
+                                                vec2(10.0, 30.0),
+                                                Sense::hover(),
+                                            );
+                                            strips::paint_meter(
+                                                ui,
+                                                rect,
+                                                strips::Reading::measured(input),
+                                            );
+                                            response.on_hover_text(
+                                            "The level before the chain (after the input trim), \
+                                             left and right",
+                                        );
+                                        });
+                                        return;
+                                    }
+                                    if window.selected == SELECT_OUTPUT {
+                                        ui.label(RichText::new("Chain output").strong());
+                                        ui.horizontal(|ui| {
+                                            let mut output_db = chain.output_db;
+                                            if round_knob(
+                                                ui,
+                                                &mut output_db,
+                                                knob_ranges::OUTPUT,
+                                                "Chain output",
+                                                " dB",
+                                                0.0,
+                                                false,
+                                                "The chain's output level, after every block and \
+                                             before the mixer's fader. It is the tone's own \
+                                             loudness: turning it does not change how hard an \
+                                             amp or a drive is fed.",
+                                            )
+                                            .changed
+                                            {
+                                                let mut changed = chain.clone();
+                                                changed.output_db = output_db;
+                                                actions.chain = Some(changed);
+                                            }
+                                            let (rect, response) = ui.allocate_exact_size(
+                                                vec2(10.0, 30.0),
+                                                Sense::hover(),
+                                            );
+                                            strips::paint_meter(
+                                                ui,
+                                                rect,
+                                                strips::Reading::measured(output),
+                                            );
+                                            response.on_hover_text(
+                                            "The level after the chain (with its output level), \
+                                             left and right, before the fader",
+                                        );
+                                        });
+                                        return;
+                                    }
+                                    match window.selected.checked_sub(1) {
+                                        None => {
+                                            let mut sound = sound;
+                                            if strings_editor(
+                                                ui,
+                                                &player,
+                                                &mut sound,
+                                                &ports,
+                                                &mut window.strings_tab,
+                                                &mut window.programs,
+                                                &mut actions,
+                                            ) {
+                                                actions.sound = Some(sound);
+                                            }
+                                        }
+                                        Some(place) => {
+                                            let edited = editor(ui, &chain, place, reduction);
+                                            if let Some(changed) = edited.chain {
+                                                actions.chain = Some(changed);
+                                            }
+                                            actions.rebuild |= edited.rebuild;
+                                            if edited.load {
+                                                actions.load = Some(place);
+                                            }
+                                        }
+                                    }
+                                });
+                        });
                         ui.add_space(6.0);
                         ui.separator();
                         ui.horizontal(|ui| {
@@ -1908,6 +2850,7 @@ impl GuitarScoreApp {
                         });
                     });
             });
+        window.rect = shown.map(|shown| shown.response.rect);
         // Escape closes the window the user is looking at (a popup or a text field gets it
         // first).
         if style::escape_closes(ctx, egui::Id::unique(WINDOW_ID)) {
@@ -1964,6 +2907,16 @@ impl GuitarScoreApp {
         // of string chosen here (switching to steel while adding a block must store steel).
         if let Some(engine) = actions.engine {
             self.set_track_engine(track, engine);
+        }
+        // Another instrument: the track's program, an edit like the track panel's choice.
+        if let Some(program) = actions.program {
+            self.apply_command(
+                gscore_edit::Command::SetTrackProgram {
+                    track: gscore_model::TrackIndex::new(track),
+                    program,
+                },
+                false,
+            );
         }
         // A saved tone: it carries both a string sound and a chain (and what plays them).
         if let Some(preset) = actions.preset {
@@ -2034,6 +2987,14 @@ impl GuitarScoreApp {
                 .store_string_presets(self.settings.string_presets.clone());
             self.save_settings();
         }
+        if let Some(name) = actions.export_tone {
+            self.export_track_tone(track, active_kind, name, ctx);
+        }
+        if actions.import_tone
+            && let Err(error) = self.tasks.import_tone(ctx)
+        {
+            self.notice = Some(error);
+        }
         if let Some((preset_kind, name)) = actions.delete_preset {
             self.settings
                 .string_presets
@@ -2041,6 +3002,10 @@ impl GuitarScoreApp {
             self.playback
                 .store_string_presets(self.settings.string_presets.clone());
             self.save_settings();
+            // A tone dialed in from the deleted one no longer names it.
+            for tab in &mut self.tabs {
+                tab.tone_basis.retain(|_, basis| *basis != name);
+            }
         }
         if let Some(place) = actions.load
             && let Err(error) = self.tasks.pick_impulse(
@@ -2061,6 +3026,20 @@ impl GuitarScoreApp {
                 Ok(_) => {}
                 Err(error) => self.notice = Some(error),
             }
+        }
+        // A/B: while it is on the track plays the tone the window found; off, its own tone
+        // again. Only what is heard changes, never the song.
+        if actions.toggle_compare {
+            window.comparing = !window.comparing && can_compare;
+        }
+        let comparing = window.comparing && !actions.close;
+        if comparing && self.compare_tone.is_none() {
+            if let Some(reference) = window.reference.clone() {
+                self.compare_tone = Some((track, window.reference_own.then_some(reference)));
+                self.sync_track_tones();
+            }
+        } else if !comparing {
+            self.stop_comparing();
         }
         if tone_chosen {
             // What the window remembers of the choice is this machine's: keep it at once.

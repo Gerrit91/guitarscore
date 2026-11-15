@@ -10,6 +10,7 @@ mod alert;
 mod amp_knobs;
 mod bars;
 mod beat_text_editor;
+mod block_icons;
 mod chord_editor;
 mod chorus_bus_window;
 mod circle_of_fifths;
@@ -70,6 +71,7 @@ mod tuner;
 mod tuplet_dialog;
 #[cfg(not(target_arch = "wasm32"))]
 mod updates;
+mod vector_icon;
 #[cfg(target_arch = "wasm32")]
 mod web_rescue;
 
@@ -171,6 +173,11 @@ pub struct GuitarScoreApp {
     /// A block or chain copied in a chain board, for pasting into a track, a drum part or
     /// the master (kept while the app runs).
     sound_clipboard: Option<sound_chain::SoundClip>,
+    /// While the Sound chain window's A/B is on: the track and what it plays instead of its
+    /// own tone, as the window found it: that tone, or `None` when the track had no tone of
+    /// its own then (it plays its built-in one, as playback gives it). Only what is heard
+    /// changes.
+    compare_tone: Option<(usize, Option<crate::chain_settings::Tone>)>,
     /// The reverb bus's window, while it is open.
     reverb_bus_window: Option<reverb_bus_window::ReverbBusWindow>,
     /// The mixer's compressor bus window, while it is open.
@@ -330,6 +337,7 @@ impl GuitarScoreApp {
             kit_room: None,
             sound_chain: None,
             sound_clipboard: None,
+            compare_tone: None,
             reverb_bus_window: None,
             compressor_bus_window: None,
             chorus_bus_window: None,
@@ -777,6 +785,8 @@ impl eframe::App for GuitarScoreApp {
         self.apply_theme(&ctx);
         // Keys first, before any widget sees them (a focused button would take Space).
         self.interface_zoom_keys(&ctx);
+        // The Sound chain board's keys first, while it has the keyboard.
+        self.take_sound_chain_keys(&ctx);
         self.handle_keys(&ctx);
         // A count-in that has finished starts the song it was counting in.
         self.poll_count_in();

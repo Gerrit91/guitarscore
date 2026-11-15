@@ -879,7 +879,7 @@ fn the_track_dialogs_match_their_snapshots() {
     harness.run();
     harness.run();
     // Forget a tone the song carries, so the chain starts from the default for the editors.
-    harness.get_by_label("Built-in").click();
+    harness.get_by_label("Built-in tone").click();
     harness.run();
     harness.get_by_label("Block 2: +").click();
     harness.run();
@@ -974,7 +974,7 @@ fn the_eq_curve_and_its_knob_columns_match_their_snapshot() {
     harness.get_by_label("Sound chain").click();
     harness.run();
     harness.run();
-    harness.get_by_label("Built-in").click();
+    harness.get_by_label("Built-in tone").click();
     harness.run();
     harness.get_by_label("Block 2: +").click();
     harness.run();
@@ -1511,6 +1511,44 @@ fn stop_goes_back_to_where_playback_started_when_asked() {
     );
 }
 
+#[test]
+fn a_jump_while_playing_is_where_stop_goes_back_to() {
+    // Plays a sine-wave SoundFont on the default audio device; skipped where there is none.
+    let dir = temp_dir("return-after-jump");
+    let path = dir.join("sine.sf2");
+    std::fs::write(&path, gscore_audio::testing::sine_soundfont("Sine")).unwrap();
+    let mut harness = wide_app_with(Some(testdata("basic/note_lengths.gp")));
+    harness.state_mut().playback_mut().use_soundfont(path);
+    harness.state_mut().set_return_on_stop(true);
+    let measure = |app: &GuitarScoreApp| app.document().unwrap().editor().cursor().measure.get();
+
+    cursor_to_measure(&mut harness, 0);
+    harness.state_mut().play_pause();
+    let started = step_until(&mut harness, 10, |app| {
+        app.playback().state() == gscore_play::PlayState::Playing || app.notice().is_some()
+    });
+    assert!(started, "did not start");
+    if let Some(notice) = harness.state().notice() {
+        eprintln!("skipped: no usable audio device ({notice})");
+        return;
+    }
+    // Two bars on while playing: playback goes on from bar 3, and Stop goes back there,
+    // not to bar 1 where it started.
+    harness.state_mut().next_bar();
+    harness.state_mut().next_bar();
+    for _ in 0..5 {
+        std::thread::sleep(Duration::from_millis(50));
+        harness.step();
+    }
+    harness.get_by_label("Stop").click();
+    harness.step();
+    for _ in 0..5 {
+        std::thread::sleep(Duration::from_millis(20));
+        harness.step();
+        assert_eq!(measure(harness.state()), 2);
+    }
+}
+
 /// The first track of the open document.
 fn first_track<'a>(harness: &'a Harness<'static, GuitarScoreApp>) -> gscore_model::TrackView<'a> {
     harness
@@ -1881,6 +1919,19 @@ fn the_empty_workspace_suggests_recent_files() {
         harness.state().document().unwrap().display_title(),
         "Note Lengths"
     );
+}
+
+/// The player bar's "back to start" button switches the setting the Settings window has.
+#[test]
+fn the_player_bar_switches_going_back_to_the_start_on_stop() {
+    let mut harness = wide_app_with(Some(testdata("basic/note_lengths.gp")));
+    let back = harness.state().settings().return_on_stop;
+    harness.get_by_label("Back to start on stop").click();
+    harness.run();
+    assert_eq!(harness.state().settings().return_on_stop, !back);
+    harness.get_by_label("Back to start on stop").click();
+    harness.run();
+    assert_eq!(harness.state().settings().return_on_stop, back);
 }
 
 #[test]
@@ -3488,8 +3539,14 @@ fn the_reverb_bus_window_chooses_the_reverb() {
         harness.state().playback().reverb_bus().block.choice,
         BlockChoice::Reverb
     );
-    // A room is offered too (it asks for its WAV).
-    harness.get_by_label("Room (impulse response)");
+    // A room is offered too: it starts on the built-in room, no file dialog.
+    harness.get_by_label("Room").click();
+    harness.run();
+    let bus = harness.state().playback().reverb_bus().block.clone();
+    assert_eq!(bus.choice, BlockChoice::Room);
+    assert_eq!(bus.file, None);
+    // Its dropdown offers the built-in room or a file.
+    harness.get_by_label("Room response");
 }
 
 #[test]
@@ -4044,7 +4101,7 @@ fn a_drum_tracks_window_edits_the_kits_parts() {
         "the track plays its own kick, not the machine's kit"
     );
     // Built-in forgets it again: the kit's setting (or the built-in tone) plays.
-    harness.get_by_label("Built-in").click();
+    harness.get_by_label("Built-in tone").click();
     harness.run();
     assert!(song_drum_part(&harness, "kick").is_none());
     assert_eq!(

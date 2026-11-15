@@ -479,6 +479,19 @@ impl GuitarScoreApp {
             {
                 toggle_loop = true;
             }
+            let back = self.settings.return_on_stop;
+            if icons::toggle_button(
+                ui,
+                Icon::ReturnOnStop,
+                "Back to start on stop",
+                "Stop puts the cursor back where playback started (or where a click moved \
+                 it while playing); off, it stays on the last played beat and Space pauses",
+                back,
+            )
+            .clicked()
+            {
+                self.settings.return_on_stop = !back;
+            }
             // The position, measure and tempo are the first to go when the window is too
             // narrow for them; the transport's own buttons always stay.
             self.position_readout(ui, readout_room);

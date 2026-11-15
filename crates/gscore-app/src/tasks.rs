@@ -57,6 +57,12 @@ pub(crate) enum Event {
     PickedStemsFolder(Option<PathBuf>),
     /// An export finished (a message for the status bar) or failed (why).
     Exported(Result<String, String>),
+    /// A tone file was written (its path) or not (why); `None` if the dialog was cancelled.
+    #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
+    ExportedTone(Option<Result<PathBuf, String>>),
+    /// A tone file was read (its bytes) or not (why); `None` if the dialog was cancelled.
+    #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
+    PickedTone(Option<Result<Vec<u8>, String>>),
     /// A save finished or failed.
     Saved {
         /// The file.
@@ -542,6 +548,82 @@ impl Tasks {
                 path,
             }
         })
+    }
+
+    /// Shows the save dialog for a tone file, suggesting `name`, and writes `bytes` there.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub(crate) fn export_tone(
+        &mut self,
+        name: String,
+        bytes: Vec<u8>,
+        ctx: &egui::Context,
+    ) -> Result<(), String> {
+        self.spawn("tone export dialog", ctx, move || {
+            let extension = crate::tone_file::EXTENSION;
+            let Some(path) = rfd::FileDialog::new()
+                .set_title("Export the tone")
+                .add_filter("GuitarScore tone (JSON)", &[extension])
+                .set_file_name(format!("{name}.{extension}"))
+                .save_file()
+            else {
+                return Event::ExportedTone(None);
+            };
+            let path = if path
+                .extension()
+                .is_some_and(|given| given.eq_ignore_ascii_case(extension))
+            {
+                path
+            } else {
+                path.with_extension(extension)
+            };
+            Event::ExportedTone(Some(
+                std::fs::write(&path, bytes)
+                    .map(|()| path.clone())
+                    .map_err(|error| format!("cannot write {}: {error}", path.display())),
+            ))
+        })
+    }
+
+    /// Shows the open dialog for a tone file and reads it.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub(crate) fn import_tone(&mut self, ctx: &egui::Context) -> Result<(), String> {
+        self.spawn("tone import dialog", ctx, move || {
+            let Some(path) = rfd::FileDialog::new()
+                .set_title("Import a tone")
+                .add_filter("GuitarScore tone (JSON)", &[crate::tone_file::EXTENSION])
+                .pick_file()
+            else {
+                return Event::PickedTone(None);
+            };
+            let read = std::fs::metadata(&path)
+                .map_err(|error| error.to_string())
+                .and_then(|metadata| {
+                    if metadata.len() > crate::tone_file::MAX_BYTES {
+                        Err("the file is too large for a tone".to_owned())
+                    } else {
+                        std::fs::read(&path).map_err(|error| error.to_string())
+                    }
+                })
+                .map_err(|error| format!("cannot read {}: {error}", path.display()));
+            Event::PickedTone(Some(read))
+        })
+    }
+
+    /// Tone files cannot be exported in the browser build yet.
+    #[cfg(target_arch = "wasm32")]
+    pub(crate) fn export_tone(
+        &mut self,
+        _name: String,
+        _bytes: Vec<u8>,
+        _ctx: &egui::Context,
+    ) -> Result<(), String> {
+        Err("exporting a tone is not available in the browser build yet".to_owned())
+    }
+
+    /// Tone files cannot be imported in the browser build yet.
+    #[cfg(target_arch = "wasm32")]
+    pub(crate) fn import_tone(&mut self, _ctx: &egui::Context) -> Result<(), String> {
+        Err("importing a tone is not available in the browser build yet".to_owned())
     }
 
     /// Shows the impulse response dialog for the mixer's reverb bus.

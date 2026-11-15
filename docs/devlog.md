@@ -5684,3 +5684,219 @@ holds a `GPU` mutex from `tests/common/mod.rs` for its whole life, the pattern
 lock is per binary. The app's tests take 55 s here instead of 30 s. Not reproducible here
 (190 runs of the crashing binary, including with the runner's exact lavapipe build, 4 test
 threads on 4 cores), so this is a workaround for the runner's driver.
+
+## 2026-11-15 — The gliding cursor in the player bar
+
+The player bar has a button for the gliding cursor after the loop button (a cursor bar
+with motion lines, `Icon::GlidingCursor`): it switches the same setting as Settings ›
+"Cursor glides between the notes while playing", which stays. Snapshots that show the
+player bar were regenerated.
+
+## 2026-11-15 — Redrawn instrument symbols, filled from outlines
+
+egui's painter fills convex polygons only, so the guitars were built from ellipses and
+quadrilaterals and looked crude. `app/vector_icon.rs` rasterizes outlines (SVG-style `M`,
+`L`, `C`, `Z` paths, holes by the even-odd rule, round-ended strokes) into a white
+coverage mask, 4×4 samples per pixel, once per pixel size, kept as a texture and painted
+in the ink's color. No new dependency. The electric and acoustic guitar, the bass, the
+ukulele, the banjo, the drum and "other instrument" (two beamed eighth notes) are new
+outlines (`instrument::outline`); the string instruments share one diagonal and their
+widths are drawn to scale with one another, the ukulele the smallest. The other eight
+symbols are drawn as before. Tests: the rasterizer's holes, curves, lines and broken
+paths; the symbol snapshot and every snapshot that shows a symbol were regenerated.
+
+## 2026-11-15 — The sound chain window, reworked
+
+- The board stands on a dark ground. Each block shows a symbol of its own above its name
+  (`app/block_icons.rs`: a clipped wave for Drive, the amplifier triangle, a speaker cone
+  for Cab, faders for EQ, the transfer curve for Comp, two waves for Chorus, echoes for
+  Delay, spreading arcs for Reverb, a room for Room).
+- The input trim and the chain output are narrow blocks at the chain's two ends ("In",
+  "Out", with their dB); a click shows the knob and meter below, where the other blocks'
+  knobs are. The row of knobs under the board is gone.
+- Under each block, a trash can beside its mute.
+- The tone row is one line: the tone's dropdown ("Unsaved tone", or a saved tone's name
+  with "(changed)"), a save icon that is active only when the tone changed (it saves over
+  the saved tone being worked on, or asks for a name), "Save as…", a delete icon for a
+  saved tone, and ⎌ (back to the built-in tone, greyed when it plays already; a drum
+  part's reset uses it too). At the right end, copy and paste of the whole chain.
+- An empty place's "+" menu no longer offers copying or pasting the chain (the header has
+  them); a block's right-click menu still does.
+- Tests follow the new names ("Built-in tone", "Save tone as", the Tone dropdown reports
+  the tone's name as its value); snapshots regenerated.
+- The first block (the source) of a MIDI-synth track showed only its "Played by" switch,
+  so a click on it seemed to do nothing. It now also says what the SoundFont plays
+  (program and name, or the drum kit) and that the instrument is chosen in the track
+  panel. Test: `the_first_box_names_what_the_midi_synth_plays`.
+
+## 2026-11-15 — "Back to start on stop" in the player bar
+
+- The player bar's toggle after Loop is now "Back to start on stop" (the Settings
+  window's "Go back to where playback started when it stops"), with an icon of a start
+  bar and an arrow turning back to it. The gliding cursor stays in Settings only.
+- A jump while playing (a click in the score or the track grid, a bar back or on) makes
+  the place jumped to the one Stop goes back to (`move_play_origin_to_cursor`), instead
+  of where playback first started. Test: `a_jump_while_playing_is_where_stop_goes_back_to`
+  (it fails without the change); snapshots with the player bar regenerated.
+
+## 2026-11-15 — A/B in the Sound chain window
+
+An "A/B" button at the right of the tone row: held down, the track plays the tone as
+the window found it when it opened; let go, the tone as it is now. Only what is heard
+changes (`compare_tone`, laid over the song's tones in `sync_track_tones`), never the
+song, so it is no edit and has no undo step. Greyed while there is nothing to compare;
+not offered for a drum part. Closing the window or switching it to another track lets
+go. Test: `holding_a_b_plays_the_tone_the_window_found`.
+
+## 2026-11-15 — The instrument in the Sound chain window's first block
+
+For a synth (the SoundFont or MIDI out) the first block shows what plays the track on the
+left and, on the right, the list of instruments (General MIDI programs, or drum kits on a
+drum track) that the track panel offers. A row sets the track's program
+(`SetTrackProgram`, with undo), as the track panel's list does; the tone the window
+edits then is the new program's. This replaces the line that only named the program.
+Test: `the_first_box_chooses_the_instrument_the_midi_synth_plays`; the MIDI-out snapshot
+regenerated.
+
+## 2026-11-15 — The tone's name in the track panel, and what it was changed from
+
+- The track panel's Sound section names a modelled track's tone above its blocks
+  ("Tone  Lead"), as the Sound chain window's dropdown does.
+- Both remember which built-in or saved tone a track's tone was dialed in from
+  (`Tab::tone_basis`, noted in `set_track_tone_merged` whenever the tone it plays before
+  the change has a name) and show a changed one as "Lead (changed)". Before, the window
+  knew this only for a saved tone chosen while it was open, and showed "Unsaved tone"
+  after a built-in tone was changed or after it was reopened. Kept while the song is
+  open; deleting a saved tone forgets it as a basis. The naming rule is
+  `tone_picker::tone_display_name`.
+- Undo and redo already covered every change in the Sound chain window (one knob drag is
+  one step); a test now checks Ctrl+Z and Ctrl+Y with the window in front.
+- Tests: `the_track_panel_names_the_tone_and_marks_a_change`,
+  `the_undo_keys_work_in_the_sound_chain_window`; snapshots with the Sound section
+  regenerated.
+
+## 2026-11-15 — Keys on the Sound chain board
+
+A click on a box of the Sound chain window's board gives the board the keyboard until a
+click outside the window: ← and → move between the boxes (source, In, the five places,
+Out), Delete or Backspace empties the selected place and M mutes its block, the same
+actions as the trash can and the mute button. `take_sound_chain_keys` runs before the
+score's keys and takes those keys (and the character M types) out of the frame's input,
+so they do not move the score's cursor or delete a note; Ctrl+Z, Space and the rest still
+reach the app. Test: `the_board_takes_the_arrows_delete_and_m_after_a_click`.
+
+## 2026-11-15 — Export and import a single tone
+
+Two buttons in the Sound chain window's tone row: Export tone writes the track's tone into
+a `.gstone` file (a save dialog), Import tone reads one (an open dialog), adds it to the
+saved tones and plays it on the track at once.
+
+- The file (`tone_file.rs`) is JSON: `"format": "guitarscore-tone"`, a version, and the
+  tone as a saved tone keeps it (name, kind of string, string sound, chain, what plays
+  it). The impulse responses its blocks load (a Room, a cab or body from a WAV) travel
+  inside it in Base64, so the tone sounds the same on another machine; importing keeps
+  them in an `impulses` folder beside the settings file, named by their content's
+  checksum (the same file is kept once), and points the blocks there. The Base64 is the
+  song state's own (moved from `song_state/codec.rs` into `base64.rs`, which both use).
+- Another JSON file, a damaged one or one from a newer version is refused with a message.
+  A WAV that cannot be read on export, or that a file did not bring, is named in a
+  message; the tone is still exported or imported.
+- The same tone imported twice is saved once; another tone with a saved tone's name gets
+  a number ("Lead (2)"). A sound from before pickups existed gets its kind's on import,
+  so the saved tone and the one playing are the same.
+- The browser build says the dialogs are not available yet (as for impulse responses).
+- Tests: Base64 round trips, a tone with its impulse response coming back on "another
+  machine", missing files and refused files (`tone_file` unit tests), and
+  `an_imported_tone_file_is_saved_and_plays_on_the_track`.
+
+## 2026-11-15 — The tone and program list's filter
+
+The magnifying glass over the tone presets' (and programs') table is drawn from outlines
+(`vector_icon`: a ring and a round-ended handle) instead of a stroked circle and line,
+so it is smooth at its 20-pixel size. Its text field now opens right beside it: the
+field's right edge is placed next to the icon (a right-anchored area), where before its
+left edge was placed a fixed width away and left a gap. Snapshots showing the icon
+regenerated.
+
+## 2026-11-15 — A/B as a switch, knobs in steps, symbols in the block menus
+
+- A/B was a button to hold: a click only blipped, and the knobs kept showing the new
+  values, so it looked broken. Now it is a switch: on, the track plays the tone as the
+  window found it and the window shows it (the board, the knobs and the tone's name);
+  the board, the knobs and the tone row's other buttons are greyed then, so that tone is
+  not edited by mistake. Off, the tone as it is now. Still only what is heard changes.
+- A knob in steps (Stiffness strength, 0 to 4) never left its step with a slow drag: each
+  frame's small movement was added to the rounded value and rounded back. `round_knob`
+  now keeps where the drag has got to apart from the value, so movements add up; it also
+  follows the mouse up and down (up is more), as knobs usually do.
+- The "+" menu of an empty place and the track panel's "Add a block" menu show each
+  block's symbol beside its name (`block_menu_item`).
+- Tests: `a_b_switches_to_the_tone_as_it_was_and_back` (a slow drag through every step of
+  Stiffness strength, then A/B on and off; it replaces the hold test),
+  `the_add_menu_shows_each_blocks_symbol` (snapshot).
+
+## 2026-11-15 — The Room block's built-in room
+
+A Room block without a file plays a built-in room, as a Cab block without one plays its
+built-in cabinet; a WAV file is an option in its dropdown ("Built-in room" / "Load
+file…"), and adding a Room no longer opens the file dialog (in the Sound chain window, the
+track panel, the master's chain and the reverb bus).
+
+- The built-in room is the kit room's computed room: `gscore_guitar::BUILT_IN_ROOM` holds
+  its reverb knobs (the drum kit's room starts on them, `default_drum_room`), and
+  `built_in_room()` renders that reverb, all wet, answering one impulse, into a 1.2 s
+  stereo response at 48 kHz, made once and shared. Length, mix, gain, the cuts and width
+  work on it as on a file's.
+- The reverb bus's choice reads "Room" (built-in or a file) instead of "Room (impulse
+  response)"; its file row is the same dropdown (`response_choice`, shared with the Cab).
+- Tests: the built-in room rings in stereo and dies away; a room without a file plays it
+  (chain spec); `a_room_block_starts_on_the_built_in_room` (snapshot); the reverb bus test
+  chooses Room without a dialog.
+
+## 2026-11-15 — A dark, high note keeps its sustain
+
+The 80s Lead preset (long sustain, brilliance 0.31 s) died within about a second on high
+solo bends: at fret 19 (988 Hz) the fundamental's 60 dB time was 1.1 s instead of the
+6.1 s asked for, at 1.2-1.3 kHz about 0.2-0.6 s. Cause: a loss filter that damps the highs
+at 2 kHz that quickly takes ~0.7 % off the fundamental per pass at 988 Hz, so the loop
+would have to amplify by 1.006 to keep the asked-for sustain; the loop's gain is capped
+just under 1 (its zero-frequency mode would otherwise grow), so the fundamental decayed
+at the filter's rate instead. The Metal preset's exponent change only masked it (its
+brilliance is long, so it never needed the cap).
+
+The loop now checks the loss filter against the gain cap while it designs it
+(`Loop::update`, the design is cached): when the filter takes too much off the
+fundamental, the string is made less dark — the one-pole's pole solved directly for the
+allowed gain (`one_pole_for_gain`), a palm shelf's zero moved up by bisection — so the
+highs ring longer than asked and the fundamental keeps its sustain. That is the trade the
+palm mute already made at its corner. Measured on the 80s Lead model after: 7.0 s at
+110 Hz, 6.6 s at 494, 6.2 s at 988, 6.0 s at 1.18 kHz, 5.8 s at 1.32 kHz (asked 6.1-7.4).
+All other presets and the built-in models were already under the cap and are unchanged
+up to rounding. Regression test: `a_high_note_keeps_the_sustain_its_model_asks_for`.
+Bench: the whole 15-track modelled engine still renders one second in 397 ms (budget
+500 ms); no per-sample work was added (the fallback runs only when the design changes).
+
+## 2026-11-15 — A/B levels, tone files as JSON, icons in the board's menus
+
+- A/B traced during playback (a test playing the song on the built-in synth): the old
+  tone reaches the synthesizer when A/B goes on and the new one when it goes off. One gap
+  closed: a track that had no tone of its own when the window opened got its built-in
+  tone back as a tone of its own, which skips playback's levelling of built-in tones; now
+  A/B lets it fall back to the built-in tone as it was heard (`compare_tone` keeps `None`
+  for that).
+- Tone files are `.json` (was `.gstone`); the import still checks the file's format, so
+  another JSON file is refused with a message.
+- The board's menus: "Paste block" in an empty place's "+" menu has the paste icon in the
+  column of the blocks' symbols; a block's right-click menu has the trash can on Remove,
+  the copy icon on Copy block and the paste icon on Paste block, all rows aligned
+  (`menu_row`).
+
+## 2026-11-15 — The Sound chain window's copy menu and paste
+
+The header's copy icon opens a menu: Copy block (the block selected on the board; greyed
+when the selection is no block) or Copy chain. The paste icon puts in whatever was copied
+last: a block into the selected place, or into the first free place when the selection is
+no place (the source, In or Out); a chain over the whole board. It is greyed while the
+clipboard is empty, and its tip says which it will do. The same for a drum part's board.
+Tests: `the_header_copies_the_selected_block_and_pastes_what_was_copied`; the copy test
+between tracks and a drum part uses the header's menu and paste.

@@ -246,14 +246,13 @@ pub(super) fn picker_rows(
         state.filter_focus = state.filter_open;
     }
     if state.filter_open {
-        // A field beside the funnel, over the table: it has no row of its own and does not
-        // hold up clicks on the rows around it.
-        let at = pos2(
-            (filter_rect.left() - 206.0).max(ui.max_rect().left()),
-            filter_rect.top(),
-        );
+        // A field right beside the magnifier, over the table: it has no row of its own and
+        // does not hold up clicks on the rows around it. Its right edge is placed, so it
+        // stays next to the icon however wide it is (with or without its clear button).
+        let at = pos2(filter_rect.left() - 2.0, filter_rect.center().y);
         egui::Area::new(ui.scope_id().with((id_salt, "tone_filter_field")))
             .order(egui::Order::Foreground)
+            .pivot(Align2::RIGHT_CENTER)
             .fixed_pos(at)
             .show(ui.ctx(), |ui| {
                 egui::Frame::popup(ui.style())
@@ -448,6 +447,16 @@ const DRUM_KITS: [(u8, &str); 9] = [
 /// The built-in or saved tone that exactly matches `tone`, if one does. Several built-in
 /// tones can have the same settings (every program has a tone of its own); then the one
 /// named `prefer` (the track's default) is the one, else the first.
+/// The name a track's tone shows under: the built-in or saved tone it is, else the one it
+/// was dialed in from with "(changed)", else "Unsaved tone".
+pub(super) fn tone_display_name(current: Option<&PickerChoice>, basis: Option<&str>) -> String {
+    match (current, basis) {
+        (Some(PickerChoice::BuiltIn(name) | PickerChoice::Saved { name, .. }), _) => name.clone(),
+        (_, Some(name)) => format!("{name} (changed)"),
+        _ => "Unsaved tone".to_owned(),
+    }
+}
+
 pub(super) fn current_tone_choice(
     tone: &crate::chain_settings::Tone,
     prefer: Option<&str>,

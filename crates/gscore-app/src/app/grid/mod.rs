@@ -564,6 +564,7 @@ impl GuitarScoreApp {
         if let Err(error) = self.playback.jump_to(document.song(), at) {
             self.notice = Some(error);
         }
+        self.move_play_origin_to_cursor();
     }
 
     /// The rename window, in the same layout as the other dialogs: a title bar, a hint, the

@@ -444,6 +444,36 @@ fn the_outer_bands_switch_between_shelf_and_bell() {
     assert!(harness.query_all_by_label("4 Q").next().is_none());
 }
 
+/// Ctrl+Z and Ctrl+Y work while the Sound chain window is in front, also right after a
+/// click in it.
+#[test]
+fn the_undo_keys_work_in_the_sound_chain_window() {
+    let mut harness = app_with("basic/note_lengths.gp");
+    open_sound_chain(&mut harness);
+    let first = empty_block_index(&harness);
+    harness.get_by_label(&format!("Block {first}: +")).click();
+    harness.run();
+    harness.get_by_label("Reverb").click();
+    harness.run();
+    let reverb = |harness: &Harness<'static, GuitarScoreApp>| {
+        harness
+            .query_by_label(&format!("Block {first}: Reverb"))
+            .is_some()
+    };
+    assert!(reverb(&harness));
+    // A click on the block first, so the window has the pointer's last click.
+    harness
+        .get_by_label(&format!("Block {first}: Reverb"))
+        .click();
+    harness.run();
+    undo(&mut harness);
+    harness.run();
+    assert!(!reverb(&harness), "Ctrl+Z takes the block out");
+    harness.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::Y);
+    harness.run();
+    assert!(reverb(&harness), "Ctrl+Y puts it back");
+}
+
 #[test]
 fn a_chain_change_is_an_undo_step_and_marks_the_song_modified() {
     use gscore_play::StringKind;
@@ -451,7 +481,7 @@ fn a_chain_change_is_an_undo_step_and_marks_the_song_modified() {
     let mut harness = app_with("basic/note_lengths.gp");
     open_sound_chain(&mut harness);
     // The track starts from its program's default, with no song tone.
-    harness.get_by_label("Built-in").click();
+    harness.get_by_label("Built-in tone").click();
     harness.run();
     let first = empty_block_index(&harness);
     harness.get_by_label(&format!("Block {first}: +")).click();
@@ -589,8 +619,10 @@ fn a_block_and_a_chain_are_copied_between_tracks_and_a_drum_part() {
         "pasting a block marks the song modified"
     );
 
-    // Copy the whole chain of this track, and paste it into a drum part.
-    context_click(&mut harness, &format!("Block {second}: EQ"));
+    // Copy the whole chain of this track (the header's copy menu), and paste it into a drum
+    // part (the header's paste puts in what was copied).
+    harness.get_by_label("Copy").click();
+    harness.run();
     harness.get_by_label("Copy chain").click();
     harness.run();
     let copied_chain: ChainSetting = harness
@@ -603,12 +635,7 @@ fn a_block_and_a_chain_are_copied_between_tracks_and_a_drum_part() {
     open_sound_chain(&mut harness);
     harness.get_by_label("Kick").click();
     harness.run();
-    let kick_first = empty_block_index(&harness);
-    harness
-        .get_by_label(&format!("Block {kick_first}: +"))
-        .click();
-    harness.run();
-    harness.get_by_label("Paste chain").click();
+    harness.get_by_label("Paste").click();
     harness.run();
     let kick = drum_part_chain(&harness, "kick").expect("the Kick's chain");
     assert_eq!(kick, copied_chain, "the whole chain came over");
@@ -870,7 +897,9 @@ fn the_sound_section_opens_the_sound_chain_and_the_strings_sound() {
             < 1e-6,
         "the typed value is taken"
     );
-    // The chain's output level is a knob of its own, after every block.
+    // The chain's output level is a narrow block of its own, after every block.
+    harness.get_by_label("Block out: chain output").click();
+    harness.run();
     harness.get_by_label("Chain output value").click();
     harness.run();
     harness.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::A);
@@ -1049,6 +1078,278 @@ fn a_block_added_to_a_midi_synth_track_is_its_only_block() {
 }
 
 #[test]
+fn the_first_box_chooses_the_instrument_the_midi_synth_plays() {
+    let mut harness = app_with("basic/note_lengths.gp");
+    open_sound_chain(&mut harness);
+    harness.get_by_label("Block 0: Strings").click();
+    harness.run();
+    // The window's own switch (the track panel has one too, under the window).
+    harness
+        .query_all_by_label("MIDI synth")
+        .last()
+        .expect("the sound source switch")
+        .click();
+    harness.run();
+    harness.run();
+    // The box stays selected and lists the instruments beside the switch; a row in the
+    // window (not the track panel's list) sets the track's program.
+    let window = harness.get_by_label("Block 0: MIDI").rect();
+    let row = harness
+        .query_all_by_label_contains("28: ")
+        .find(|node| {
+            let center = node.rect().center();
+            center.x > window.left() && center.x < window.left() + 700.0
+        })
+        .expect("the instrument list in the first box");
+    row.click();
+    harness.run();
+    let program = harness
+        .state()
+        .document()
+        .unwrap()
+        .song()
+        .track_sound(TrackIndex::new(0))
+        .map(|sound| sound.program);
+    assert_eq!(program, Some(28));
+}
+
+#[test]
+fn the_track_panel_names_the_tone_and_marks_a_change() {
+    let mut harness = app_with("basic/note_lengths.gp");
+    // The row is a label, which the label queries do not match by its own name.
+    let tone_name = |harness: &Harness<'static, GuitarScoreApp>| {
+        harness
+            .query_all_by_role(egui::accesskit::Role::Label)
+            .find(|node| node.accesskit_node().label().as_deref() == Some("Track tone"))
+            .and_then(|node| node.accesskit_node().value())
+            .expect("the track panel's tone row")
+            .to_string()
+    };
+    // The Sound section, scrolled into view.
+    harness
+        .get_by_label("Add a sound chain block")
+        .scroll_to_me();
+    harness.run();
+    // The program's built-in tone, by its name.
+    let built_in = tone_name(&harness);
+    assert!(
+        !built_in.is_empty() && !built_in.contains("changed"),
+        "{built_in}"
+    );
+    // A block added: the tone it was dialed in from, changed; the window says the same.
+    harness.get_by_label("Add a sound chain block").click();
+    harness.run();
+    harness.get_by_label("Reverb").click();
+    harness.run();
+    harness.run();
+    assert_eq!(tone_name(&harness), format!("{built_in} (changed)"));
+    open_sound_chain(&mut harness);
+    assert_eq!(preset_shown(&harness), format!("{built_in} (changed)"));
+}
+
+#[test]
+fn the_board_takes_the_arrows_delete_and_m_after_a_click() {
+    use gscore_app::chain_settings::BlockChoice;
+    use gscore_play::StringKind;
+
+    let mut harness = app_with("basic/note_lengths.gp");
+    open_sound_chain(&mut harness);
+    let blocks = |harness: &Harness<'static, GuitarScoreApp>| {
+        harness
+            .state()
+            .playback()
+            .tone(0, 26, StringKind::Electric)
+            .chain
+            .blocks
+            .iter()
+            .map(|block| (block.choice, block.bypass))
+            .collect::<Vec<_>>()
+    };
+    let cursor = |harness: &Harness<'static, GuitarScoreApp>| {
+        harness.state().document().unwrap().editor().cursor()
+    };
+    let start = blocks(&harness);
+    assert_eq!(start.first(), Some(&(BlockChoice::Amp, false)), "{start:?}");
+    assert_eq!(
+        start.get(1),
+        Some(&(BlockChoice::Cabinet, false)),
+        "{start:?}"
+    );
+    let before = cursor(&harness);
+
+    // A click on the Amp gives the board the keyboard; Right goes on to the Cab, M mutes
+    // it, and the score's cursor stays where it was.
+    harness.get_by_label("Block 1: Amp").click();
+    harness.run();
+    harness.key_press(egui::Key::ArrowRight);
+    harness.run();
+    harness.key_press(egui::Key::M);
+    harness.run();
+    harness.run();
+    assert_eq!(blocks(&harness).get(1), Some(&(BlockChoice::Cabinet, true)));
+    assert_eq!(cursor(&harness), before, "the arrows stayed on the board");
+
+    // Left back to the Amp, Delete empties its place.
+    harness.key_press(egui::Key::ArrowLeft);
+    harness.run();
+    harness.key_press(egui::Key::Delete);
+    harness.run();
+    harness.run();
+    assert_eq!(blocks(&harness).first(), Some(&(BlockChoice::Empty, false)));
+    assert_eq!(cursor(&harness), before);
+
+    // A click outside the window (on the page above it) gives the keyboard back to the
+    // score.
+    let window = harness.get_by_label("Block 0: Strings").rect();
+    let page = harness.get_by_label("Score page").rect();
+    let outside = egui::pos2(page.center().x, (page.top() + window.top()) / 2.0 - 60.0);
+    assert!(page.contains(outside), "{outside:?} on {page:?}");
+    harness.hover_at(outside);
+    for pressed in [true, false] {
+        harness.input_mut().events.push(egui::Event::PointerButton {
+            pos: outside,
+            button: egui::PointerButton::Primary,
+            pressed,
+            modifiers: egui::Modifiers::NONE,
+        });
+    }
+    harness.run();
+    let clicked = cursor(&harness);
+    harness.key_press(egui::Key::ArrowRight);
+    harness.run();
+    assert_ne!(cursor(&harness), clicked, "the score has the arrows again");
+}
+
+#[test]
+fn an_imported_tone_file_is_saved_and_plays_on_the_track() {
+    let mut harness = app_with("basic/note_lengths.gp");
+    open_sound_chain(&mut harness);
+    // What Export tone writes: the format's name and version, and the tone.
+    let file = serde_json::json!({
+        "format": "guitarscore-tone",
+        "version": 1,
+        "tone": {
+            "name": "Friend's Lead",
+            "kind": "electric",
+            "sound": { "level": 0.4, "pick_position": 0.2 },
+            "chain": { "blocks": [{ "choice": "drive" }, { "choice": "amp" }, {}, {}, {}] },
+            "engine": "electric",
+        },
+    });
+    let bytes = serde_json::to_vec(&file).expect("the file");
+    harness.state_mut().import_tone_file(&bytes);
+    harness.run();
+    harness.run();
+    let saved: Vec<String> = harness
+        .state()
+        .settings()
+        .string_presets
+        .iter()
+        .map(|preset| preset.name.clone())
+        .collect();
+    assert_eq!(saved, ["Friend's Lead"]);
+    assert_eq!(preset_shown(&harness), "Friend's Lead");
+    harness.get_by_label("Block 1: Drive");
+    harness.get_by_label("Block 2: Amp");
+
+    // The same file again is the same tone; another tone of that name gets a number.
+    harness.state_mut().import_tone_file(&bytes);
+    harness.run();
+    assert_eq!(harness.state().settings().string_presets.len(), 1);
+    let mut other = file;
+    other["tone"]["chain"]["blocks"][0]["choice"] = serde_json::json!("reverb");
+    harness
+        .state_mut()
+        .import_tone_file(&serde_json::to_vec(&other).expect("the file"));
+    harness.run();
+    harness.run();
+    assert_eq!(preset_shown(&harness), "Friend's Lead (2)");
+    harness.get_by_label("Block 1: Reverb");
+
+    // Not a tone file: nothing is imported, and the user is told.
+    harness.state_mut().import_tone_file(b"{}");
+    harness.run();
+    assert_eq!(harness.state().settings().string_presets.len(), 2);
+    assert!(
+        harness
+            .state()
+            .notice()
+            .is_some_and(|notice| notice.contains("Not imported"))
+    );
+}
+
+/// An empty place's "+" menu lists the blocks with their symbols, as the board shows them.
+#[test]
+fn the_add_menu_shows_each_blocks_symbol() {
+    let _gpu = common::lock_gpu();
+    let mut harness = app_with("basic/note_lengths.gp");
+    open_sound_chain(&mut harness);
+    let first = empty_block_index(&harness);
+    harness.get_by_label(&format!("Block {first}: +")).click();
+    harness.run();
+    harness.get_by_label("Reverb");
+    harness.snapshot("sound_chain_add_menu");
+}
+
+/// A Room block starts on the built-in room, as a Cab starts on its built-in cabinet: no
+/// file dialog opens, and a file is an option in its dropdown.
+#[test]
+fn a_room_block_starts_on_the_built_in_room() {
+    use gscore_app::chain_settings::BlockChoice;
+    use gscore_play::StringKind;
+
+    let _gpu = common::lock_gpu();
+    let mut harness = app_with("basic/note_lengths.gp");
+    open_sound_chain(&mut harness);
+    let first = empty_block_index(&harness);
+    harness.get_by_label(&format!("Block {first}: +")).click();
+    harness.run();
+    harness.get_by_label("Room").click();
+    harness.run();
+    harness.run();
+    let room = harness
+        .state()
+        .playback()
+        .tone(0, 26, StringKind::Electric)
+        .chain
+        .blocks
+        .into_iter()
+        .find(|block| block.choice == BlockChoice::Room)
+        .expect("the room");
+    assert_eq!(room.file, None, "no file needed");
+    harness.get_by_label(&format!("Block {first}: Room"));
+    harness.get_by_label("Room response").click();
+    harness.run();
+    harness.get_by_label("Built-in room");
+    harness.get_by_label("Load file…");
+    harness.snapshot("sound_chain_room");
+}
+
+/// The header's copy menu copies the selected block; its paste puts the block into the
+/// selected place, or the first free one when no place is selected.
+#[test]
+fn the_header_copies_the_selected_block_and_pastes_what_was_copied() {
+    let mut harness = app_with("basic/note_lengths.gp");
+    open_sound_chain(&mut harness);
+    // Nothing on the clipboard yet: nothing to paste.
+    assert!(harness.get_by_label("Paste").accesskit_node().is_disabled());
+    harness.get_by_label("Block 1: Amp").click();
+    harness.run();
+    harness.get_by_label("Copy").click();
+    harness.run();
+    harness.get_by_label("Copy block").click();
+    harness.run();
+    // The input trim's box is no place: the block goes into the first free one.
+    let first = empty_block_index(&harness);
+    harness.get_by_label("Block in: input trim").click();
+    harness.run();
+    harness.get_by_label("Paste").click();
+    harness.run();
+    harness.run();
+    harness.get_by_label(&format!("Block {first}: Amp"));
+}
+
+#[test]
 fn escape_closes_the_sound_chain_window() {
     let mut harness = app_with("basic/note_lengths.gp");
     open_sound_chain(&mut harness);
@@ -1136,7 +1437,7 @@ fn a_preset_brings_its_kind_of_string_back() {
     harness.run();
     harness.get_by_label("Reverb").click();
     harness.run();
-    harness.get_by_label("Save as…").click();
+    harness.get_by_label("Save tone as").click();
     harness.run();
     harness.get_by_label("Tone name").focus();
     harness
@@ -1176,7 +1477,7 @@ fn a_preset_can_be_saved_over_and_deleted_while_active() {
     harness.run();
     harness.get_by_label("Reverb").click();
     harness.run();
-    harness.get_by_label("Save as…").click();
+    harness.get_by_label("Save tone as").click();
     harness.run();
     harness.get_by_label("Tone name").focus();
     harness.get_by_label("Tone name").type_text("Room 1");
@@ -1196,7 +1497,7 @@ fn a_preset_can_be_saved_over_and_deleted_while_active() {
         .unwrap()
         .click();
     harness.run();
-    assert_eq!(preset_shown(&harness), "Room 1 *");
+    assert_eq!(preset_shown(&harness), "Room 1 (changed)");
 
     // Save over it: one preset of that name, with the chain as it is now.
     harness.get_by_label("Save tone").click();
@@ -1226,16 +1527,16 @@ fn a_preset_can_be_saved_over_and_deleted_while_active() {
         harness.state().settings().string_presets.is_empty(),
         "the preset is gone"
     );
-    assert_eq!(preset_shown(&harness), "Changed");
+    assert_eq!(preset_shown(&harness), "Unsaved tone");
 }
 
 /// What the Sound chain window's Tone row shows.
 fn preset_shown(harness: &Harness<'_, GuitarScoreApp>) -> String {
+    // The Tone dropdown reports the tone's name as its value.
     harness
-        .query_all_by_label_contains("Tone: ")
+        .query_all_by_label("Tone")
         .last()
-        .and_then(|node| node.accesskit_node().label())
-        .and_then(|label| label.strip_prefix("Tone: ").map(str::to_owned))
+        .and_then(|node| node.accesskit_node().value())
         .unwrap_or_default()
 }
 
@@ -1289,6 +1590,85 @@ fn choose_chain_tone(harness: &mut Harness<'static, GuitarScoreApp>, name: &str)
     harness.run();
 }
 
+/// What the owner did: the strings' Stiffness strength turned with slow, small movements
+/// (a knob in steps once never left its step that way), then A/B switched on and off.
+#[test]
+fn a_b_switches_to_the_tone_as_it_was_and_back() {
+    let mut harness = app_with("basic/note_lengths.gp");
+    open_sound_chain(&mut harness);
+    // Nothing changed yet: nothing to compare.
+    assert!(
+        harness
+            .get_by_label("Compare with the tone as it was")
+            .accesskit_node()
+            .is_disabled()
+    );
+    harness.get_by_label("Block 0: Strings").click();
+    harness.run();
+    click_in_chain(&harness, "String");
+    harness.run();
+    let knob = |harness: &Harness<'static, GuitarScoreApp>| {
+        harness
+            .get_by_label("Stiffness strength")
+            .accesskit_node()
+            .numeric_value()
+            .expect("the knob's value")
+    };
+    let heard = |harness: &Harness<'static, GuitarScoreApp>| {
+        harness
+            .state()
+            .playback()
+            .track_tones()
+            .get(&0)
+            .map(|tone| tone.sound.stiffness_stages)
+    };
+    let before = knob(&harness);
+    assert!(before < 4.0, "{before}");
+
+    // A slow drag to the right, two pixels a frame, goes through every step to the top
+    // (240 pixels cover the range).
+    let centre = harness.get_by_label("Stiffness strength").rect().center();
+    harness.hover_at(centre);
+    harness.run();
+    harness.drag_at(centre);
+    harness.step();
+    for step in 1..=130 {
+        harness.hover_at(centre + egui::vec2(2.0 * step as f32, 0.0));
+        harness.step();
+    }
+    harness.drop_at(centre + egui::vec2(260.0, 0.0));
+    harness.run();
+    assert_eq!(knob(&harness), 4.0, "the slow drag reached the end");
+    assert_eq!(heard(&harness), Some(4));
+    let revision = harness.state().document().unwrap().editor().revision();
+
+    // A/B on: the tone as the window found it is heard and shown; the song keeps its
+    // change.
+    harness
+        .get_by_label("Compare with the tone as it was")
+        .click();
+    harness.run();
+    harness.run();
+    // The track had no tone of its own when the window opened: A/B gives it back its
+    // built-in tone, as playback levels it.
+    assert_eq!(heard(&harness), None, "A/B plays the tone as it was");
+    assert_eq!(knob(&harness), before, "and shows it");
+    assert_eq!(
+        harness.state().document().unwrap().editor().revision(),
+        revision,
+        "comparing is not an edit"
+    );
+
+    // A/B off: the tone as it is now again.
+    harness
+        .get_by_label("Compare with the tone as it was")
+        .click();
+    harness.run();
+    harness.run();
+    assert_eq!(heard(&harness), Some(4));
+    assert_eq!(knob(&harness), 4.0);
+}
+
 #[test]
 fn a_saved_chain_preset_brings_back_the_whole_chain() {
     let _gpu = common::lock_gpu();
@@ -1304,7 +1684,7 @@ fn a_saved_chain_preset_brings_back_the_whole_chain() {
     harness.run();
     harness.get_by_label(&format!("Block {first}: Reverb"));
     // Save the chain (with the string sound it was dialed in with) under a name.
-    harness.get_by_label("Save as…").click();
+    harness.get_by_label("Save tone as").click();
     harness.run();
     harness.get_by_label("Tone name").focus();
     harness.get_by_label("Tone name").type_text("Hall 1");
@@ -1500,7 +1880,7 @@ fn a_dialed_tone_belongs_to_the_track() {
         harness.run();
         open_sound_chain(harness);
         // Forget a tone the song brought so the knobs start from the program's default.
-        harness.get_by_label("Built-in").click();
+        harness.get_by_label("Built-in tone").click();
         harness.run();
         // Played by the strings (if it is not yet), their box selected.
         if harness.query_by_label("Block 0: MIDI").is_some() {
@@ -1652,7 +2032,7 @@ fn a_songs_edited_tone_survives_with_default_settings() {
     // Dial the pick position of the tone the first track's preset (27) plays.
     open_sound_chain(&mut harness);
     // Built-in removes a tone the song carries, so the knobs start from the default.
-    harness.get_by_label("Built-in").click();
+    harness.get_by_label("Built-in tone").click();
     harness.run();
     if harness.query_by_label("Block 0: MIDI").is_some() {
         harness.get_by_label("Block 0: MIDI").click();
@@ -1749,7 +2129,7 @@ fn the_built_in_entry_forgets_a_tracks_tone() {
         .sound;
     assert_ne!(changed, built_in, "the track has a tone of its own now");
     // The tone row offers Built-in: the track's own tone is forgotten.
-    harness.get_by_label("Built-in").click();
+    harness.get_by_label("Built-in tone").click();
     harness.run();
     assert!(
         harness

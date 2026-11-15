@@ -4,6 +4,7 @@
 //! `gscore-layout`, and the draw operations are painted with egui.
 
 mod app;
+mod base64;
 mod canvas;
 pub mod chain_settings;
 mod document;
@@ -15,6 +16,7 @@ mod rse_sound;
 mod settings;
 mod state;
 mod tasks;
+mod tone_file;
 mod tone_library;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod tone_tool;

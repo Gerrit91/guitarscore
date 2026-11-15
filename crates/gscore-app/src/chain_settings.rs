@@ -20,7 +20,8 @@ pub enum BlockChoice {
     /// A cab: a built-in one (see [`CabinetSetting`]) or an impulse response from a file
     /// (a cabinet or a guitar body).
     Cabinet,
-    /// An impulse response of a room (a convolution reverb).
+    /// A room (a convolution reverb): the built-in room, or an impulse response from a
+    /// file.
     Room,
     /// The computed reverb.
     Reverb,
@@ -563,6 +564,14 @@ impl BlockSetting {
         (self.choice == BlockChoice::Cabinet && self.file.is_none())
             .then(|| self.cabinet.response())
     }
+
+    /// What a Room block without a file plays: the built-in room (the kit room's computed
+    /// room, as a response), stretched by its Length knob.
+    pub fn built_in_room(&self) -> Option<gscore_guitar::BlockKind> {
+        (self.choice == BlockChoice::Room && self.file.is_none()).then(|| {
+            gscore_guitar::BlockKind::room(gscore_guitar::built_in_room(), self.room_length())
+        })
+    }
 }
 
 /// One kind's chain.
@@ -896,17 +905,20 @@ pub fn default_trim_db(engine: gscore_play::TrackEngine) -> f32 {
 /// The built-in room every drum kit's parts can send into: one short room behind the whole
 /// kit (as a room's overheads glue a kit together), all wet. Its knobs are the kit's own to
 /// change; the parts' Room knobs and the kit's own decide how much reaches it.
+/// Its knobs are the engine's built-in room's ([`gscore_guitar::BUILT_IN_ROOM`]), the same
+/// room a Room block without a file plays.
 pub fn default_drum_room() -> BlockSetting {
+    let room = gscore_guitar::BUILT_IN_ROOM;
     let mut block = BlockSetting::of(BlockChoice::Reverb);
-    block.size = 0.25;
-    block.decay = 0.6;
-    block.pre_delay = 5.0;
-    block.damping = 0.5;
-    block.modulation = 0.3;
-    block.width = 0.6;
-    block.mix = 1.0;
-    block.low_cut = 120.0;
-    block.high_cut = 9_000.0;
+    block.size = room.size;
+    block.decay = room.decay;
+    block.pre_delay = room.pre_delay;
+    block.damping = room.damping;
+    block.modulation = room.modulation;
+    block.width = room.width;
+    block.mix = room.mix;
+    block.low_cut = room.low_cut;
+    block.high_cut = room.high_cut;
     block
 }
 

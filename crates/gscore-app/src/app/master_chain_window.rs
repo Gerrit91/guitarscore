@@ -97,6 +97,7 @@ impl GuitarScoreApp {
                             window.selected,
                             MASTER_BOARD,
                             clipboard.as_ref(),
+                            None,
                         );
                         if let Some(index) = shown.select {
                             window.selected = index;
@@ -138,10 +139,6 @@ impl GuitarScoreApp {
                                 changed = true;
                             }
                             window.selected = place.saturating_add(1);
-                            // A room needs its file; a cab starts on its built-in one.
-                            if choice == crate::chain_settings::BlockChoice::Room {
-                                load = Some(place);
-                            }
                         }
                         if let Some(place) = shown.bypass
                             && let Some(block) = chain.blocks.get(place)

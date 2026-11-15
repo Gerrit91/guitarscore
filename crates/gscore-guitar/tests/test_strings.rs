@@ -183,6 +183,58 @@ fn a_ringing_note_sustains_and_a_damped_one_stops() {
 }
 
 #[test]
+fn a_high_note_keeps_the_sustain_its_model_asks_for() {
+    // The 80s Lead preset (owner, 2026-11-15): a long, even sustain with a very short
+    // brilliance (the highs at 2 kHz dying in 0.3 s). On high notes the loss filter that
+    // damps the highs that quickly took so much off the fundamental that the loop would
+    // have had to amplify to keep the sustain, which the zero-frequency mode forbids; the
+    // fundamental then died within about a second, worst around 1.2 kHz, exactly where
+    // long solo bends sit. The highs now ring longer there and the sustain is kept.
+    let model = StringModel {
+        sustain: 7.413_416_4,
+        sustain_exponent: 0.085_742_205,
+        brilliance: 0.308_01,
+        stiffness: -0.492_773_35,
+        stiffness_stages: 0,
+        pick_position: 0.221_326_86,
+        hardness: 0.0,
+        softness: 0.0,
+        tone: 15_999.994,
+        resonance: 0.5,
+        level: 0.597_168,
+        bridge: 0.179_443_37,
+        low_cut: 20.0,
+        second: 0.236_168_62,
+        detune: 1.0,
+        pickup: Pickup::Humbucker,
+        pickup_position: 0.307_095_32,
+        palm_mute: 0.698_193_3,
+        pick_noise: 0.278_939_07,
+        attack_pitch: 0.676_427_36,
+    };
+    for hz in [988.0_f32, 1_175.0, 1_318.5] {
+        let mut voice = StringVoice::new(RATE, 20.0, model);
+        voice.pluck(pick(hz));
+        let out = render(&mut voice, 4.0, |_| {});
+        assert!(
+            out.iter()
+                .all(|sample| sample.is_finite() && sample.abs() < 20.0),
+            "{hz} Hz: finite and not runaway"
+        );
+        // Two seconds apart, after the attack and the second vibration have gone.
+        let early = rms(seconds(&out, 1.0, 1.4));
+        let late = rms(seconds(&out, 3.0, 3.4));
+        let db_per_second = 20.0 * (early / late.max(1e-30)).log10() / 2.0;
+        let measured = 60.0 / db_per_second.max(1e-6);
+        let asked = model.sustain * (110.0 / hz).powf(model.sustain_exponent);
+        assert!(
+            (measured / asked - 1.0).abs() < 0.15,
+            "{hz} Hz: {measured:.2} s against the {asked:.2} s asked for"
+        );
+    }
+}
+
+#[test]
 fn palm_mutes_and_dead_notes_are_short() {
     let hz = frequency(40, 0.0);
     for (palm_mute, dead) in [(true, false), (false, true)] {
