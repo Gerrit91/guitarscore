@@ -1306,6 +1306,71 @@ fn choose_chain_tone(harness: &mut Harness<'static, GuitarScoreApp>, name: &str)
 }
 
 #[test]
+fn holding_a_b_plays_the_tone_the_window_found() {
+    use gscore_app::chain_settings::BlockChoice;
+
+    let mut harness = app_with("basic/note_lengths.gp");
+    open_sound_chain(&mut harness);
+    // Nothing changed yet: nothing to compare.
+    assert!(
+        harness
+            .get_by_label("Compare with the tone as it was")
+            .accesskit_node()
+            .is_disabled()
+    );
+    let first = empty_block_index(&harness);
+    harness.get_by_label(&format!("Block {first}: +")).click();
+    harness.run();
+    harness.get_by_label("Reverb").click();
+    harness.run();
+    harness.run();
+    let heard_reverb = |harness: &Harness<'static, GuitarScoreApp>| {
+        harness
+            .state()
+            .playback()
+            .track_tones()
+            .get(&0)
+            .is_some_and(|tone| {
+                tone.chain
+                    .blocks
+                    .iter()
+                    .any(|block| block.choice == BlockChoice::Reverb)
+            })
+    };
+    assert!(heard_reverb(&harness), "the new block is heard");
+    let revision = harness.state().document().unwrap().editor().revision();
+
+    // Held: the tone as the window found it plays, and the song keeps its change.
+    let button = harness
+        .get_by_label("Compare with the tone as it was")
+        .rect();
+    harness.hover_at(button.center());
+    harness.input_mut().events.push(egui::Event::PointerButton {
+        pos: button.center(),
+        button: egui::PointerButton::Primary,
+        pressed: true,
+        modifiers: egui::Modifiers::NONE,
+    });
+    harness.run();
+    assert!(!heard_reverb(&harness), "A/B plays the tone as it was");
+    assert_eq!(
+        harness.state().document().unwrap().editor().revision(),
+        revision,
+        "comparing is not an edit"
+    );
+
+    // Let go: the tone as it is now again.
+    harness.input_mut().events.push(egui::Event::PointerButton {
+        pos: button.center(),
+        button: egui::PointerButton::Primary,
+        pressed: false,
+        modifiers: egui::Modifiers::NONE,
+    });
+    harness.run();
+    assert!(heard_reverb(&harness), "letting go plays the tone as it is");
+}
+
+#[test]
 fn a_saved_chain_preset_brings_back_the_whole_chain() {
     let _gpu = common::lock_gpu();
     use gscore_app::chain_settings::BlockChoice;

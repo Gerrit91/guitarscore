@@ -5738,3 +5738,12 @@ paths; the symbol snapshot and every snapshot that shows a symbol were regenerat
   the place jumped to the one Stop goes back to (`move_play_origin_to_cursor`), instead
   of where playback first started. Test: `a_jump_while_playing_is_where_stop_goes_back_to`
   (it fails without the change); snapshots with the player bar regenerated.
+
+## 2026-11-15 — A/B in the Sound chain window
+
+An "A/B" button at the right of the tone row: held down, the track plays the tone as
+the window found it when it opened; let go, the tone as it is now. Only what is heard
+changes (`compare_tone`, laid over the song's tones in `sync_track_tones`), never the
+song, so it is no edit and has no undo step. Greyed while there is nothing to compare;
+not offered for a drum part. Closing the window or switching it to another track lets
+go. Test: `holding_a_b_plays_the_tone_the_window_found`.

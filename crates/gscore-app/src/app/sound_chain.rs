@@ -77,6 +77,8 @@ pub(super) struct SoundChainWindow {
     part: Option<DrumPart>,
     /// The string sound's tab shown in the strings' box.
     strings_tab: super::string_sound::StringsTab,
+    /// The track's tone as the window found it: what the A/B button plays while held.
+    reference: Option<Tone>,
 }
 
 /// What the user did this frame.
@@ -117,6 +119,8 @@ struct Actions {
     copy_chain: bool,
     /// The header's paste button: the clipboard's chain replaces the one shown.
     paste_chain: bool,
+    /// The A/B button is held down: the tone as the window found it plays.
+    comparing: bool,
     /// A block or chain copied from a board, for the app's clipboard.
     copy: Option<SoundClip>,
     /// A block dropped on a drum part's button (or the kit's), before that part's chain.
@@ -343,6 +347,9 @@ struct ShownPreset {
     kind: StringKind,
     /// Whether the clipboard holds a chain to paste.
     chain_clip: bool,
+    /// Whether the tone differs from the one the window found (A/B has something to
+    /// compare).
+    compare: bool,
 }
 
 /// The tone's buttons beside its dropdown: save (active once the tone changed; it saves
@@ -442,7 +449,13 @@ fn tone_buttons(
 }
 
 /// The chain's copy and paste buttons, at the right end of the header.
-fn clip_buttons(ui: &mut egui::Ui, has_chain_clip: bool, actions: &mut Actions) {
+/// `compare`: the A/B button too (`Some(enabled)`), for a track's own tone.
+fn clip_buttons(
+    ui: &mut egui::Ui,
+    has_chain_clip: bool,
+    compare: Option<bool>,
+    actions: &mut Actions,
+) {
     use super::icons::{self, Icon};
     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
         let paste = ui
@@ -467,6 +480,22 @@ fn clip_buttons(ui: &mut egui::Ui, has_chain_clip: bool, actions: &mut Actions) 
         .clicked()
         {
             actions.copy_chain = true;
+        }
+        if let Some(enabled) = compare {
+            ui.add_space(8.0);
+            let button = ui
+                .add_enabled(enabled, egui::Button::new("A/B").sense(Sense::drag()))
+                .on_hover_text(
+                    "Hold to hear the tone as it was when this window opened; let go for \
+                     the tone as it is now",
+                )
+                .on_disabled_hover_text("The tone is as it was when this window opened");
+            ui.ctx().accesskit_node_builder(button.id, |node| {
+                node.set_label("Compare with the tone as it was");
+            });
+            if enabled && button.is_pointer_button_down_on() {
+                actions.comparing = true;
+            }
         }
     });
 }
@@ -572,7 +601,7 @@ fn preset_row(
         tone_buttons(
             ui, program, kind, changed, built_in, working, window, actions,
         );
-        clip_buttons(ui, has_chain_clip, actions);
+        clip_buttons(ui, has_chain_clip, Some(shown.compare), actions);
     });
     if let Some(choice) = chosen {
         use super::tone_picker::PickerChoice;
@@ -1702,6 +1731,7 @@ impl GuitarScoreApp {
             Some(window) => {
                 if window.track != track {
                     window.part = None;
+                    window.reference = None;
                 }
                 window.track = track;
             }
@@ -1714,8 +1744,16 @@ impl GuitarScoreApp {
                     preset: None,
                     part: None,
                     strings_tab: super::string_sound::StringsTab::default(),
+                    reference: None,
                 });
             }
+        }
+    }
+
+    /// Lets go of A/B: the compared track plays its own tone again.
+    fn stop_comparing(&mut self) {
+        if self.compare_tone.take().is_some() {
+            self.sync_track_tones();
         }
     }
 
@@ -1771,6 +1809,7 @@ impl GuitarScoreApp {
     /// The Sound chain window, while it is open.
     pub(super) fn show_sound_chain(&mut self, ctx: &egui::Context) {
         let Some(mut window) = self.sound_chain.take() else {
+            self.stop_comparing();
             return;
         };
         // A change applied while the window is drawn (a knob, a block, a source) must be
@@ -1808,6 +1847,10 @@ impl GuitarScoreApp {
         // On the SoundFont only a tone the song carries brings a chain (the defaults are
         // the modelled strings'); a drum track's own chain is its bus.
         let tone = self.track_chain_tone(window.track, &player, kind);
+        // What A/B compares with: the tone as the window found it.
+        if window.reference.is_none() {
+            window.reference = Some(tone.clone());
+        }
         // How far the track's compressors work, for the block's meter (and a repaint while
         // the needle moves).
         let meters = self.playback.meters();
@@ -1914,7 +1957,7 @@ impl GuitarScoreApp {
                                     {
                                         actions.part_room = Some(room);
                                     }
-                                    clip_buttons(ui, has_chain_clip, &mut actions);
+                                    clip_buttons(ui, has_chain_clip, None, &mut actions);
                                 });
                             } else {
                                 let default_tone = self.playback.track_default_tone_name(
@@ -1928,6 +1971,10 @@ impl GuitarScoreApp {
                                         program: player.program,
                                         kind,
                                         chain_clip: has_chain_clip,
+                                        compare: window
+                                            .reference
+                                            .as_ref()
+                                            .is_some_and(|reference| *reference != tone),
                                     },
                                     default_tone.as_deref(),
                                     &tone,
@@ -2346,6 +2393,17 @@ impl GuitarScoreApp {
                 Ok(_) => {}
                 Err(error) => self.notice = Some(error),
             }
+        }
+        // A/B: while the button is held the track plays the tone the window found; let go,
+        // its own tone again. Only what is heard changes, never the song.
+        let comparing = actions.comparing && !actions.close && window.part.is_none();
+        if comparing && self.compare_tone.is_none() {
+            if let Some(reference) = window.reference.clone() {
+                self.compare_tone = Some((track, reference));
+                self.sync_track_tones();
+            }
+        } else if !comparing {
+            self.stop_comparing();
         }
         if tone_chosen {
             // What the window remembers of the choice is this machine's: keep it at once.
