@@ -79,6 +79,8 @@ pub(super) struct SoundChainWindow {
     strings_tab: super::string_sound::StringsTab,
     /// The track's tone as the window found it: what the A/B button plays while held.
     reference: Option<Tone>,
+    /// The first box's list of instruments (General MIDI programs), for a synth.
+    programs: super::tone_picker::TonePickerState,
 }
 
 /// What the user did this frame.
@@ -92,6 +94,8 @@ struct Actions {
     rebuild: bool,
     /// What plays the track was chosen in the first box.
     engine: Option<TrackEngine>,
+    /// The instrument (General MIDI program or drum kit) chosen in the first box.
+    program: Option<u8>,
     /// A MIDI-out track's port or channel changed in the first box.
     midi_out: Option<MidiOutRoute>,
     /// The strings' sound changed (in the first box's editor).
@@ -267,66 +271,91 @@ pub(super) fn midi_out_controls(
     }
 }
 
-/// The first box: what plays the track (the internal synth, or physical modelling), the
-/// kind of string and - for modelled strings - their sound, all in this window.
+/// The first box: what plays the track (the internal synth, physical modelling or a MIDI
+/// output) and then, for a synth, the instrument it plays (its General MIDI program) or,
+/// for modelled strings, the kind of string and their sound, all in this window.
+#[allow(clippy::too_many_arguments)]
 fn strings_editor(
     ui: &mut egui::Ui,
     player: &TrackPlayer,
     sound: &mut StringSound,
     ports: &[String],
     tab: &mut super::string_sound::StringsTab,
+    programs: &mut super::tone_picker::TonePickerState,
     actions: &mut Actions,
 ) -> bool {
     let mut changed = false;
-    ui.label(RichText::new("Played by").strong());
     // PM keeps the kind it had (or the one the track's preset stands for).
     let modelled_kind = match player.engine {
         TrackEngine::Modelled(kind) => Some(kind),
         TrackEngine::SoundFont | TrackEngine::MidiOut => player.preset_kind,
     };
     let pm = TrackEngine::Modelled(modelled_kind.unwrap_or(StringKind::Steel));
-    if let Some(engine) = super::tone_picker::source_switch(ui, player.engine, pm, player.strings) {
-        actions.engine = Some(engine);
-    }
-    if player.engine == TrackEngine::MidiOut {
-        if let Some(route) = midi_out_controls(ui, player, ports) {
-            actions.midi_out = Some(route);
+    let source = |ui: &mut egui::Ui, actions: &mut Actions| {
+        ui.label(RichText::new("Played by").strong());
+        if let Some(engine) =
+            super::tone_picker::source_switch(ui, player.engine, pm, player.strings)
+        {
+            actions.engine = Some(engine);
         }
-        return changed;
-    }
-    if player.engine == TrackEngine::SoundFont {
-        // What the synth plays, so the box says more than its switch: the instrument
-        // itself is the track's, and the blocks to the right shape its sound.
-        let instrument = if player.drums {
-            "its drum kit".to_owned()
-        } else {
-            format!(
-                "program {}: {}",
-                player.program,
-                gscore_model::program_name(player.program)
-            )
-        };
-        ui.label(format!("The SoundFont plays {instrument}."));
-        ui.label(
-            RichText::new(
-                "The instrument is the track's, chosen in the track panel; the blocks to the \
-                 right shape its sound.",
-            )
-            .weak(),
-        );
-    }
-    if !player.strings {
-        ui.label(
-            RichText::new("Only string instruments can be played by modelled strings.").weak(),
-        );
-        return changed;
-    }
+    };
     let Some(kind) = (match player.engine {
         TrackEngine::Modelled(kind) => Some(kind),
         TrackEngine::SoundFont | TrackEngine::MidiOut => None,
     }) else {
+        // A synth (the SoundFont or a hardware one): what plays it on the left, the
+        // instrument it plays on the right, the same list as the track panel's.
+        ui.horizontal_top(|ui| {
+            ui.vertical(|ui| {
+                ui.set_width(300.0);
+                source(ui, actions);
+                if player.engine == TrackEngine::MidiOut {
+                    if let Some(route) = midi_out_controls(ui, player, ports) {
+                        actions.midi_out = Some(route);
+                    }
+                } else {
+                    ui.add_space(6.0);
+                    ui.label(
+                        RichText::new(if player.strings {
+                            "The blocks to the right shape the instrument's sound."
+                        } else {
+                            "The blocks to the right shape the instrument's sound. Only \
+                             string instruments can be played by modelled strings."
+                        })
+                        .weak(),
+                    );
+                }
+            });
+            ui.separator();
+            ui.vertical(|ui| {
+                ui.label(
+                    RichText::new(if player.drums {
+                        "Drum kit"
+                    } else {
+                        "Instrument"
+                    })
+                    .strong(),
+                );
+                let rows = super::tone_picker::general_midi_rows(player.program, player.drums);
+                if let Some(
+                    super::tone_picker::PickerChoice::Program(program)
+                    | super::tone_picker::PickerChoice::DrumKit(program),
+                ) = super::tone_picker::picker_rows(
+                    ui,
+                    "chain_program_picker",
+                    "programs",
+                    &rows,
+                    programs,
+                    6,
+                    None,
+                ) {
+                    actions.program = Some(program);
+                }
+            });
+        });
         return changed;
     };
+    source(ui, actions);
     // The string sound on tabs, apart from what plays the track: which strings first (the
     // Kind tab), then their knobs.
     ui.separator();
@@ -1745,6 +1774,7 @@ impl GuitarScoreApp {
                     part: None,
                     strings_tab: super::string_sound::StringsTab::default(),
                     reference: None,
+                    programs: super::tone_picker::TonePickerState::new(),
                 });
             }
         }
@@ -2202,6 +2232,7 @@ impl GuitarScoreApp {
                                             &mut sound,
                                             &ports,
                                             &mut window.strings_tab,
+                                            &mut window.programs,
                                             &mut actions,
                                         ) {
                                             actions.sound = Some(sound);
@@ -2296,6 +2327,16 @@ impl GuitarScoreApp {
         // of string chosen here (switching to steel while adding a block must store steel).
         if let Some(engine) = actions.engine {
             self.set_track_engine(track, engine);
+        }
+        // Another instrument: the track's program, an edit like the track panel's choice.
+        if let Some(program) = actions.program {
+            self.apply_command(
+                gscore_edit::Command::SetTrackProgram {
+                    track: gscore_model::TrackIndex::new(track),
+                    program,
+                },
+                false,
+            );
         }
         // A saved tone: it carries both a string sound and a chain (and what plays them).
         if let Some(preset) = actions.preset {

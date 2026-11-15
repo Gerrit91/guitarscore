@@ -5747,3 +5747,13 @@ changes (`compare_tone`, laid over the song's tones in `sync_track_tones`), neve
 song, so it is no edit and has no undo step. Greyed while there is nothing to compare;
 not offered for a drum part. Closing the window or switching it to another track lets
 go. Test: `holding_a_b_plays_the_tone_the_window_found`.
+
+## 2026-11-15 — The instrument in the Sound chain window's first block
+
+For a synth (the SoundFont or MIDI out) the first block shows what plays the track on the
+left and, on the right, the list of instruments (General MIDI programs, or drum kits on a
+drum track) that the track panel offers. A row sets the track's program
+(`SetTrackProgram`, with undo), as the track panel's list does; the tone the window
+edits then is the new program's. This replaces the line that only named the program.
+Test: `the_first_box_chooses_the_instrument_the_midi_synth_plays`; the MIDI-out snapshot
+regenerated.

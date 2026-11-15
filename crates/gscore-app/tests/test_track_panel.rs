@@ -1047,7 +1047,7 @@ fn a_block_added_to_a_midi_synth_track_is_its_only_block() {
 }
 
 #[test]
-fn the_first_box_names_what_the_midi_synth_plays() {
+fn the_first_box_chooses_the_instrument_the_midi_synth_plays() {
     let mut harness = app_with("basic/note_lengths.gp");
     open_sound_chain(&mut harness);
     harness.get_by_label("Block 0: Strings").click();
@@ -1059,9 +1059,27 @@ fn the_first_box_names_what_the_midi_synth_plays() {
         .expect("the sound source switch")
         .click();
     harness.run();
-    // The box stays selected and now says which instrument the SoundFont plays.
-    harness.get_by_label("Block 0: MIDI");
-    harness.get_by_label_contains("The SoundFont plays program");
+    harness.run();
+    // The box stays selected and lists the instruments beside the switch; a row in the
+    // window (not the track panel's list) sets the track's program.
+    let window = harness.get_by_label("Block 0: MIDI").rect();
+    let row = harness
+        .query_all_by_label_contains("28: ")
+        .find(|node| {
+            let center = node.rect().center();
+            center.x > window.left() && center.x < window.left() + 700.0
+        })
+        .expect("the instrument list in the first box");
+    row.click();
+    harness.run();
+    let program = harness
+        .state()
+        .document()
+        .unwrap()
+        .song()
+        .track_sound(TrackIndex::new(0))
+        .map(|sound| sound.program);
+    assert_eq!(program, Some(28));
 }
 
 #[test]
