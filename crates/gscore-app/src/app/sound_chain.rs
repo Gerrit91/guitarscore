@@ -379,6 +379,8 @@ struct ShownPreset {
     /// Whether the tone differs from the one the window found (A/B has something to
     /// compare).
     compare: bool,
+    /// The built-in or saved tone the track's tone was dialed in from, if known.
+    basis: Option<String>,
 }
 
 /// The tone's buttons beside its dropdown: save (active once the tone changed; it saves
@@ -560,12 +562,10 @@ fn preset_row(
                     | super::tone_picker::PickerChoice::DrumKit(_)
             )
         );
-    let shown_name = match (&current, &working) {
-        (Some(super::tone_picker::PickerChoice::BuiltIn(name)), _)
-        | (Some(super::tone_picker::PickerChoice::Saved { name, .. }), _) => name.clone(),
-        (_, Some(name)) => format!("{name} (changed)"),
-        _ => "Unsaved tone".to_owned(),
-    };
+    let shown_name = super::tone_picker::tone_display_name(
+        current.as_ref(),
+        working.as_deref().or(shown.basis.as_deref()),
+    );
     let built_in = matches!(
         (&current, default_tone),
         (Some(super::tone_picker::PickerChoice::BuiltIn(name)), Some(default))
@@ -2005,6 +2005,11 @@ impl GuitarScoreApp {
                                             .reference
                                             .as_ref()
                                             .is_some_and(|reference| *reference != tone),
+                                        basis: self
+                                            .tabs
+                                            .get(self.active)
+                                            .and_then(|tab| tab.tone_basis.get(&window.track))
+                                            .cloned(),
                                     },
                                     default_tone.as_deref(),
                                     &tone,
@@ -2414,6 +2419,10 @@ impl GuitarScoreApp {
             self.playback
                 .store_string_presets(self.settings.string_presets.clone());
             self.save_settings();
+            // A tone dialed in from the deleted one no longer names it.
+            for tab in &mut self.tabs {
+                tab.tone_basis.retain(|_, basis| *basis != name);
+            }
         }
         if let Some(place) = actions.load
             && let Err(error) = self.tasks.pick_impulse(

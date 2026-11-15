@@ -1113,6 +1113,40 @@ fn the_first_box_chooses_the_instrument_the_midi_synth_plays() {
 }
 
 #[test]
+fn the_track_panel_names_the_tone_and_marks_a_change() {
+    let mut harness = app_with("basic/note_lengths.gp");
+    // The row is a label, which the label queries do not match by its own name.
+    let tone_name = |harness: &Harness<'static, GuitarScoreApp>| {
+        harness
+            .query_all_by_role(egui::accesskit::Role::Label)
+            .find(|node| node.accesskit_node().label().as_deref() == Some("Track tone"))
+            .and_then(|node| node.accesskit_node().value())
+            .expect("the track panel's tone row")
+            .to_string()
+    };
+    // The Sound section, scrolled into view.
+    harness
+        .get_by_label("Add a sound chain block")
+        .scroll_to_me();
+    harness.run();
+    // The program's built-in tone, by its name.
+    let built_in = tone_name(&harness);
+    assert!(
+        !built_in.is_empty() && !built_in.contains("changed"),
+        "{built_in}"
+    );
+    // A block added: the tone it was dialed in from, changed; the window says the same.
+    harness.get_by_label("Add a sound chain block").click();
+    harness.run();
+    harness.get_by_label("Reverb").click();
+    harness.run();
+    harness.run();
+    assert_eq!(tone_name(&harness), format!("{built_in} (changed)"));
+    open_sound_chain(&mut harness);
+    assert_eq!(preset_shown(&harness), format!("{built_in} (changed)"));
+}
+
+#[test]
 fn escape_closes_the_sound_chain_window() {
     let mut harness = app_with("basic/note_lengths.gp");
     open_sound_chain(&mut harness);

@@ -448,6 +448,16 @@ const DRUM_KITS: [(u8, &str); 9] = [
 /// The built-in or saved tone that exactly matches `tone`, if one does. Several built-in
 /// tones can have the same settings (every program has a tone of its own); then the one
 /// named `prefer` (the track's default) is the one, else the first.
+/// The name a track's tone shows under: the built-in or saved tone it is, else the one it
+/// was dialed in from with "(changed)", else "Unsaved tone".
+pub(super) fn tone_display_name(current: Option<&PickerChoice>, basis: Option<&str>) -> String {
+    match (current, basis) {
+        (Some(PickerChoice::BuiltIn(name) | PickerChoice::Saved { name, .. }), _) => name.clone(),
+        (_, Some(name)) => format!("{name} (changed)"),
+        _ => "Unsaved tone".to_owned(),
+    }
+}
+
 pub(super) fn current_tone_choice(
     tone: &crate::chain_settings::Tone,
     prefer: Option<&str>,

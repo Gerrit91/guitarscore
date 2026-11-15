@@ -635,12 +635,33 @@ fn sound(
                 return;
             }
             // A drum kit's own chain is its parts (in the Sound chain window, or on the
-            // mixer's part strips); every other track shows its chain, empty at first.
+            // mixer's part strips); every other track shows its chain, empty at first,
+            // and modelled strings the name of their tone (the tones are theirs).
             if !player.drums {
+                if matches!(player.engine, gscore_play::TrackEngine::Modelled(_)) {
+                    tone_name_row(ui, &panel.tone_name);
+                }
                 chain_rows(ui, &panel.chain, actions);
             }
         }
     }
+}
+
+/// The tone's name, as the Sound chain window's dropdown shows it ("Lead (changed)").
+fn tone_name_row(ui: &mut egui::Ui, name: &str) {
+    ui.horizontal(|ui| {
+        ui.label(RichText::new("Tone").color(style::tokens(ui).text_weak));
+        let response = ui
+            .add(egui::Label::new(RichText::new(name).strong()).truncate())
+            .on_hover_text(
+                "The tone this track plays: a built-in or saved tone, or the one it was \
+                 changed from",
+            );
+        ui.ctx().accesskit_node_builder(response.id, |node| {
+            node.set_label("Track tone");
+            node.set_value(name.to_owned());
+        });
+    });
 }
 
 /// The track's chain as rows: a block's name (a click opens the Sound chain at it), its

@@ -5757,3 +5757,20 @@ drum track) that the track panel offers. A row sets the track's program
 edits then is the new program's. This replaces the line that only named the program.
 Test: `the_first_box_chooses_the_instrument_the_midi_synth_plays`; the MIDI-out snapshot
 regenerated.
+
+## 2026-11-15 — The tone's name in the track panel, and what it was changed from
+
+- The track panel's Sound section names a modelled track's tone above its blocks
+  ("Tone  Lead"), as the Sound chain window's dropdown does.
+- Both remember which built-in or saved tone a track's tone was dialed in from
+  (`Tab::tone_basis`, noted in `set_track_tone_merged` whenever the tone it plays before
+  the change has a name) and show a changed one as "Lead (changed)". Before, the window
+  knew this only for a saved tone chosen while it was open, and showed "Unsaved tone"
+  after a built-in tone was changed or after it was reopened. Kept while the song is
+  open; deleting a saved tone forgets it as a basis. The naming rule is
+  `tone_picker::tone_display_name`.
+- Undo and redo already covered every change in the Sound chain window (one knob drag is
+  one step); a test now checks Ctrl+Z and Ctrl+Y with the window in front.
+- Tests: `the_track_panel_names_the_tone_and_marks_a_change`,
+  `the_undo_keys_work_in_the_sound_chain_window`; snapshots with the Sound section
+  regenerated.

@@ -64,6 +64,10 @@ pub(super) struct Tab {
     /// Where playback started from a stop (the cursor on the first played beat, and the
     /// selection then), for going back there on Stop; kept over pauses.
     pub(super) play_origin: Option<PlayOrigin>,
+    /// By track: the built-in or saved tone a track's tone was dialed in from (its name),
+    /// so a changed tone shows as "Lead (changed)" in the Sound chain window and the track
+    /// panel. Kept while the song is open.
+    pub(super) tone_basis: std::collections::BTreeMap<usize, String>,
     /// The cursor and revision the view last scrolled to, to scroll only on a change.
     pub(super) shown_cursor: Option<(Cursor, u64)>,
     /// In the page view: the cursor's page and the page count (1-based), for the status bar.
@@ -133,6 +137,7 @@ impl Tab {
             design: super::design::DesignState::default(),
             palette_anchor: None,
             play_origin: None,
+            tone_basis: std::collections::BTreeMap::new(),
             shown_cursor: None,
             page_info: None,
             renaming: None,
