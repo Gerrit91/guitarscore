@@ -5808,3 +5808,12 @@ saved tones and plays it on the track at once.
 - Tests: Base64 round trips, a tone with its impulse response coming back on "another
   machine", missing files and refused files (`tone_file` unit tests), and
   `an_imported_tone_file_is_saved_and_plays_on_the_track`.
+
+## 2026-11-15 — The tone and program list's filter
+
+The magnifying glass over the tone presets' (and programs') table is drawn from outlines
+(`vector_icon`: a ring and a round-ended handle) instead of a stroked circle and line,
+so it is smooth at its 20-pixel size. Its text field now opens right beside it: the
+field's right edge is placed next to the icon (a right-anchored area), where before its
+left edge was placed a fixed width away and left a gap. Snapshots showing the icon
+regenerated.

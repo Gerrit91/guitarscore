@@ -246,14 +246,13 @@ pub(super) fn picker_rows(
         state.filter_focus = state.filter_open;
     }
     if state.filter_open {
-        // A field beside the funnel, over the table: it has no row of its own and does not
-        // hold up clicks on the rows around it.
-        let at = pos2(
-            (filter_rect.left() - 206.0).max(ui.max_rect().left()),
-            filter_rect.top(),
-        );
+        // A field right beside the magnifier, over the table: it has no row of its own and
+        // does not hold up clicks on the rows around it. Its right edge is placed, so it
+        // stays next to the icon however wide it is (with or without its clear button).
+        let at = pos2(filter_rect.left() - 2.0, filter_rect.center().y);
         egui::Area::new(ui.scope_id().with((id_salt, "tone_filter_field")))
             .order(egui::Order::Foreground)
+            .pivot(Align2::RIGHT_CENTER)
             .fixed_pos(at)
             .show(ui.ctx(), |ui| {
                 egui::Frame::popup(ui.style())

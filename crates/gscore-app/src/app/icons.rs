@@ -777,18 +777,10 @@ pub(crate) fn paint(painter: &Painter, rect: Rect, color: Color32, icon: Icon) {
             ));
         }
         Icon::Filter => {
-            // The same magnifying glass as ZoomIn and ZoomOut (without their sign): the
-            // clearest small sign for narrowing a list.
-            let radius = size * 0.32;
-            let lens = center + vec2(-size * 0.08, -size * 0.08);
-            painter.circle_stroke(lens, radius, stroke);
-            painter.line_segment(
-                [
-                    lens + Vec2::angled(std::f32::consts::FRAC_PI_4) * radius,
-                    rect.right_bottom() - vec2(size * 0.08, size * 0.08),
-                ],
-                stroke,
-            );
+            // A magnifying glass, the clearest small sign for narrowing a list: drawn from
+            // outlines (a ring and a round-ended handle) so its curve stays smooth at the
+            // small sizes it is shown at.
+            super::vector_icon::paint(painter, rect, "filter", MAGNIFIER, color);
         }
         Icon::StompBox => {
             // A pedal from the front: a tall rounded box with four corner screws, a meter
@@ -1107,6 +1099,17 @@ fn paint_metronome(painter: &Painter, center: Pos2, size: f32, color: Color32) {
     let weight = foot + (end - foot) * 0.62;
     painter.circle_filled(weight, size * 0.1, color);
 }
+
+/// The filter's magnifying glass in a 100 by 100 box: a ring (lens) and its handle.
+const MAGNIFIER: &[super::vector_icon::Part] = &[
+    super::vector_icon::Part::Fill(&[
+        "M 42 12 C 58.6 12 72 25.4 72 42 C 72 58.6 58.6 72 42 72 C 25.4 72 12 58.6 12 42 \
+         C 12 25.4 25.4 12 42 12 Z",
+        "M 42 21 C 53.6 21 63 30.4 63 42 C 63 53.6 53.6 63 42 63 C 30.4 63 21 53.6 21 42 \
+         C 21 30.4 30.4 21 42 21 Z",
+    ]),
+    super::vector_icon::Part::Line("M 64 64 L 86 86", 11.0),
+];
 
 /// An arc around `center` from angle `from` to `to` (radians; increasing is clockwise on
 /// screen) with a filled arrowhead at `to`, pointing the way the arc runs.
