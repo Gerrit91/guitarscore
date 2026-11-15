@@ -783,6 +783,8 @@ impl eframe::App for GuitarScoreApp {
         self.apply_theme(&ctx);
         // Keys first, before any widget sees them (a focused button would take Space).
         self.interface_zoom_keys(&ctx);
+        // The Sound chain board's keys first, while it has the keyboard.
+        self.take_sound_chain_keys(&ctx);
         self.handle_keys(&ctx);
         // A count-in that has finished starts the song it was counting in.
         self.poll_count_in();

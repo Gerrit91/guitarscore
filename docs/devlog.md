@@ -5774,3 +5774,13 @@ regenerated.
 - Tests: `the_track_panel_names_the_tone_and_marks_a_change`,
   `the_undo_keys_work_in_the_sound_chain_window`; snapshots with the Sound section
   regenerated.
+
+## 2026-11-15 — Keys on the Sound chain board
+
+A click on a box of the Sound chain window's board gives the board the keyboard until a
+click outside the window: ← and → move between the boxes (source, In, the five places,
+Out), Delete or Backspace empties the selected place and M mutes its block, the same
+actions as the trash can and the mute button. `take_sound_chain_keys` runs before the
+score's keys and takes those keys (and the character M types) out of the frame's input,
+so they do not move the score's cursor or delete a note; Ctrl+Z, Space and the rest still
+reach the app. Test: `the_board_takes_the_arrows_delete_and_m_after_a_click`.

@@ -1147,6 +1147,79 @@ fn the_track_panel_names_the_tone_and_marks_a_change() {
 }
 
 #[test]
+fn the_board_takes_the_arrows_delete_and_m_after_a_click() {
+    use gscore_app::chain_settings::BlockChoice;
+    use gscore_play::StringKind;
+
+    let mut harness = app_with("basic/note_lengths.gp");
+    open_sound_chain(&mut harness);
+    let blocks = |harness: &Harness<'static, GuitarScoreApp>| {
+        harness
+            .state()
+            .playback()
+            .tone(0, 26, StringKind::Electric)
+            .chain
+            .blocks
+            .iter()
+            .map(|block| (block.choice, block.bypass))
+            .collect::<Vec<_>>()
+    };
+    let cursor = |harness: &Harness<'static, GuitarScoreApp>| {
+        harness.state().document().unwrap().editor().cursor()
+    };
+    let start = blocks(&harness);
+    assert_eq!(start.first(), Some(&(BlockChoice::Amp, false)), "{start:?}");
+    assert_eq!(
+        start.get(1),
+        Some(&(BlockChoice::Cabinet, false)),
+        "{start:?}"
+    );
+    let before = cursor(&harness);
+
+    // A click on the Amp gives the board the keyboard; Right goes on to the Cab, M mutes
+    // it, and the score's cursor stays where it was.
+    harness.get_by_label("Block 1: Amp").click();
+    harness.run();
+    harness.key_press(egui::Key::ArrowRight);
+    harness.run();
+    harness.key_press(egui::Key::M);
+    harness.run();
+    harness.run();
+    assert_eq!(blocks(&harness).get(1), Some(&(BlockChoice::Cabinet, true)));
+    assert_eq!(cursor(&harness), before, "the arrows stayed on the board");
+
+    // Left back to the Amp, Delete empties its place.
+    harness.key_press(egui::Key::ArrowLeft);
+    harness.run();
+    harness.key_press(egui::Key::Delete);
+    harness.run();
+    harness.run();
+    assert_eq!(blocks(&harness).first(), Some(&(BlockChoice::Empty, false)));
+    assert_eq!(cursor(&harness), before);
+
+    // A click outside the window (on the page above it) gives the keyboard back to the
+    // score.
+    let window = harness.get_by_label("Block 0: Strings").rect();
+    let page = harness.get_by_label("Score page").rect();
+    let outside = egui::pos2(page.center().x, (page.top() + window.top()) / 2.0 - 60.0);
+    assert!(page.contains(outside), "{outside:?} on {page:?}");
+    harness.hover_at(outside);
+    for pressed in [true, false] {
+        harness.input_mut().events.push(egui::Event::PointerButton {
+            pos: outside,
+            button: egui::PointerButton::Primary,
+            pressed,
+            modifiers: egui::Modifiers::NONE,
+        });
+    }
+    harness.run();
+    let clicked = cursor(&harness);
+    harness.key_press(egui::Key::ArrowRight);
+    harness.run();
+    assert_ne!(cursor(&harness), clicked, "the score has the arrows again");
+}
+
+#[test]
 fn escape_closes_the_sound_chain_window() {
     let mut harness = app_with("basic/note_lengths.gp");
     open_sound_chain(&mut harness);

@@ -81,6 +81,46 @@ pub(super) struct SoundChainWindow {
     reference: Option<Tone>,
     /// The first box's list of instruments (General MIDI programs), for a synth.
     programs: super::tone_picker::TonePickerState,
+    /// Whether the board has the keyboard: from a click on one of its boxes until a click
+    /// outside the window. The arrows then move between the boxes, Delete empties the
+    /// selected place and M mutes its block, instead of moving the score's cursor.
+    board_keys: bool,
+    /// The board's keys taken from this frame's input, before the score saw them.
+    pending_keys: Vec<BoardKey>,
+    /// Where the window was drawn last, for telling a click outside it.
+    rect: Option<Rect>,
+}
+
+/// A key the board handles while it has the keyboard.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum BoardKey {
+    Previous,
+    Next,
+    Remove,
+    Mute,
+}
+
+/// The boxes in the order the arrows go through them: the source, the input trim, the
+/// places, the output.
+fn box_order() -> Vec<usize> {
+    let mut order = vec![0, SELECT_INPUT];
+    order.extend(1..=BLOCKS);
+    order.push(SELECT_OUTPUT);
+    order
+}
+
+/// The box after (or before) `selected` in [`box_order`], staying at the ends.
+fn next_box(selected: usize, forward: bool) -> usize {
+    let order = box_order();
+    let Some(at) = order.iter().position(|&index| index == selected) else {
+        return selected;
+    };
+    let to = if forward {
+        at.saturating_add(1).min(order.len().saturating_sub(1))
+    } else {
+        at.saturating_sub(1)
+    };
+    order.get(to).copied().unwrap_or(selected)
 }
 
 /// What the user did this frame.
@@ -1775,8 +1815,76 @@ impl GuitarScoreApp {
                     strings_tab: super::string_sound::StringsTab::default(),
                     reference: None,
                     programs: super::tone_picker::TonePickerState::new(),
+                    board_keys: false,
+                    pending_keys: Vec::new(),
+                    rect: None,
                 });
             }
+        }
+    }
+
+    /// Before the score's keys: while the Sound chain board has the keyboard, takes the
+    /// keys it handles (the arrows, Delete or Backspace, M) out of this frame's input for
+    /// the window, so they do not move the score's cursor or delete a note. A click
+    /// outside the window gives the keyboard back to the score.
+    pub(super) fn take_sound_chain_keys(&mut self, ctx: &egui::Context) {
+        let Some(window) = self.sound_chain.as_mut() else {
+            return;
+        };
+        let pressed_outside = ctx.input(|input| {
+            input.pointer.any_pressed()
+                && input
+                    .pointer
+                    .interact_pos()
+                    .is_some_and(|pos| window.rect.is_none_or(|rect| !rect.contains(pos)))
+        });
+        if pressed_outside {
+            window.board_keys = false;
+        }
+        if !window.board_keys || ctx.egui_wants_keyboard_input() || egui::Popup::is_any_open(ctx) {
+            return;
+        }
+        let mut taken = Vec::new();
+        ctx.input_mut(|input| {
+            input.events.retain(|event| {
+                let key = match event {
+                    egui::Event::Key {
+                        key,
+                        pressed,
+                        modifiers,
+                        ..
+                    } if modifiers.is_none() || *modifiers == egui::Modifiers::SHIFT => {
+                        let key = match key {
+                            egui::Key::ArrowLeft => Some(BoardKey::Previous),
+                            egui::Key::ArrowRight => Some(BoardKey::Next),
+                            egui::Key::Delete | egui::Key::Backspace => Some(BoardKey::Remove),
+                            egui::Key::M => Some(BoardKey::Mute),
+                            _ => None,
+                        };
+                        match key {
+                            // Only the press acts; its release is taken too.
+                            Some(key) if *pressed => Some(Some(key)),
+                            Some(_) => Some(None),
+                            None => None,
+                        }
+                    }
+                    // The character M types is the key's, not the score's.
+                    egui::Event::Text(text) if text.eq_ignore_ascii_case("m") => Some(None),
+                    _ => None,
+                };
+                match key {
+                    Some(Some(key)) => {
+                        taken.push(key);
+                        false
+                    }
+                    Some(None) => false,
+                    None => true,
+                }
+            });
+        });
+        if !taken.is_empty() {
+            window.pending_keys.extend(taken);
+            ctx.request_repaint();
         }
     }
 
@@ -1924,7 +2032,7 @@ impl GuitarScoreApp {
         let output = meters
             .as_ref()
             .map_or_else(Default::default, |meters| meters.chain_output(window.track));
-        egui::Window::new(&title)
+        let shown = egui::Window::new(&title)
             .id(egui::Id::unique(WINDOW_ID))
             .title_bar(false)
             .collapsible(false)
@@ -2055,6 +2163,33 @@ impl GuitarScoreApp {
                                 output_db: chain.output_db,
                             }),
                         );
+                        let mut board = board;
+                        // The board's keys, as the clicks they stand for.
+                        for key in std::mem::take(&mut window.pending_keys) {
+                            let place = window
+                                .selected
+                                .checked_sub(1)
+                                .filter(|place| *place < BLOCKS)
+                                .filter(|place| {
+                                    chain
+                                        .blocks
+                                        .get(*place)
+                                        .is_some_and(|block| block.choice != BlockChoice::Empty)
+                                });
+                            match key {
+                                BoardKey::Previous | BoardKey::Next => {
+                                    board.select = Some(next_box(
+                                        board.select.unwrap_or(window.selected),
+                                        key == BoardKey::Next,
+                                    ));
+                                }
+                                BoardKey::Remove => board.remove = board.remove.or(place),
+                                BoardKey::Mute => board.bypass = board.bypass.or(place),
+                            }
+                        }
+                        if board.select.is_some() {
+                            window.board_keys = true;
+                        }
                         if let Some(index) = board.select {
                             window.selected = index;
                             // The first box is the track's source: the kit's, not a part's.
@@ -2276,6 +2411,7 @@ impl GuitarScoreApp {
                         });
                     });
             });
+        window.rect = shown.map(|shown| shown.response.rect);
         // Escape closes the window the user is looking at (a popup or a text field gets it
         // first).
         if style::escape_closes(ctx, egui::Id::unique(WINDOW_ID)) {
