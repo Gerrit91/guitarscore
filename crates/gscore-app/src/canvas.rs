@@ -7,8 +7,9 @@ use gscore_layout::{DrawOp, Layout, Point, Rgb, TextAnchor, TextFont, Theme};
 
 use crate::fonts;
 
-/// Screen points per staff space at zoom 1 (about MuseScore's default 1.75 mm on screen).
-pub(crate) const POINTS_PER_SPACE: f32 = 7.0;
+/// Screen points per staff space at zoom 1: Guitar Pro's 1.5 mm staff space at 4 points per
+/// millimetre, so the page keeps its size on screen and shows the music as it prints.
+pub(crate) const POINTS_PER_SPACE: f32 = 6.0;
 /// Operations this far (in points) outside the visible area are still painted, so glyphs
 /// that extend beyond their anchor do not pop in at the edges.
 const CULL_MARGIN: f32 = 60.0;

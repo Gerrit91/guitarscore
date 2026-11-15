@@ -5961,3 +5961,20 @@ fits is not split; the split itself (between tracks only, first page shorter).
   The owner is checking what Guitar Pro keeps there (multitrack selection, hidden staves).
 Tests: a repeating track stays and a resting one goes; an all-resting song keeps every
 bar on the page.
+
+## 2026-11-15 — Guitar Pro's staff size: as many bars per line as Guitar Pro prints
+
+- The score was laid out with MuseScore's 1.75 mm staff space; Guitar Pro uses 1.5 mm
+  (GP7 style sheets: `Global/spaceSizeMM` 1.5 in all 26 band songs, `pageScale` 1.0,
+  `forceBarCountBySystem` false, so GP fits bars to the line rather than forcing a count).
+  The layout now uses 1.5 mm at score size 100 % (`STAFF_SPACE_MM`, also the default).
+- The screen draws 6 points per staff space instead of 7, so the page keeps its size on
+  screen and shows the music as it prints; zoom is unchanged.
+- Pages, one track each (locally only): Ballad guitar 6 → 5, bass 9 → 8, drums 9 → 7;
+  farewell drums 9 → 6 (Guitar Pro's own PDF of that track in the band folder has 6);
+  farewell guitar 3 → 2; Belarus 6 → 5; Ballad all tracks with empty staves hidden 94 → 67.
+- Still open: a 6/4 bar of unbeamed drum sixteenths keeps its line, as each flag is kept
+  clear of the next column at any height; Guitar Pro beams drum sixteenths per beat across
+  rests, which packs them tighter. GP's per-track bar count (`SystemsLayout`) stays a
+  maximum, not a target.
+Tests: golden SVGs and app snapshots regenerated (the music is smaller; nothing else moved).
