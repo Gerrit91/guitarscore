@@ -34,6 +34,7 @@ pub(super) fn fresh_track(
     track.solo = false;
     track.mute = false;
     track.visible = true;
+    track.session_key = crate::score_views::new_track_key();
     track.channel_index = channel;
     track.color = TrackColor::DEFAULT.rgb() as i32;
     // A new track starts with its kind's default sound, not the neighbour's tone.

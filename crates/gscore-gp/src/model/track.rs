@@ -55,6 +55,10 @@ pub struct Track {
     /// GuitarScore addition: the track's second byte in GP7's `LayoutConfiguration`, of
     /// unknown meaning (0xff in every file seen); kept so saving writes it back.
     pub layout_second: u8,
+    /// GuitarScore addition: what tells this track apart from the others while the song is
+    /// open (GuitarScore's score views refer to tracks by it); never saved, 0 until the
+    /// model gives the track one.
+    pub session_key: u64,
     pub name: String,
     pub short_name: String,
     /// A guitar string with a special tuning.
@@ -218,6 +222,7 @@ impl Default for Track {
             mute: false,
             visible: true,
             layout_second: 0xff,
+            session_key: 0,
             name: String::from("Track 1"),
             short_name: String::new(),
             strings: vec![(1, 64), (2, 59), (3, 55), (4, 50), (5, 45), (6, 40)],

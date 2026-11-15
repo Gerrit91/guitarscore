@@ -356,6 +356,47 @@ fn parses_every_command_and_fills_defaults() {
             },
         ),
         (
+            "set_score_view view=2 name=Strings tracks=3:tab,1:both hide_empty=true",
+            Command::SetScoreView {
+                view: 1,
+                name: "Strings".to_owned(),
+                tracks: vec![
+                    ViewTrack {
+                        track: TrackIndex::new(2),
+                        staves: TrackStaves::TAB_ONLY,
+                    },
+                    ViewTrack {
+                        track: TrackIndex::new(0),
+                        staves: TrackStaves::NOTATION_AND_TAB,
+                    },
+                ],
+                hide_empty_staves: true,
+            },
+        ),
+        (
+            "set_score_view view=1 name=Drums tracks=9:notation",
+            Command::SetScoreView {
+                view: 0,
+                name: "Drums".to_owned(),
+                tracks: vec![ViewTrack {
+                    track: TrackIndex::new(8),
+                    staves: TrackStaves::NOTATION_ONLY,
+                }],
+                hide_empty_staves: false,
+            },
+        ),
+        (
+            "delete_score_view view=3",
+            Command::DeleteScoreView { view: 2 },
+        ),
+        (
+            "set_track_visible track=2 visible=false",
+            Command::SetTrackVisible {
+                track: TrackIndex::new(1),
+                visible: false,
+            },
+        ),
+        (
             "set_directions measure=2 directions=none",
             Command::SetDirections {
                 measure: MeasureIndex::new(1),
@@ -430,6 +471,18 @@ fn bad_lines_are_errors_with_useful_messages() {
             "given twice",
         ),
         ("set_fret measure=1 beat=1 string=1", "missing parameter"),
+        (
+            "set_score_view view=1 name=A tracks=0:tab",
+            "as 3:tab,1:both",
+        ),
+        (
+            "set_score_view view=1 name=A tracks=1:violin",
+            "as 3:tab,1:both",
+        ),
+        (
+            "set_score_view view=1 name=A tracks=1:tab hide_empty=maybe",
+            "true or false",
+        ),
         (
             "set_fret measure=1 beat=1 string=1 fret=128",
             "fret from 0 to 127",
@@ -811,6 +864,25 @@ fn every_command_writes_a_line_that_parses_back_to_it() {
         Command::SetDirections {
             measure: MeasureIndex::new(1),
             directions: vec![Direction::Fine, Direction::DaCapoAlFine],
+        },
+        // A view's name may hold anything a plain command line could not.
+        Command::SetScoreView {
+            view: 3,
+            name: "Strings & winds = 1, \"tutti\"".to_owned(),
+            tracks: TrackStaves::ALL
+                .into_iter()
+                .zip(0..)
+                .map(|(staves, track)| ViewTrack {
+                    track: TrackIndex::new(track),
+                    staves,
+                })
+                .collect(),
+            hide_empty_staves: true,
+        },
+        Command::DeleteScoreView { view: 0 },
+        Command::SetTrackVisible {
+            track: TrackIndex::new(4),
+            visible: true,
         },
         Command::SetClef {
             track: TrackIndex::new(1),

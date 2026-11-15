@@ -5,14 +5,14 @@ use gscore_model::{
     Feel, Fermata, Fret, InstrumentSymbol, MAX_BARS_PER_SYSTEM, MAX_SECTION_TITLE_CHARS, MAX_TEMPO,
     MeasureIndex, ModelError, NoteEffect, NoteValue, PageSetup, Pitch, Repeat, ScaleScope,
     SimileMark, Song, SongTextField, StaffIndex, StringNumber, SystemBreak, TimeSignature,
-    TrackColor, TrackIndex, TrackStaves,
+    TrackColor, TrackIndex, TrackStaves, ViewTrack,
 };
 
 use crate::info::{
-    BATCH, CLEAR_NOTE, CLEAR_SECTION, CommandInfo, DELETE_BEAT, DELETE_MEASURE, DELETE_TRACK,
-    DUPLICATE_TRACK, INSERT_BEAT, INSERT_MEASURE, INSERT_TRACK, MOVE_TRACK, REDO, RENAME_TRACK,
-    SET_BEAT_EFFECT, SET_BEAT_REST, SET_BEAT_TEXT, SET_BEAT_TIE, SET_CHORD_DIAGRAM, SET_CLEF,
-    SET_DEAD_NOTE, SET_DIRECTIONS, SET_DOUBLE_BAR, SET_DURATION, SET_DYNAMIC, SET_FEEL,
+    BATCH, CLEAR_NOTE, CLEAR_SECTION, CommandInfo, DELETE_BEAT, DELETE_MEASURE, DELETE_SCORE_VIEW,
+    DELETE_TRACK, DUPLICATE_TRACK, INSERT_BEAT, INSERT_MEASURE, INSERT_TRACK, MOVE_TRACK, REDO,
+    RENAME_TRACK, SET_BEAT_EFFECT, SET_BEAT_REST, SET_BEAT_TEXT, SET_BEAT_TIE, SET_CHORD_DIAGRAM,
+    SET_CLEF, SET_DEAD_NOTE, SET_DIRECTIONS, SET_DOUBLE_BAR, SET_DURATION, SET_DYNAMIC, SET_FEEL,
     SET_FERMATA, SET_FREE_TIME, SET_FRET, SET_KEY_SIGNATURE, SET_LYRIC_LINE, SET_MASTER_PAN,
     SET_MASTER_VOLUME, SET_MEASURE_TEMPO, SET_NOTE_EFFECT, SET_REPEAT, SET_SECTION,
     SET_SIMILE_MARK, SET_SONG_SOUND, SET_SONG_TEXT, SET_TEMPO, SET_TIE, SET_TIME_SIGNATURE,
@@ -23,7 +23,7 @@ use crate::info::{
 };
 use crate::info::{
     SET_BARS_PER_SYSTEM, SET_BEAT_SPACING, SET_MEASURE_SCALE, SET_PAGE_SETUP, SET_SCORE_LINE_BREAK,
-    SET_SYSTEM_BREAK, SET_TRANSPOSE_ACTIVE, SET_TRANSPOSITION,
+    SET_SCORE_VIEW, SET_SYSTEM_BREAK, SET_TRACK_VISIBLE, SET_TRANSPOSE_ACTIVE, SET_TRANSPOSITION,
 };
 
 /// One edit, with every parameter already checked for syntax and range.
@@ -443,6 +443,30 @@ pub enum Command {
         /// The feel.
         feel: Feel,
     },
+    /// Set a named view of the score (GuitarScore's own; saved in the song's notes), or
+    /// add one when `view` is one past the last.
+    SetScoreView {
+        /// The view, 0-based.
+        view: usize,
+        /// Its name.
+        name: String,
+        /// The tracks shown, top to bottom, with their staves.
+        tracks: Vec<ViewTrack>,
+        /// Whether a track is left out of a line where it has no note.
+        hide_empty_staves: bool,
+    },
+    /// Remove a named view of the score.
+    DeleteScoreView {
+        /// The view, 0-based.
+        view: usize,
+    },
+    /// Show or hide a track when all tracks are shown together (Guitar Pro's eye).
+    SetTrackVisible {
+        /// The track.
+        track: TrackIndex,
+        /// Whether it is shown.
+        visible: bool,
+    },
     /// Set a measure's navigation signs (codas, segnos, fine, D.C./D.S. jumps); empty
     /// clears them.
     SetDirections {
@@ -795,6 +819,21 @@ impl Command {
                 one(measure.get()),
                 directions_text(directions)
             ),
+            Command::SetScoreView {
+                view,
+                name,
+                tracks,
+                hide_empty_staves,
+            } => format!(
+                "{id} view={} name={} tracks={} hide_empty={hide_empty_staves}",
+                one(*view),
+                crate::parse::encode_text(name),
+                view_tracks_text(tracks)
+            ),
+            Command::DeleteScoreView { view } => format!("{id} view={}", one(*view)),
+            Command::SetTrackVisible { track, visible } => {
+                format!("{id} track={} visible={visible}", one(track.get()))
+            }
             Command::SetFermata { measure, fermata } => format!(
                 "{id} measure={} fermata={}",
                 one(measure.get()),
@@ -942,6 +981,9 @@ impl Command {
             Command::SetDoubleBar { .. } => &SET_DOUBLE_BAR,
             Command::SetFeel { .. } => &SET_FEEL,
             Command::SetDirections { .. } => &SET_DIRECTIONS,
+            Command::SetScoreView { .. } => &SET_SCORE_VIEW,
+            Command::DeleteScoreView { .. } => &DELETE_SCORE_VIEW,
+            Command::SetTrackVisible { .. } => &SET_TRACK_VISIBLE,
             Command::SetFermata { .. } => &SET_FERMATA,
             Command::SetClef { .. } => &SET_CLEF,
             Command::SetFreeTime { .. } => &SET_FREE_TIME,
@@ -1112,7 +1154,10 @@ impl Command {
     /// playback goes on.
     pub fn changes_display_only(&self) -> bool {
         match self {
-            Command::RenameTrack { .. }
+            Command::SetScoreView { .. }
+            | Command::DeleteScoreView { .. }
+            | Command::SetTrackVisible { .. }
+            | Command::RenameTrack { .. }
             | Command::SetTrackColor { .. }
             | Command::SetTrackSymbol { .. }
             | Command::SetSongText { .. }
@@ -1415,6 +1460,34 @@ impl Command {
             Command::SetFeel { measure, .. }
             | Command::SetFermata { measure, .. }
             | Command::SetFreeTime { measure, .. } => measure.get() < song.measure_count(),
+            Command::SetScoreView {
+                view, name, tracks, ..
+            } => {
+                *view <= song.score_views().len()
+                    && *view < gscore_model::MAX_SCORE_VIEWS
+                    && !name.trim().is_empty()
+                    && name.trim().chars().count() <= gscore_model::MAX_VIEW_NAME_CHARS
+                    && !tracks.is_empty()
+                    && tracks.iter().enumerate().all(|(index, entry)| {
+                        entry.track.get() < song.track_count()
+                            && !tracks
+                                .get(..index)
+                                .unwrap_or_default()
+                                .iter()
+                                .any(|other| other.track == entry.track)
+                    })
+                    && !song.score_views().iter().enumerate().any(|(index, other)| {
+                        index != *view && other.name.eq_ignore_ascii_case(name.trim())
+                    })
+            }
+            Command::DeleteScoreView { view } => *view < song.score_views().len(),
+            Command::SetTrackVisible { track, visible } => {
+                track.get() < song.track_count()
+                    && (*visible
+                        || song
+                            .tracks()
+                            .any(|other| other.index() != *track && other.is_visible()))
+            }
             Command::SetDirections {
                 measure,
                 directions,
@@ -1489,6 +1562,42 @@ impl Command {
             Command::SetTrackSound { track, state } => {
                 song.set_track_sound_state(*track, state.clone())
             }
+            Command::SetScoreView {
+                view,
+                name,
+                tracks,
+                hide_empty_staves,
+            } => {
+                let mut views = song.score_views();
+                let entry = gscore_model::ScoreView {
+                    name: name.clone(),
+                    tracks: tracks.clone(),
+                    hide_empty_staves: *hide_empty_staves,
+                };
+                let count = views.len();
+                if *view == count {
+                    views.push(entry);
+                } else if let Some(slot) = views.get_mut(*view) {
+                    *slot = entry;
+                } else {
+                    return Err(ModelError::Invalid(format!(
+                        "the song has {count} score view(s)"
+                    )));
+                }
+                song.set_score_views(&views)
+            }
+            Command::DeleteScoreView { view } => {
+                let mut views = song.score_views();
+                if *view >= views.len() {
+                    return Err(ModelError::Invalid(format!(
+                        "the song has {} score view(s)",
+                        views.len()
+                    )));
+                }
+                let _ = views.remove(*view);
+                song.set_score_views(&views)
+            }
+            Command::SetTrackVisible { track, visible } => song.set_track_visible(*track, *visible),
             Command::SetSongSound { state } => song.set_sound_state(state.clone()),
             Command::SetTrackVolume { track, volume } => song.set_track_volume(*track, *volume),
             Command::SetTrackPan { track, pan } => song.set_track_pan(*track, *pan),
@@ -1686,6 +1795,21 @@ pub(crate) fn directions_text(directions: &[Direction]) -> String {
     directions
         .iter()
         .map(|direction| direction.id())
+        .collect::<Vec<_>>()
+        .join(",")
+}
+
+/// A view's tracks for the command line: `3:tab,1:both` (1-based tracks, staves by id).
+fn view_tracks_text(tracks: &[ViewTrack]) -> String {
+    tracks
+        .iter()
+        .map(|entry| {
+            format!(
+                "{}:{}",
+                entry.track.get().saturating_add(1),
+                entry.staves.id()
+            )
+        })
         .collect::<Vec<_>>()
         .join(",")
 }

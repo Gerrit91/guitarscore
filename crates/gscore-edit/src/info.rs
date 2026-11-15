@@ -1005,6 +1005,68 @@ pub(crate) const SET_FEEL: CommandInfo = CommandInfo {
     params: &[MEASURE, FEEL],
 };
 
+const VIEW: ParamInfo = ParamInfo {
+    name: "view",
+    required: true,
+    default: None,
+    help: "Score view, 1-based (one past the last adds a view)",
+};
+
+const VIEW_NAME: ParamInfo = ParamInfo {
+    name: "name",
+    required: true,
+    default: None,
+    help: "The view's name",
+};
+
+const VIEW_TRACKS: ParamInfo = ParamInfo {
+    name: "tracks",
+    required: true,
+    default: None,
+    help: "The tracks shown, top to bottom, each with its staves: 3:tab,1:both",
+};
+
+const HIDE_EMPTY: ParamInfo = ParamInfo {
+    name: "hide_empty",
+    required: false,
+    default: Some("false"),
+    help: "true to leave a track out of a line where it has no note",
+};
+
+const VISIBLE: ParamInfo = ParamInfo {
+    name: "visible",
+    required: true,
+    default: None,
+    help: "true or false",
+};
+
+pub(crate) const SET_SCORE_VIEW: CommandInfo = CommandInfo {
+    id: "set_score_view",
+    aliases: &[],
+    label: "Set a score view",
+    help: "Sets a named view of the score: which tracks it shows, in what order, with \
+           which staves, and whether empty staves are left out; one past the last view adds \
+           one. The app saves the views in the song's notes.",
+    params: &[VIEW, VIEW_NAME, VIEW_TRACKS, HIDE_EMPTY],
+};
+
+pub(crate) const DELETE_SCORE_VIEW: CommandInfo = CommandInfo {
+    id: "delete_score_view",
+    aliases: &[],
+    label: "Delete a score view",
+    help: "Removes a named view of the score; the tracks stay as they are.",
+    params: &[VIEW],
+};
+
+pub(crate) const SET_TRACK_VISIBLE: CommandInfo = CommandInfo {
+    id: "set_track_visible",
+    aliases: &[],
+    label: "Show or hide a track in all tracks",
+    help: "Whether the track is shown when all tracks are shown together (Guitar Pro's eye \
+           in its track list); one track always stays shown.",
+    params: &[TRACK, VISIBLE],
+};
+
 pub(crate) const SET_DIRECTIONS: CommandInfo = CommandInfo {
     id: "set_directions",
     aliases: &["set_direction"],
@@ -1149,6 +1211,9 @@ pub const COMMANDS: &[CommandInfo] = &[
     SET_FEEL,
     SET_FERMATA,
     SET_DIRECTIONS,
+    SET_SCORE_VIEW,
+    DELETE_SCORE_VIEW,
+    SET_TRACK_VISIBLE,
     SET_CLEF,
     SET_FREE_TIME,
     SET_SIMILE_MARK,

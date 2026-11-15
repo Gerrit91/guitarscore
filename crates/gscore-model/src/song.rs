@@ -25,6 +25,8 @@ pub struct Song {
     /// model. It has no field in the Guitar Pro format and is saved in the song's notes;
     /// `None` when the song brings none and follows the program's own settings.
     sound_state: Option<String>,
+    /// GuitarScore's score views, tracks by their key (see [`crate::score_views`]).
+    pub(crate) score_views: Vec<crate::score_views::StoredView>,
 }
 
 /// The source of measure stamps, shared by all songs so a stamp is never reused.
@@ -37,7 +39,8 @@ fn new_stamp() -> u64 {
 
 impl Song {
     /// Wraps Guitar Pro song data after checking the invariants.
-    pub(crate) fn from_inner(inner: gscore_gp::Song) -> Result<Self, ModelError> {
+    pub(crate) fn from_inner(mut inner: gscore_gp::Song) -> Result<Self, ModelError> {
+        crate::score_views::key_tracks(&mut inner);
         let stamps = inner.measure_headers.iter().map(|_| new_stamp()).collect();
         // A song saved transposed plays transposed when it is opened again.
         let transpose_active = inner
@@ -49,6 +52,7 @@ impl Song {
             stamps,
             transpose_active,
             sound_state: None,
+            score_views: Vec::new(),
         };
         validate::check(&song)?;
         Ok(song)

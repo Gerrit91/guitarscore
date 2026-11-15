@@ -205,6 +205,8 @@ pub(super) fn duplicate(song: &mut Song, at: TrackIndex) -> Result<Change, Model
         copy.name = unique_name(inner, &source.name);
         copy.short_name = String::new();
         copy.channel_index = channel;
+        // A copy is a track of its own: no view shows it until it is added.
+        copy.session_key = crate::score_views::new_track_key();
         let to = TrackIndex::new(at.get().saturating_add(1));
         inner.tracks.insert(to.get(), copy);
         renumber(inner)?;

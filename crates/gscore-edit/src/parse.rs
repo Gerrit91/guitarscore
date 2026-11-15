@@ -12,7 +12,7 @@ use gscore_model::{
     BeatEffect, BeatIndex, BeatPosition, Clef, Direction, Dynamic, Feel, Fermata, Fret,
     MAX_BARS_PER_SYSTEM, MAX_STRINGS, MAX_TEMPO, MeasureIndex, NoteEffect, NoteValue, PageSetup,
     Pitch, Repeat, SimileMark, SongTextField, StringNumber, SystemBreak, TrackIndex, TrackStaves,
-    VoiceIndex,
+    ViewTrack, VoiceIndex,
 };
 
 use crate::command::Command;
@@ -539,6 +539,50 @@ fn build(info: &'static CommandInfo, args: &mut Args) -> Result<Command, ParseEr
                 directions,
             })
         }
+        "set_score_view" => {
+            let view = required_position(args, "view")?;
+            let name = text_arg(args, "name")?;
+            let raw = args.required("tracks")?;
+            let mut tracks = Vec::new();
+            for entry in raw.split(',') {
+                let parsed = entry.split_once(':').and_then(|(track, staves)| {
+                    let track: usize = track.parse().ok()?;
+                    Some(ViewTrack {
+                        track: TrackIndex::new(track.checked_sub(1)?),
+                        staves: TrackStaves::from_id(staves)?,
+                    })
+                });
+                tracks.push(parsed.ok_or_else(|| {
+                    bad(
+                        args.command,
+                        "tracks",
+                        &raw,
+                        "tracks with their staves, as 3:tab,1:both",
+                    )
+                })?);
+            }
+            let hide_empty_staves = match args.take("hide_empty") {
+                None => false,
+                Some(text) => match text.as_str() {
+                    "true" | "yes" | "1" => true,
+                    "false" | "no" | "0" => false,
+                    _ => return Err(bad(args.command, "hide_empty", &text, "true or false")),
+                },
+            };
+            Ok(Command::SetScoreView {
+                view,
+                name,
+                tracks,
+                hide_empty_staves,
+            })
+        }
+        "delete_score_view" => Ok(Command::DeleteScoreView {
+            view: required_position(args, "view")?,
+        }),
+        "set_track_visible" => Ok(Command::SetTrackVisible {
+            track: TrackIndex::new(optional_position(args, "track")?.unwrap_or(0)),
+            visible: bool_arg(args, "visible")?,
+        }),
         "set_clef" => {
             let text = args.required("clef")?;
             let clef = Clef::from_id(&text)

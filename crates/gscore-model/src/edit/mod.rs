@@ -23,6 +23,7 @@ mod notes;
 mod page;
 mod song;
 mod tracks;
+mod views;
 
 pub use crate::validate::MAX_STRINGS;
 pub use design::{DESIGN_SCALE_RANGE, DESIGN_SPACING_RANGE, ScaleScope};
@@ -181,6 +182,12 @@ enum ChangeKind {
     /// The song-wide sound state (GuitarScore's opaque payload: the mixer's buses, ...)
     /// changed.
     SongSoundState { previous: Option<String> },
+    /// The score views changed; `previous` is the whole list.
+    ScoreViews {
+        previous: Vec<crate::score_views::StoredView>,
+    },
+    /// Whether a track is shown when all are shown together changed.
+    TrackVisible { at: TrackIndex, previous: bool },
     /// A track's mute or solo flag changed.
     TrackFlag {
         at: TrackIndex,
@@ -430,7 +437,8 @@ impl Change {
             ChangeKind::NoteCleared { .. } => size_of::<GpNote>(),
             ChangeKind::DurationSet { .. }
             | ChangeKind::BeatInserted { .. }
-            | ChangeKind::MeasureInserted { .. } => 0,
+            | ChangeKind::MeasureInserted { .. }
+            | ChangeKind::TrackVisible { .. } => 0,
             ChangeKind::BeatRemoved { beat, .. } => beat_size(beat),
             ChangeKind::MeasureRemoved { measures, .. } => {
                 size_of::<GpMeasureHeader>().saturating_add(measures.iter().map(measure_size).sum())
@@ -529,6 +537,18 @@ impl Change {
             | ChangeKind::Clef { .. }
             | ChangeKind::SimileMark { .. } => 0,
             ChangeKind::Directions { previous, .. } => previous.len(),
+            ChangeKind::ScoreViews { previous } => {
+                previous
+                    .iter()
+                    .map(|view| {
+                        view.name.len().saturating_add(
+                            view.tracks
+                                .len()
+                                .saturating_mul(size_of::<(u64, crate::TrackStaves)>()),
+                        )
+                    })
+                    .sum()
+            }
             ChangeKind::Fermata { previous, .. } => previous
                 .iter()
                 .map(|(kind, offset)| kind.len().saturating_add(offset.len()))
@@ -767,6 +787,14 @@ impl Song {
                 self.replace_sound_state(previous.clone());
                 Ok(())
             }
+            ChangeKind::ScoreViews { previous } => {
+                self.restore_score_views(previous);
+                Ok(())
+            }
+            ChangeKind::TrackVisible { at, previous } => self.edit_track_settings(|inner| {
+                track_mut(inner, *at)?.visible = *previous;
+                Ok(())
+            }),
             ChangeKind::TrackFlag { at, flag, previous } => self.edit_track_settings(|inner| {
                 let track = track_mut(inner, *at)?;
                 match flag {
@@ -1309,3 +1337,5 @@ pub use transpose::MAX_TRANSPOSE;
 mod track_tests;
 #[cfg(test)]
 mod transpose_tests;
+#[cfg(test)]
+mod view_tests;
