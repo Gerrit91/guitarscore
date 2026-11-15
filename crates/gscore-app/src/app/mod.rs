@@ -173,9 +173,11 @@ pub struct GuitarScoreApp {
     /// A block or chain copied in a chain board, for pasting into a track, a drum part or
     /// the master (kept while the app runs).
     sound_clipboard: Option<sound_chain::SoundClip>,
-    /// While the Sound chain window's A/B button is held: the track and the tone it plays
-    /// instead of its own (the tone as the window found it). Only what is heard changes.
-    compare_tone: Option<(usize, crate::chain_settings::Tone)>,
+    /// While the Sound chain window's A/B is on: the track and what it plays instead of its
+    /// own tone, as the window found it: that tone, or `None` when the track had no tone of
+    /// its own then (it plays its built-in one, as playback gives it). Only what is heard
+    /// changes.
+    compare_tone: Option<(usize, Option<crate::chain_settings::Tone>)>,
     /// The reverb bus's window, while it is open.
     reverb_bus_window: Option<reverb_bus_window::ReverbBusWindow>,
     /// The mixer's compressor bus window, while it is open.

@@ -567,9 +567,16 @@ impl GuitarScoreApp {
             .enumerate()
             .filter_map(|(track, sound)| Some((track, sound.tone.as_ref()?.tone()?)))
             .collect();
-        // The A/B button held: the track plays the tone it is compared with.
-        if let Some((track, tone)) = &self.compare_tone {
-            tones.insert(*track, tone.clone());
+        // A/B on: the track plays the tone it is compared with (its built-in one when it had
+        // no tone of its own, through playback's own default, levelled as it was heard).
+        match &self.compare_tone {
+            Some((track, Some(tone))) => {
+                tones.insert(*track, tone.clone());
+            }
+            Some((track, None)) => {
+                tones.remove(track);
+            }
+            None => {}
         }
         // A track made with a Guitar Pro sound the tone library maps to a tone starts on
         // that tone instead of its program's.

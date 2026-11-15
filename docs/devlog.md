@@ -5875,3 +5875,18 @@ All other presets and the built-in models were already under the cap and are unc
 up to rounding. Regression test: `a_high_note_keeps_the_sustain_its_model_asks_for`.
 Bench: the whole 15-track modelled engine still renders one second in 397 ms (budget
 500 ms); no per-sample work was added (the fallback runs only when the design changes).
+
+## 2026-11-15 — A/B levels, tone files as JSON, icons in the board's menus
+
+- A/B traced during playback (a test playing the song on the built-in synth): the old
+  tone reaches the synthesizer when A/B goes on and the new one when it goes off. One gap
+  closed: a track that had no tone of its own when the window opened got its built-in
+  tone back as a tone of its own, which skips playback's levelling of built-in tones; now
+  A/B lets it fall back to the built-in tone as it was heard (`compare_tone` keeps `None`
+  for that).
+- Tone files are `.json` (was `.gstone`); the import still checks the file's format, so
+  another JSON file is refused with a message.
+- The board's menus: "Paste block" in an empty place's "+" menu has the paste icon in the
+  column of the blocks' symbols; a block's right-click menu has the trash can on Remove,
+  the copy icon on Copy block and the paste icon on Paste block, all rows aligned
+  (`menu_row`).

@@ -1,4 +1,4 @@
-//! A single tone in a file of its own (`.gstone`), for sharing one sound: the strings'
+//! A single tone in a file of its own (a `.json` file), for sharing one sound: the strings'
 //! sound, the chain after them and what plays them, as a saved tone keeps them, plus the
 //! impulse responses (WAV files) its blocks load, so the tone sounds the same on another
 //! machine. JSON, with the WAV files in Base64 (the same as the song's own state uses).
@@ -14,7 +14,7 @@ use crate::settings::ChainPreset;
 
 /// The file name extension of a tone file.
 #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
-pub(crate) const EXTENSION: &str = "gstone";
+pub(crate) const EXTENSION: &str = "json";
 /// What the file says it is, so another JSON file is not taken for a tone.
 const FORMAT: &str = "guitarscore-tone";
 /// The format's version; a newer file is refused with a message rather than misread.

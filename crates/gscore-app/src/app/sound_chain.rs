@@ -79,6 +79,8 @@ pub(super) struct SoundChainWindow {
     strings_tab: super::string_sound::StringsTab,
     /// The track's tone as the window found it: what A/B switches to.
     reference: Option<Tone>,
+    /// Whether the track had a tone of its own then (else it played its built-in one).
+    reference_own: bool,
     /// A/B is on: the track plays (and the window shows) the tone as the window found it,
     /// until A/B is clicked again.
     comparing: bool,
@@ -605,7 +607,7 @@ fn clip_buttons(
                 ui,
                 Icon::Import,
                 "Import tone",
-                "Import a tone from a file (.gstone) into your saved tones, and play it on this \
+                "Import a tone from a file (.json) into your saved tones, and play it on this \
                  track",
             )
             .clicked()
@@ -616,7 +618,7 @@ fn clip_buttons(
                 ui,
                 Icon::Export,
                 "Export tone",
-                "Export this tone to a file (.gstone) to share it: the strings' sound, the chain \
+                "Export this tone to a file (.json) to share it: the strings' sound, the chain \
                  and the impulse responses it loads",
             )
             .clicked()
@@ -967,6 +969,31 @@ pub(super) fn block_menu_item(
     label: &str,
     tip: &str,
 ) -> egui::Response {
+    menu_row(ui, label, tip, |painter, rect, color| {
+        super::block_icons::paint(painter, rect, choice, color);
+    })
+}
+
+/// One row of a board's menu with one of the app's icons (copy, paste) beside its name, in
+/// the same column as the blocks' symbols.
+fn icon_menu_item(
+    ui: &mut egui::Ui,
+    icon: super::icons::Icon,
+    label: &str,
+    tip: &str,
+) -> egui::Response {
+    menu_row(ui, label, tip, |painter, rect, color| {
+        super::icons::paint(painter, rect, color, icon);
+    })
+}
+
+/// A menu row: a symbol drawn by `symbol` in an 18-point square on the left, then `label`.
+fn menu_row(
+    ui: &mut egui::Ui,
+    label: &str,
+    tip: &str,
+    symbol: impl FnOnce(&egui::Painter, Rect, Color32),
+) -> egui::Response {
     let height = ui.spacing().interact_size.y.max(22.0);
     // A fixed width: a menu grows to whatever its rows ask for.
     let width = 150.0;
@@ -980,13 +1007,13 @@ pub(super) fn block_menu_item(
         ui.painter()
             .rect_filled(rect, visuals.corner_radius, visuals.weak_bg_fill);
     }
-    let symbol = Rect::from_center_size(
+    let square = Rect::from_center_size(
         pos2(rect.left() + 4.0 + 9.0, rect.center().y),
         vec2(18.0, 18.0),
     );
-    super::block_icons::paint(ui.painter(), symbol, choice, visuals.text_color());
+    symbol(ui.painter(), square, visuals.text_color());
     ui.painter().text(
-        pos2(symbol.right() + 8.0, rect.center().y),
+        pos2(square.right() + 8.0, rect.center().y),
         Align2::LEFT_CENTER,
         label,
         egui::TextStyle::Button.resolve(ui.style()),
@@ -1419,10 +1446,13 @@ pub(super) fn board(
                 // keeps showing what it showed.
                 egui::Popup::menu(&response).show(|ui| {
                     if let Some(SoundClip::Block(_)) = clipboard
-                        && ui
-                            .button("Paste block")
-                            .on_hover_text("Put the copied block in this place")
-                            .clicked()
+                        && icon_menu_item(
+                            ui,
+                            super::icons::Icon::Paste,
+                            "Paste block",
+                            "Put the copied block in this place",
+                        )
+                        .clicked()
                     {
                         actions.paste_block = Some(place);
                         ui.close();
@@ -1446,58 +1476,72 @@ pub(super) fn board(
                     } else {
                         "Let the sound pass this block unchanged"
                     };
-                    if ui
-                        .button(if bypassed { "Hear it again" } else { "Bypass" })
-                        .on_hover_text(tip)
-                        .clicked()
+                    if menu_row(
+                        ui,
+                        if bypassed { "Hear it again" } else { "Bypass" },
+                        tip,
+                        |_, _, _| {},
+                    )
+                    .clicked()
                     {
                         actions.bypass = Some(place);
                         ui.close();
                     }
-                    if ui
-                        .button("Remove")
-                        .on_hover_text("Empty this place of the board")
-                        .clicked()
+                    if icon_menu_item(
+                        ui,
+                        super::icons::Icon::Delete,
+                        "Remove",
+                        "Empty this place of the board",
+                    )
+                    .clicked()
                     {
                         actions.remove = Some(place);
                         ui.close();
                     }
                     ui.separator();
                     if let Some(block) = block
-                        && ui
-                            .button("Copy block")
-                            .on_hover_text(
-                                "Keep this block to paste into another place, track or part",
-                            )
-                            .clicked()
+                        && icon_menu_item(
+                            ui,
+                            super::icons::Icon::Copy,
+                            "Copy block",
+                            "Keep this block to paste into another place, track or part",
+                        )
+                        .clicked()
                     {
                         actions.copy = Some(SoundClip::Block(block.clone()));
                         ui.close();
                     }
-                    if ui
-                        .button("Copy chain")
-                        .on_hover_text(
-                            "Keep every block of this chain to paste into another track or part",
-                        )
-                        .clicked()
+                    if menu_row(
+                        ui,
+                        "Copy chain",
+                        "Keep every block of this chain to paste into another track or part",
+                        |_, _, _| {},
+                    )
+                    .clicked()
                     {
                         actions.copy = Some(SoundClip::Chain(Box::new(chain.clone())));
                         ui.close();
                     }
                     if let Some(SoundClip::Block(_)) = clipboard
-                        && ui
-                            .button("Paste block")
-                            .on_hover_text("Replace this place with the copied block")
-                            .clicked()
+                        && icon_menu_item(
+                            ui,
+                            super::icons::Icon::Paste,
+                            "Paste block",
+                            "Replace this place with the copied block",
+                        )
+                        .clicked()
                     {
                         actions.paste_block = Some(place);
                         ui.close();
                     }
                     if let Some(SoundClip::Chain(_)) = clipboard
-                        && ui
-                            .button("Paste chain")
-                            .on_hover_text("Replace every place of this chain with the copied one")
-                            .clicked()
+                        && menu_row(
+                            ui,
+                            "Paste chain",
+                            "Replace every place of this chain with the copied one",
+                            |_, _, _| {},
+                        )
+                        .clicked()
                     {
                         actions.paste_chain = true;
                         ui.close();
@@ -1968,6 +2012,7 @@ impl GuitarScoreApp {
                     part: None,
                     strings_tab: super::string_sound::StringsTab::default(),
                     reference: None,
+                    reference_own: false,
                     comparing: false,
                     programs: super::tone_picker::TonePickerState::new(),
                     board_keys: false,
@@ -2086,7 +2131,7 @@ impl GuitarScoreApp {
         }
     }
 
-    /// What the Import tone dialog does with the file it read (a `.gstone` file's bytes):
+    /// What the Import tone dialog does with the file it read (a tone file's bytes (JSON)):
     /// its tone joins the saved tones (under a name of its own if another saved tone has
     /// its name already) and, while the Sound chain window is open, plays on its track.
     /// Its impulse responses are kept in an `impulses` folder beside the settings file.
@@ -2267,6 +2312,10 @@ impl GuitarScoreApp {
         // What A/B compares with: the tone as the window found it.
         if window.reference.is_none() {
             window.reference = Some(tone.clone());
+            window.reference_own = self
+                .tabs
+                .get(self.active)
+                .is_some_and(|tab| tab.track_sound(window.track).tone.is_some());
         }
         // A/B has something to compare when the tone changed since (not for a drum part's
         // own chain); while it is on, the window shows the tone as it was.
@@ -2896,7 +2945,7 @@ impl GuitarScoreApp {
         let comparing = window.comparing && !actions.close;
         if comparing && self.compare_tone.is_none() {
             if let Some(reference) = window.reference.clone() {
-                self.compare_tone = Some((track, reference));
+                self.compare_tone = Some((track, window.reference_own.then_some(reference)));
                 self.sync_track_tones();
             }
         } else if !comparing {

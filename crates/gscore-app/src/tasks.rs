@@ -562,7 +562,7 @@ impl Tasks {
             let extension = crate::tone_file::EXTENSION;
             let Some(path) = rfd::FileDialog::new()
                 .set_title("Export the tone")
-                .add_filter("GuitarScore tone", &[extension])
+                .add_filter("GuitarScore tone (JSON)", &[extension])
                 .set_file_name(format!("{name}.{extension}"))
                 .save_file()
             else {
@@ -590,7 +590,7 @@ impl Tasks {
         self.spawn("tone import dialog", ctx, move || {
             let Some(path) = rfd::FileDialog::new()
                 .set_title("Import a tone")
-                .add_filter("GuitarScore tone", &[crate::tone_file::EXTENSION])
+                .add_filter("GuitarScore tone (JSON)", &[crate::tone_file::EXTENSION])
                 .pick_file()
             else {
                 return Event::PickedTone(None);

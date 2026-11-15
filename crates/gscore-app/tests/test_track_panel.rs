@@ -1624,7 +1624,9 @@ fn a_b_switches_to_the_tone_as_it_was_and_back() {
         .click();
     harness.run();
     harness.run();
-    assert_ne!(heard(&harness), Some(4), "A/B plays the tone as it was");
+    // The track had no tone of its own when the window opened: A/B gives it back its
+    // built-in tone, as playback levels it.
+    assert_eq!(heard(&harness), None, "A/B plays the tone as it was");
     assert_eq!(knob(&harness), before, "and shows it");
     assert_eq!(
         harness.state().document().unwrap().editor().revision(),
