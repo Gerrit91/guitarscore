@@ -5890,3 +5890,13 @@ Bench: the whole 15-track modelled engine still renders one second in 397 ms (bu
   column of the blocks' symbols; a block's right-click menu has the trash can on Remove,
   the copy icon on Copy block and the paste icon on Paste block, all rows aligned
   (`menu_row`).
+
+## 2026-11-15 — The Sound chain window's copy menu and paste
+
+The header's copy icon opens a menu: Copy block (the block selected on the board; greyed
+when the selection is no block) or Copy chain. The paste icon puts in whatever was copied
+last: a block into the selected place, or into the first free place when the selection is
+no place (the source, In or Out); a chain over the whole board. It is greyed while the
+clipboard is empty, and its tip says which it will do. The same for a drum part's board.
+Tests: `the_header_copies_the_selected_block_and_pastes_what_was_copied`; the copy test
+between tracks and a drum part uses the header's menu and paste.

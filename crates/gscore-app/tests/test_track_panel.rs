@@ -619,10 +619,11 @@ fn a_block_and_a_chain_are_copied_between_tracks_and_a_drum_part() {
         "pasting a block marks the song modified"
     );
 
-    // Copy the whole chain of this track, and paste it into a drum part.
-    harness
-        .get_by_role_and_label(egui::accesskit::Role::Button, "Copy chain")
-        .click();
+    // Copy the whole chain of this track (the header's copy menu), and paste it into a drum
+    // part (the header's paste puts in what was copied).
+    harness.get_by_label("Copy").click();
+    harness.run();
+    harness.get_by_label("Copy chain").click();
     harness.run();
     let copied_chain: ChainSetting = harness
         .state()
@@ -634,7 +635,7 @@ fn a_block_and_a_chain_are_copied_between_tracks_and_a_drum_part() {
     open_sound_chain(&mut harness);
     harness.get_by_label("Kick").click();
     harness.run();
-    harness.get_by_label("Paste chain").click();
+    harness.get_by_label("Paste").click();
     harness.run();
     let kick = drum_part_chain(&harness, "kick").expect("the Kick's chain");
     assert_eq!(kick, copied_chain, "the whole chain came over");
@@ -1322,6 +1323,30 @@ fn a_room_block_starts_on_the_built_in_room() {
     harness.get_by_label("Built-in room");
     harness.get_by_label("Load file…");
     harness.snapshot("sound_chain_room");
+}
+
+/// The header's copy menu copies the selected block; its paste puts the block into the
+/// selected place, or the first free one when no place is selected.
+#[test]
+fn the_header_copies_the_selected_block_and_pastes_what_was_copied() {
+    let mut harness = app_with("basic/note_lengths.gp");
+    open_sound_chain(&mut harness);
+    // Nothing on the clipboard yet: nothing to paste.
+    assert!(harness.get_by_label("Paste").accesskit_node().is_disabled());
+    harness.get_by_label("Block 1: Amp").click();
+    harness.run();
+    harness.get_by_label("Copy").click();
+    harness.run();
+    harness.get_by_label("Copy block").click();
+    harness.run();
+    // The input trim's box is no place: the block goes into the first free one.
+    let first = empty_block_index(&harness);
+    harness.get_by_label("Block in: input trim").click();
+    harness.run();
+    harness.get_by_label("Paste").click();
+    harness.run();
+    harness.run();
+    harness.get_by_label(&format!("Block {first}: Amp"));
 }
 
 #[test]

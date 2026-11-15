@@ -166,10 +166,13 @@ struct Actions {
     /// string and its name, since names are unique within a kind only).
     save_preset: Option<String>,
     delete_preset: Option<(String, String)>,
-    /// The header's copy button: the whole chain shown goes on the clipboard.
+    /// The header's copy menu: the selected block, or the whole chain shown, goes on the
+    /// clipboard.
+    copy_block: bool,
     copy_chain: bool,
-    /// The header's paste button: the clipboard's chain replaces the one shown.
-    paste_chain: bool,
+    /// The header's paste button: what the clipboard holds goes in (a block into the
+    /// selected place or the first free one, a chain over the whole board).
+    paste: bool,
     /// A/B was clicked: switch between the tone as the window found it and as it is now.
     toggle_compare: bool,
     /// Export the track's tone to a file, under this name.
@@ -442,8 +445,8 @@ fn strings_editor(
 struct ShownPreset {
     program: u8,
     kind: StringKind,
-    /// Whether the clipboard holds a chain to paste.
-    chain_clip: bool,
+    /// What the header's copy and paste buttons can do.
+    clip: ClipState,
     /// Whether the tone differs from the one the window found (A/B has something to
     /// compare).
     compare: bool,
@@ -560,10 +563,19 @@ struct ToneRowButtons<'a> {
     name: &'a str,
 }
 
+/// What the header's copy and paste buttons can do: what the clipboard holds, and whether
+/// a block is selected to copy.
+#[derive(Debug, Clone, Copy)]
+struct ClipState {
+    /// `Some(true)`: a chain; `Some(false)`: a block; `None`: nothing.
+    clipboard: Option<bool>,
+    block_selected: bool,
+}
+
 /// `tone`: the A/B, export and import buttons too, for a track's own tone.
 fn clip_buttons(
     ui: &mut egui::Ui,
-    has_chain_clip: bool,
+    clip: ClipState,
     tone: Option<ToneRowButtons<'_>>,
     actions: &mut Actions,
 ) {
@@ -571,33 +583,66 @@ fn clip_buttons(
     // While A/B shows the tone as it was, only A/B itself acts: that tone is not edited.
     let comparing = tone.as_ref().is_some_and(|tone| tone.comparing);
     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+        // Paste puts in whatever was copied last: a block, or a whole chain.
         let paste = ui
-            .add_enabled_ui(has_chain_clip && !comparing, |ui| {
+            .add_enabled_ui(clip.clipboard.is_some() && !comparing, |ui| {
                 icons::toolbar_button(
                     ui,
                     Icon::Paste,
-                    "Paste chain",
-                    "Replace every block of this chain with the copied chain",
+                    "Paste",
+                    match clip.clipboard {
+                        Some(true) => "Paste the copied chain: it replaces every block of this one",
+                        Some(false) => {
+                            "Paste the copied block into the selected place (or the first free \
+                             one)"
+                        }
+                        None => "Copy a block or a chain first",
+                    },
                 )
             })
             .inner;
         if paste.clicked() {
-            actions.paste_chain = true;
+            actions.paste = true;
         }
+        // Copy offers the selected block or the whole chain.
         let copy = ui
             .add_enabled_ui(!comparing, |ui| {
                 icons::toolbar_button(
                     ui,
                     Icon::Copy,
-                    "Copy chain",
-                    "Copy every block of this chain, to paste into another track, part or the \
-                     master",
+                    "Copy",
+                    "Copy the selected block or the whole chain, to paste into another place, \
+                     track, part or the master",
                 )
             })
             .inner;
-        if copy.clicked() {
-            actions.copy_chain = true;
-        }
+        egui::Popup::menu(&copy).show(|ui| {
+            let block = ui
+                .add_enabled_ui(clip.block_selected, |ui| {
+                    icon_menu_item(
+                        ui,
+                        Icon::Copy,
+                        "Copy block",
+                        "Copy the block selected on the board",
+                    )
+                })
+                .inner;
+            if block.clicked() {
+                actions.copy_block = true;
+                ui.close();
+            }
+            if menu_row(
+                ui,
+                "Copy chain",
+                "Copy every block of this chain",
+                |_, _, _| {},
+            )
+            .clicked()
+            {
+                actions.copy_chain = true;
+                ui.close();
+            }
+        });
         let Some(tone) = tone else {
             return;
         };
@@ -668,7 +713,7 @@ fn preset_row(
     window: &mut SoundChainWindow,
     actions: &mut Actions,
 ) {
-    let (program, kind, has_chain_clip) = (shown.program, shown.kind, shown.chain_clip);
+    let (program, kind, clip) = (shown.program, shown.kind, shown.clip);
     let current = super::tone_picker::current_tone_choice(tone, default_tone, presets);
     // The saved tone being worked on, if one was chosen or saved for this preset.
     let working = window
@@ -763,7 +808,7 @@ fn preset_row(
         });
         clip_buttons(
             ui,
-            has_chain_clip,
+            clip,
             Some(ToneRowButtons {
                 compare: shown.compare,
                 comparing: shown.comparing,
@@ -2365,7 +2410,25 @@ impl GuitarScoreApp {
             })
             .unwrap_or_default();
         let clipboard = self.sound_clipboard.clone();
-        let has_chain_clip = matches!(clipboard, Some(SoundClip::Chain(_)));
+        // What the header's copy and paste can do: the board shows the drum part's chain or
+        // the tone's, and a selected place may hold a block to copy.
+        let clip = ClipState {
+            clipboard: clipboard
+                .as_ref()
+                .map(|clip| matches!(clip, SoundClip::Chain(_))),
+            block_selected: window
+                .selected
+                .checked_sub(1)
+                .filter(|place| *place < BLOCKS)
+                .and_then(|place| {
+                    part_chain
+                        .as_ref()
+                        .map_or(&tone.chain, |own| &own.chain)
+                        .blocks
+                        .get(place)
+                })
+                .is_some_and(|block| block.choice != BlockChoice::Empty),
+        };
         // The track's input trim and the level before its chain, for setting how hard an
         // amp or a compressor is driven.
         let trim_db = self
@@ -2442,7 +2505,7 @@ impl GuitarScoreApp {
                                     {
                                         actions.part_room = Some(room);
                                     }
-                                    clip_buttons(ui, has_chain_clip, None, &mut actions);
+                                    clip_buttons(ui, clip, None, &mut actions);
                                 });
                             } else {
                                 let default_tone = self.playback.track_default_tone_name(
@@ -2455,7 +2518,7 @@ impl GuitarScoreApp {
                                     ShownPreset {
                                         program: player.program,
                                         kind,
-                                        chain_clip: has_chain_clip,
+                                        clip,
                                         compare: can_compare,
                                         comparing,
                                         basis: self
@@ -2548,14 +2611,41 @@ impl GuitarScoreApp {
                             if let Some(clip) = board.copy {
                                 actions.copy = Some(clip);
                             }
-                            // The header's copy and paste buttons act on the whole chain shown.
+                            // The header's copy menu: the selected block or the whole chain.
+                            let selected_place = window
+                                .selected
+                                .checked_sub(1)
+                                .filter(|place| *place < BLOCKS);
+                            if actions.copy_block
+                                && let Some(block) = selected_place
+                                    .and_then(|place| chain.blocks.get(place))
+                                    .filter(|block| block.choice != BlockChoice::Empty)
+                            {
+                                actions.copy = Some(SoundClip::Block(block.clone()));
+                            }
                             if actions.copy_chain {
                                 actions.copy = Some(SoundClip::Chain(Box::new(chain.clone())));
                             }
-                            if actions.paste_chain
-                                && let Some(SoundClip::Chain(copied)) = &clipboard
-                            {
-                                actions.chain = Some(copied.as_ref().clone());
+                            // Its paste: whatever was copied last.
+                            if actions.paste {
+                                match &clipboard {
+                                    Some(SoundClip::Chain(copied)) => {
+                                        actions.chain = Some(copied.as_ref().clone());
+                                    }
+                                    Some(SoundClip::Block(block)) => {
+                                        if let Some(place) =
+                                            selected_place.or_else(|| first_empty(&chain))
+                                        {
+                                            let mut changed = chain.clone();
+                                            if let Some(slot) = changed.blocks.get_mut(place) {
+                                                *slot = block.clone();
+                                            }
+                                            actions.chain = Some(changed);
+                                            window.selected = place.saturating_add(1);
+                                        }
+                                    }
+                                    None => {}
+                                }
                             }
                             if let Some(place) = board.paste_block
                                 && let Some(SoundClip::Block(block)) = &clipboard
