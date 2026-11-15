@@ -5944,3 +5944,20 @@ over.
 Tests: no staff of sixteen guitars runs past its page's bottom margin, the first system's
 tracks go over several pages in order and the next system starts after them; a system that
 fits is not split; the split itself (between tracks only, first page shorter).
+
+## 2026-11-15 — Hiding empty staves: no bars lost, bar repeats kept
+
+- A system where every track rests (a general pause) was drawn with no track at all once
+  empty staves were hidden: its bars vanished from the page and the PDF. Such a system now
+  keeps its first track.
+- A bar holding only a bar-repetition sign (%) counted as empty, so a track repeating its
+  bars was hidden. It counts as music now (`MeasureLayout::has_notes`).
+- Looked at with Ballad.gp (21 tracks, locally only): hiding takes it from 204 pages to 94.
+  Each line holds one 6/4 bar of sixteenths, even for one drum track alone: our spacing,
+  not the hiding (GP7's `ScoreSystemsDefaultLayout` asks for 4 bars per line; we read and
+  keep it, the layout does not use it).
+- GP7's `Content/LayoutConfiguration` (binary; u32, a flag byte 01/03, 0x00, one 0xFFFF
+  per track, a u32 that looks like the selected track) is dropped when we save a GP7 file.
+  The owner is checking what Guitar Pro keeps there (multitrack selection, hidden staves).
+Tests: a repeating track stays and a resting one goes; an all-resting song keeps every
+bar on the page.

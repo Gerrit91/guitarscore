@@ -247,6 +247,19 @@ pub(crate) fn layout_with(
                 .collect()
         })
         .collect();
+    // A system where every track is empty (a general pause) keeps its first track, so its
+    // bars are not lost from the page.
+    let shown_tracks: Vec<Vec<bool>> = shown_tracks
+        .into_iter()
+        .map(|mut shown| {
+            if !shown.contains(&true)
+                && let Some(first) = shown.first_mut()
+            {
+                *first = true;
+            }
+            shown
+        })
+        .collect();
     let shown: Vec<Vec<bool>> = plans
         .iter()
         .enumerate()

@@ -580,23 +580,25 @@ impl MeasureLayout {
         })
     }
 
-    /// Whether any column holds a note (a fret number, a notehead or a grace note), not
-    /// only rests.
+    /// Whether the bar holds music: a note in any column (a fret number, a notehead or a
+    /// grace note), or a bar-repetition sign; not only rests.
     pub(crate) fn has_notes(&self) -> bool {
-        self.columns.iter().any(|column| {
-            !column.graces.is_empty()
-                || column
-                    .items
-                    .iter()
-                    .any(|item| matches!(item, Item::Fret(_)))
-                || column
-                    .notation
-                    .iter()
-                    .chain(&column.slash)
-                    .flatten()
-                    .any(|item| matches!(item, NotationItem::Chord(_)))
-                || column.marks.dead_slapped
-        })
+        // A bar-repetition sign plays the bar before it again: music, not an empty bar.
+        self.simile.is_some()
+            || self.columns.iter().any(|column| {
+                !column.graces.is_empty()
+                    || column
+                        .items
+                        .iter()
+                        .any(|item| matches!(item, Item::Fret(_)))
+                    || column
+                        .notation
+                        .iter()
+                        .chain(&column.slash)
+                        .flatten()
+                        .any(|item| matches!(item, NotationItem::Chord(_)))
+                    || column.marks.dead_slapped
+            })
     }
 
     /// The measure's bar-repetition (simile) mark.
