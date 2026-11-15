@@ -410,3 +410,49 @@ fn a_drum_track_gets_a_tablature_from_its_tablature_switch() {
     assert!(numbers.iter().any(|number| number == "42"), "{numbers:?}");
     assert!(numbers.iter().any(|number| number == "35"), "{numbers:?}");
 }
+
+/// A score view chooses a track's staves in the options; the track keeps its own, and the
+/// cache lays the track out again when the choice changes.
+#[test]
+fn a_views_staves_override_the_tracks_own_also_through_the_cache() {
+    let song = song_with(TrackStaves::NOTATION_AND_TAB);
+    let fonts = Fonts::bundled().unwrap();
+    let track = TrackIndex::new(0);
+    let with = |staves: Option<TrackStaves>| LayoutOptions {
+        track_staves: staves.map(|staves| (track, staves)).into_iter().collect(),
+        ..LayoutOptions::default()
+    };
+    let own = layout_track(&song, track, &with(None), &fonts).unwrap();
+    let notation = layout_track(
+        &song,
+        track,
+        &with(Some(TrackStaves::NOTATION_ONLY)),
+        &fonts,
+    )
+    .unwrap();
+    assert!(fret_numbers(&own) > 0);
+    assert_eq!(fret_numbers(&notation), 0, "the view shows no tab");
+    assert_eq!(
+        song.track(track).unwrap().staves(),
+        TrackStaves::NOTATION_AND_TAB,
+        "the track keeps its own"
+    );
+
+    let mut cache = gscore_layout::LayoutCache::default();
+    let cached = |cache: &mut gscore_layout::LayoutCache, staves| {
+        cache
+            .layout_tracks(&song, &[track], track, &with(staves), &fonts)
+            .unwrap()
+    };
+    // Each choice through one cache draws what a fresh layout of that choice draws.
+    for staves in [
+        Some(TrackStaves::TAB_ONLY),
+        Some(TrackStaves::NOTATION_ONLY),
+        None,
+        Some(TrackStaves::SLASH_ONLY),
+        Some(TrackStaves::NOTATION_ONLY),
+    ] {
+        let fresh = layout_track(&song, track, &with(staves), &fonts).unwrap();
+        assert_eq!(cached(&mut cache, staves).ops, fresh.ops, "{staves:?}");
+    }
+}

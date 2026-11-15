@@ -43,6 +43,9 @@ pub struct LayoutOptions {
     /// Lay the whole score out on one line that scrolls horizontally, instead of breaking
     /// it into systems (the app's horizontal screen view).
     pub single_line: bool,
+    /// The staves a track shows instead of its own (a score view's choice); a track not
+    /// listed shows its own.
+    pub track_staves: Vec<(gscore_model::TrackIndex, gscore_model::TrackStaves)>,
 }
 
 /// With several tracks shown, what happens to a track's staves in a system where it has
@@ -146,8 +149,18 @@ impl LayoutOptions {
             running_header: page.running_header,
             // Which systems a track is drawn in does not change a measure.
             empty_staves: page.empty_staves,
+            // Each staff's cache key holds its own track's staves.
+            track_staves: Vec::new(),
             ..self.clone()
         }
+    }
+
+    /// The staves `track` shows: the options' choice for it, else the track's own.
+    pub fn staves_of(&self, track: &gscore_model::TrackView<'_>) -> gscore_model::TrackStaves {
+        self.track_staves
+            .iter()
+            .find(|(index, _)| *index == track.index())
+            .map_or_else(|| track.staves(), |(_, staves)| *staves)
     }
 
     /// The width between the left and right margins.
@@ -180,6 +193,7 @@ impl Default for LayoutOptions {
             notation_gap: 8.0,
             empty_staves: EmptyStaves::Shown,
             single_line: false,
+            track_staves: Vec::new(),
         }
     }
 }
