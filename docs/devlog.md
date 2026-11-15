@@ -5852,3 +5852,26 @@ track panel, the master's chain and the reverb bus).
 - Tests: the built-in room rings in stereo and dies away; a room without a file plays it
   (chain spec); `a_room_block_starts_on_the_built_in_room` (snapshot); the reverb bus test
   chooses Room without a dialog.
+
+## 2026-11-15 — A dark, high note keeps its sustain
+
+The 80s Lead preset (long sustain, brilliance 0.31 s) died within about a second on high
+solo bends: at fret 19 (988 Hz) the fundamental's 60 dB time was 1.1 s instead of the
+6.1 s asked for, at 1.2-1.3 kHz about 0.2-0.6 s. Cause: a loss filter that damps the highs
+at 2 kHz that quickly takes ~0.7 % off the fundamental per pass at 988 Hz, so the loop
+would have to amplify by 1.006 to keep the asked-for sustain; the loop's gain is capped
+just under 1 (its zero-frequency mode would otherwise grow), so the fundamental decayed
+at the filter's rate instead. The Metal preset's exponent change only masked it (its
+brilliance is long, so it never needed the cap).
+
+The loop now checks the loss filter against the gain cap while it designs it
+(`Loop::update`, the design is cached): when the filter takes too much off the
+fundamental, the string is made less dark — the one-pole's pole solved directly for the
+allowed gain (`one_pole_for_gain`), a palm shelf's zero moved up by bisection — so the
+highs ring longer than asked and the fundamental keeps its sustain. That is the trade the
+palm mute already made at its corner. Measured on the 80s Lead model after: 7.0 s at
+110 Hz, 6.6 s at 494, 6.2 s at 988, 6.0 s at 1.18 kHz, 5.8 s at 1.32 kHz (asked 6.1-7.4).
+All other presets and the built-in models were already under the cap and are unchanged
+up to rounding. Regression test: `a_high_note_keeps_the_sustain_its_model_asks_for`.
+Bench: the whole 15-track modelled engine still renders one second in 397 ms (budget
+500 ms); no per-sample work was added (the fallback runs only when the design changes).

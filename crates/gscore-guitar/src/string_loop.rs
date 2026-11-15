@@ -7,14 +7,19 @@ use std::f32::consts::TAU;
 
 use crate::delay::{DelayLine, MIN_DELAY, Taps};
 use crate::filters::{
-    Allpass, OnePole, allpass_delay, one_pole_delay, one_pole_for_ratio, one_pole_gain,
-    shelf_delay, shelf_for_ratio, shelf_gain,
+    Allpass, OnePole, allpass_delay, one_pole_delay, one_pole_for_gain, one_pole_for_ratio,
+    one_pole_gain, shelf_delay, shelf_for_ratio, shelf_gain,
 };
 
 /// Most allpass stages for stiffness.
 pub(crate) const MAX_STIFFNESS_STAGES: usize = 4;
 /// The frequency the high decay time is measured at, Hz.
 const BRILLIANCE_AT: f32 = 2_000.0;
+/// The most the loop may amplify per pass: the loop's zero-frequency mode must decay, so a
+/// loss filter may not take more off the fundamental than this leaves room for. When the
+/// brilliance asked for would need more, the highs are relaxed instead (see
+/// [`Loop::update`]).
+const MAX_LOOP_GAIN: f32 = 0.999_95;
 
 /// What a loop is tuned to: its pitch, how long its fundamental and its highs around
 /// 2 kHz take to fall 60 dB, its stiffness, and where a palm keeps the low end (`corner`,
@@ -98,7 +103,7 @@ impl Loop {
             let high = (TAU * BRILLIANCE_AT / sample_rate).min(3.0);
             let ratio = per_period(tuning.high_decay) / per_period(tuning.decay);
             let corner = (TAU * tuning.corner / sample_rate).min(3.0);
-            (self.darkness, self.zero) = if high <= w * 1.2 {
+            let (mut darkness, mut zero) = if high <= w * 1.2 {
                 (0.0, 0.0)
             } else if tuning.corner > 0.0 && corner > w && corner < high {
                 // Two equal sections, each with half of the ratio (in dB).
@@ -106,6 +111,43 @@ impl Loop {
             } else {
                 (one_pole_for_ratio(w, high, ratio), 0.0)
             };
+            // The least the loss filter may take off the fundamental if the loop's gain is
+            // to stay under [`MAX_LOOP_GAIN`]. A dark string (its highs at 2 kHz dying
+            // quickly) needs a steep filter, and at a high pitch the fundamental is only an
+            // octave or so below the brilliance, so that filter takes a lot off the
+            // fundamental too; more than the loop can make up. Then the highs ring longer
+            // than asked: the fundamental's sustain is what the player hears (the same
+            // trade the palm mute makes at its corner).
+            let wanted = per_period(tuning.decay) / MAX_LOOP_GAIN;
+            if tuning.corner > 0.0 && darkness > 0.0 {
+                // Two shelf sections, each with the same pole and zero.
+                let wanted = wanted.sqrt().min(1.0);
+                if shelf_gain(darkness, zero, w) < wanted {
+                    if wanted >= 1.0 {
+                        zero = darkness;
+                    } else {
+                        // A larger zero takes less off the fundamental, up to the pole
+                        // itself (where the shelf is flat and its gain is 1).
+                        let (mut lo, mut hi) = (zero, darkness);
+                        for _ in 0..24 {
+                            let mid = 0.5 * (lo + hi);
+                            if shelf_gain(darkness, mid, w) < wanted {
+                                lo = mid;
+                            } else {
+                                hi = mid;
+                            }
+                        }
+                        zero = hi;
+                    }
+                }
+            } else if one_pole_gain(darkness, w) < wanted {
+                // Less dark, so the highs ring longer than asked (the only way to keep the
+                // fundamental's decay).
+                darkness = darkness.min(one_pole_for_gain(w, wanted));
+                zero = zero.min(darkness);
+            }
+            self.darkness = darkness;
+            self.zero = zero;
         }
         let darkness = self.darkness.clamp(0.0, 0.995);
         let zero = self.zero.clamp(0.0, darkness);
@@ -123,7 +165,7 @@ impl Loop {
             self.palm = None;
             (one_pole_gain(darkness, w), one_pole_delay(darkness, w))
         };
-        self.gain = (per_period(tuning.decay) / loss_gain).min(0.999_95);
+        self.gain = (per_period(tuning.decay) / loss_gain).min(MAX_LOOP_GAIN);
         self.stages = tuning.stages.min(MAX_STIFFNESS_STAGES);
         for stage in &mut self.stiffness {
             stage.c = tuning.stiffness;

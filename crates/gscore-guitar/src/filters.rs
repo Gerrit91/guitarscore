@@ -162,6 +162,27 @@ pub(crate) fn one_pole_for_ratio(low: f32, high: f32, ratio: f32) -> f32 {
     (a as f32).clamp(0.0, MAX_ONE_POLE)
 }
 
+/// The [`OnePole`] coefficient whose gain at `w` radians per sample is exactly `gain`
+/// (0 to 1), or 0 when `gain` is 1 or more. The loss filter that keeps a loop's
+/// fundamental at the decay it was asked for when even the design it would pick takes too
+/// much off the fundamental (see [`crate::string_loop`]).
+///
+/// The same solved equation as [`one_pole_for_ratio`], with the low frequency at DC (gain
+/// 1): `q = (1 - G² cos w) / (1 - G²)`, and the root below 1 is
+/// `1 / (q + sqrt(q² - 1))`.
+pub(crate) fn one_pole_for_gain(w: f32, gain: f32) -> f32 {
+    if !(gain.is_finite() && gain > 0.0 && gain < 1.0) || !w.is_finite() {
+        return 0.0;
+    }
+    let squared = f64::from(gain) * f64::from(gain);
+    let q = (1.0 - squared * f64::from(w).cos()) / (1.0 - squared);
+    if !(q.is_finite() && q > 1.0) {
+        return 0.0;
+    }
+    let a = 1.0 / (q + (q * q - 1.0).sqrt());
+    (a as f32).clamp(0.0, MAX_ONE_POLE)
+}
+
 /// The darkest loss filter [`one_pole_for_ratio`] gives.
 const MAX_ONE_POLE: f32 = 0.995;
 
@@ -446,6 +467,25 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn the_solved_absolute_loss_is_met() {
+        // The filter whose gain at the fundamental is exactly this (see the string loop's
+        // fallback when a string's brightness would kill its sustain).
+        for w in [0.01_f32, 0.05, 0.13, 0.26] {
+            for gain in [0.999_f32, 0.99, 0.9, 0.5] {
+                let a = one_pole_for_gain(w, gain);
+                let got = one_pole_gain(a, w);
+                assert!(
+                    (got - gain).abs() < 1e-3 || a > 0.99,
+                    "{w} rad, gain {gain}: {got} (a {a})"
+                );
+            }
+        }
+        assert_eq!(one_pole_for_gain(0.1, 1.0), 0.0, "flat is enough");
+        assert_eq!(one_pole_for_gain(0.1, f32::NAN), 0.0);
+        assert_eq!(one_pole_for_gain(0.1, 0.0), 0.0);
     }
 
     #[test]
