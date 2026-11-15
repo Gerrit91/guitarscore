@@ -1987,7 +1987,7 @@
       "kind": "electric",
       "sound": {
         "sustain": 6.334914,
-        "sustain_exponent": 1.35,
+        "sustain_exponent": 0.1423338,
         "brilliance": 2.2155788,
         "stiffness": -0.5681834,
         "stiffness_stages": 0,
@@ -2304,7 +2304,7 @@
       },
       "source": {
         "preset": "Metal Guitar 1",
-        "digest": "08d7a243ff52b37e"
+        "digest": "9715fdb18013c9ec"
       }
     },
     {
