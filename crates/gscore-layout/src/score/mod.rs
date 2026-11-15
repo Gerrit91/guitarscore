@@ -13,18 +13,21 @@
 
 mod draw;
 mod part;
+mod split;
 
+use std::ops::Range;
 use std::sync::Arc;
 
 use gscore_model::{Song, StaffIndex, SystemBreak, TrackIndex, TrackView};
 
 use self::draw::{Drawn, Group, GroupJoin, System, draw_barline_ties, draw_group, draw_part};
 use self::part::Part;
+use self::split::split_system;
 use crate::draw::{ColorToken, DrawOp, Point, Rect};
 use crate::marks::{self, Rows};
 use crate::measure::MeasureLayout;
 use crate::options::EmptyStaves;
-use crate::pages::{PageDecor, place_systems};
+use crate::pages::{PageDecor, PageRoom, place_systems};
 use crate::system::{Breaks, MeasureWidth, break_systems};
 use crate::{
     AlignSource, Fonts, HEADER_GAP, Layout, LayoutError, LayoutOptions, MeasureSource, Places,
@@ -337,37 +340,66 @@ pub(crate) fn layout_with(
                 .collect()
         })
         .collect();
-    let heights: Vec<f32> = rooms
+    // Per system and staff, the height it takes with its room (none when hidden).
+    let part_heights: Vec<Vec<f32>> = rooms
         .iter()
         .zip(&plans)
         .map(|(rooms, plan)| {
             rooms
                 .iter()
                 .zip(&parts)
-                .filter_map(|(room, part)| {
-                    room.map(|(above, below)| {
+                .map(|(room, part)| {
+                    room.map_or(0.0, |(above, below)| {
                         above + part.staves_height(plan.measures.clone()) + below
                     })
                 })
-                .sum()
+                .collect()
         })
         .collect();
-    let page_starts: Vec<bool> = plans
-        .iter()
-        .map(|plan| system_breaks.get(plan.measures.start) == Some(&SystemBreak::Page))
-        .collect();
     let decor = PageDecor::new(song, options);
-    let placement = place_systems(
-        &heights,
-        &page_starts,
-        header_end + HEADER_GAP,
-        options,
-        &decor,
-    );
+    let first_top = header_end + HEADER_GAP;
+    let room = PageRoom::new(first_top, options, &decor);
+    // A system taller than a page goes on over the next pages, split between tracks: each
+    // piece is placed like a system of its own.
+    let staff_tracks: Vec<TrackIndex> = parts.iter().map(|part| part.track).collect();
+    let pieces: Vec<Vec<Range<usize>>> = part_heights
+        .iter()
+        .enumerate()
+        .map(|(system, heights)| {
+            let rooms = room.map(|room| {
+                let first = if system == 0 { room.first } else { room.later };
+                (first, room.later)
+            });
+            split_system(heights, &staff_tracks, rooms)
+        })
+        .collect();
+    let mut heights = Vec::new();
+    let mut page_starts = Vec::new();
+    for ((system, plan), system_pieces) in plans.iter().enumerate().zip(&pieces) {
+        let split = system_pieces.len() > 1;
+        for (piece, range) in system_pieces.iter().enumerate() {
+            heights.push(
+                part_heights
+                    .get(system)
+                    .and_then(|heights| heights.get(range.clone()))
+                    .map_or(0.0, |heights| heights.iter().sum()),
+            );
+            // A split system starts a page, and each of its pieces the next one, so the
+            // reader turns the page to go on with the same bars.
+            page_starts.push(
+                piece > 0
+                    || split
+                    || system_breaks.get(plan.measures.start) == Some(&SystemBreak::Page),
+            );
+        }
+    }
+    let placement = place_systems(&heights, &page_starts, first_top, options, &decor);
 
     let mut drawn: Vec<Drawn> = parts.iter().map(|_| Drawn::new(count)).collect();
     let mut bottom = header_end;
     let mut rightmost = 0.0_f32;
+    // The placed blocks in order: every piece of every system.
+    let mut block = 0_usize;
     for (index, plan) in plans.iter().enumerate() {
         let left = options.margin_left;
         let x = left
@@ -375,97 +407,114 @@ pub(crate) fn layout_with(
                 .get(plan.measures.start)
                 .copied()
                 .unwrap_or_default();
-        let mut y = placement.tops.get(index).copied().unwrap_or(bottom);
-        let mut system_top = None;
-        // Where the track being drawn (its first staff) starts in this system, to join and
-        // name its staves as a group.
-        let mut group_top: Option<f32> = None;
-        for (part_index, (part, drawn)) in parts.iter().zip(&mut drawn).enumerate() {
-            let part_rows = rows
-                .get(index)
-                .and_then(|rows| rows.get(part_index))
-                .copied()
-                .unwrap_or_default();
-            let Some((above, below)) = rooms
-                .get(index)
-                .and_then(|rooms| rooms.get(part_index))
-                .copied()
-                .unwrap_or(Some((0.0, 0.0)))
-            else {
-                // Hidden in this system: it keeps a place without measures, so its
-                // system numbers stay in step with the other staves'.
-                drawn.skip(y);
-                continue;
-            };
-            let top = y + above;
-            system_top.get_or_insert(top);
-            let system = System {
-                index,
-                plan_measures: plan.measures.clone(),
-                stretch: plan.stretch,
-                left,
-                x,
-                top,
-                rows: part_rows,
-                numbers: part_index == first_shown(index),
-                key: keys.get(plan.measures.start).copied().unwrap_or_default(),
-                clef: part
-                    .measures
-                    .get(plan.measures.start)
-                    .map_or(crate::notation::Clef::Treble, |measure| measure.clef()),
-                last_measure: count,
-                // A track with several staves, or one staff shown as several rows, gets one
-                // line around them all, below.
-                join: !grouped.get(part_index).copied().unwrap_or(false),
-            };
-            draw_part(part, &system, drawn, &mut ops);
-            let tallest = part.staves_height(plan.measures.clone());
-            bottom = top + tallest;
-            group_top.get_or_insert(top);
-            y = bottom + below;
-            // The last staff of a track: join its staves and write its name once.
-            let last_of_track = parts
-                .get(part_index.saturating_add(1))
-                .is_none_or(|next| next.track != part.track);
-            if !last_of_track {
-                continue;
-            }
-            let group_top = group_top.take().unwrap_or(top);
-            let name = tracks
-                .iter()
-                .position(|&track| track == part.track)
-                .and_then(|at| names.get(at))
-                .filter(|name| !name.is_empty());
-            draw_group(
-                part,
-                Group {
-                    top: group_top,
-                    last_top: top,
-                    height: bottom - group_top,
-                    join: if several.get(part_index).copied().unwrap_or(false) {
-                        GroupJoin::Brace
-                    } else if row_groups.get(part_index).copied().unwrap_or(false) {
-                        GroupJoin::Bracket
-                    } else {
-                        GroupJoin::None
-                    },
-                },
-                plan.measures.clone(),
-                name,
-                left,
-                fonts,
-                &mut ops,
-            );
-        }
-        // One line joins the staves of all tracks at the system's start.
-        if multi && let Some(system_top) = system_top {
-            let thin = fonts.music.engraving().thin_barline_thickness;
-            ops.push(DrawOp::Line {
-                from: Point::new(left + thin / 2.0, system_top),
-                to: Point::new(left + thin / 2.0, bottom),
-                thickness: thin,
-                color: ColorToken::Barline,
+        for range in pieces.get(index).cloned().unwrap_or_default() {
+            let mut y = placement.tops.get(block).copied().unwrap_or(bottom);
+            block = block.saturating_add(1);
+            let mut system_top = None;
+            // Where the track being drawn (its first staff) starts in this system, to join and
+            // name its staves as a group.
+            let mut group_top: Option<f32> = None;
+            // Bar numbers go over the piece's top staff (each page of a split system has them).
+            let numbered = range.clone().find(|&part_index| {
+                shown
+                    .get(index)
+                    .and_then(|shown| shown.get(part_index))
+                    .copied()
+                    .unwrap_or(true)
             });
+            for (part_index, (part, drawn)) in parts
+                .iter()
+                .zip(&mut drawn)
+                .enumerate()
+                .skip(range.start)
+                .take(range.len())
+            {
+                let part_rows = rows
+                    .get(index)
+                    .and_then(|rows| rows.get(part_index))
+                    .copied()
+                    .unwrap_or_default();
+                let Some((above, below)) = rooms
+                    .get(index)
+                    .and_then(|rooms| rooms.get(part_index))
+                    .copied()
+                    .unwrap_or(Some((0.0, 0.0)))
+                else {
+                    // Hidden in this system: it keeps a place without measures, so its
+                    // system numbers stay in step with the other staves'.
+                    drawn.skip(y);
+                    continue;
+                };
+                let top = y + above;
+                system_top.get_or_insert(top);
+                let system = System {
+                    index,
+                    plan_measures: plan.measures.clone(),
+                    stretch: plan.stretch,
+                    left,
+                    x,
+                    top,
+                    rows: part_rows,
+                    numbers: Some(part_index) == numbered,
+                    key: keys.get(plan.measures.start).copied().unwrap_or_default(),
+                    clef: part
+                        .measures
+                        .get(plan.measures.start)
+                        .map_or(crate::notation::Clef::Treble, |measure| measure.clef()),
+                    last_measure: count,
+                    // A track with several staves, or one staff shown as several rows, gets one
+                    // line around them all, below.
+                    join: !grouped.get(part_index).copied().unwrap_or(false),
+                };
+                draw_part(part, &system, drawn, &mut ops);
+                let tallest = part.staves_height(plan.measures.clone());
+                bottom = top + tallest;
+                group_top.get_or_insert(top);
+                y = bottom + below;
+                // The last staff of a track: join its staves and write its name once.
+                let last_of_track = parts
+                    .get(part_index.saturating_add(1))
+                    .is_none_or(|next| next.track != part.track);
+                if !last_of_track {
+                    continue;
+                }
+                let group_top = group_top.take().unwrap_or(top);
+                let name = tracks
+                    .iter()
+                    .position(|&track| track == part.track)
+                    .and_then(|at| names.get(at))
+                    .filter(|name| !name.is_empty());
+                draw_group(
+                    part,
+                    Group {
+                        top: group_top,
+                        last_top: top,
+                        height: bottom - group_top,
+                        join: if several.get(part_index).copied().unwrap_or(false) {
+                            GroupJoin::Brace
+                        } else if row_groups.get(part_index).copied().unwrap_or(false) {
+                            GroupJoin::Bracket
+                        } else {
+                            GroupJoin::None
+                        },
+                    },
+                    plan.measures.clone(),
+                    name,
+                    left,
+                    fonts,
+                    &mut ops,
+                );
+            }
+            // One line joins the staves of all tracks at the system's (or piece's) start.
+            if multi && let Some(system_top) = system_top {
+                let thin = fonts.music.engraving().thin_barline_thickness;
+                ops.push(DrawOp::Line {
+                    from: Point::new(left + thin / 2.0, system_top),
+                    to: Point::new(left + thin / 2.0, bottom),
+                    thickness: thin,
+                    color: ColorToken::Barline,
+                });
+            }
         }
         let line_width: f32 = plan
             .measures

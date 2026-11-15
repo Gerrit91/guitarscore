@@ -5927,3 +5927,20 @@ between tracks and a drum part uses the header's menu and paste.
   signs in a bar, undo, the parser, the layout (positions, one row, click areas), the
   dialog in the app (`staff_directions_dialog` snapshot). The Staff palette gained a tile,
   so every app snapshot showing the palette moved by one tile.
+
+## 2026-11-15 — A system taller than a page goes on over the next pages
+
+With many tracks (a band song with 21 tracks, notation and tab each) one system was taller
+than an A4 page: `place_systems` moves a system that does not fit to the next page, but a
+system taller than a whole page ran past the bottom margin and the page number on every
+page. Now, when the layout has pages, such a system is split between tracks (never inside
+a track: a keyboard's staves stay together) into pieces as tall as a page allows
+(`score/split.rs`; the room comes from `PageRoom`, the same limits `place_systems` checks,
+the first page less the title block). A split system starts a page and each further piece
+the next one, so the reader turns the page to go on with the same bars; every piece has
+bar numbers over its top staff and its own line joining its staves. The screen views are
+unchanged (no pages, nothing to split). A track taller than a page on its own still runs
+over.
+Tests: no staff of sixteen guitars runs past its page's bottom margin, the first system's
+tracks go over several pages in order and the next system starts after them; a system that
+fits is not split; the split itself (between tracks only, first page shorter).

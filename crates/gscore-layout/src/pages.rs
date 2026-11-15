@@ -121,6 +121,29 @@ pub(crate) fn place_systems(
     Placement { tops, pages }
 }
 
+/// How tall a system may be to fit a page, as [`place_systems`] decides it: on the first
+/// page below what starts at `first` (the title block), and on a fresh later page. `None`
+/// without pages (a screen view grows as far as the systems need).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct PageRoom {
+    pub(crate) first: f32,
+    pub(crate) later: f32,
+}
+
+impl PageRoom {
+    pub(crate) fn new(first: f32, options: &LayoutOptions, decor: &PageDecor) -> Option<Self> {
+        let page_height = options.page_height.filter(|height| {
+            height.is_finite() && *height > options.margin_top + options.margin_bottom
+        })?;
+        let bottom = |page: usize| page_height - options.margin_bottom - decor.footer_room(page);
+        let later_top = options.margin_top + decor.header_room(1) + HEADER_GAP;
+        Some(PageRoom {
+            first: bottom(0) - first - BELOW_SYSTEM,
+            later: bottom(1) - later_top - BELOW_SYSTEM,
+        })
+    }
+}
+
 /// What the pages carry besides the music: page numbers, the copyright on the first page,
 /// and a running header on the others.
 pub(crate) struct PageDecor {
