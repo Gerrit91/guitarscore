@@ -782,30 +782,77 @@ fn draw(
     // The top line - the track actions and the mixer switch, beside the measure ruler -
     // stays put; only the tracks below scroll, however many there are.
     ui.spacing_mut().item_spacing.y = 0.0;
-    let scroll_id = ui.make_persistent_id("song_grid_x");
-    let scroll_x = ui
+    let scroll_id = ui.make_persistent_id("song_grid_scroll");
+    // The matrix's scroll offset and the width it shows (without its vertical bar), as
+    // last drawn: the ruler follows both.
+    let last = ui
         .ctx()
-        .data(|data| data.get_temp::<f32>(scroll_id))
-        .unwrap_or(0.0);
+        .data(|data| data.get_temp::<(egui::Vec2, f32)>(scroll_id));
+    let offset = last.map(|(offset, _)| offset).unwrap_or_default();
     ui.horizontal_top(|ui| {
         rows::header(ui, rows, view, actions);
-        matrix::ruler(ui, grid, view, scroll_x, actions);
+        let width = last.map(|(_, width)| width);
+        matrix::ruler(ui, grid, view, offset.x, width, actions);
     });
-    egui::ScrollArea::vertical()
-        .auto_shrink([false, false])
+    let scrolled =
+        ui.horizontal_top(|ui| body(ui, rows, master, grid, view, levels, offset, actions));
+    if Some(scrolled.inner) != last {
+        // The ruler and the track column follow the matrix on the next frame.
+        ui.ctx()
+            .data_mut(|data| data.insert_temp(scroll_id, scrolled.inner));
+        ui.ctx().request_repaint();
+    }
+    column_handle(ui, view, actions);
+}
+
+/// The track rows beside the measure matrix, scrolled together; returns the scroll offset
+/// and the width of the measures shown.
+///
+/// The matrix scrolls both ways in one area, so both its scroll bars stay at the panel's
+/// edges, in sight with any number of tracks, and they are always drawn (solid, not egui's
+/// floating bars that appear only under the pointer). The track column has no bar of its
+/// own: it follows the matrix up and down, and a wheel over it scrolls both.
+#[allow(clippy::too_many_arguments)]
+fn body(
+    ui: &mut egui::Ui,
+    rows: &[TrackRow],
+    master: gscore_model::MasterMix,
+    grid: &GridData,
+    view: GridView,
+    levels: &[f32],
+    offset: egui::Vec2,
+    actions: &mut Vec<GridAction>,
+) -> (egui::Vec2, f32) {
+    ui.style_mut().spacing.scroll = egui::style::ScrollStyle::solid();
+    let height = ui.available_height();
+    let bar = ui.spacing().scroll.allocated_width();
+    let matrix_width = ui.available_width() - view.track_column - ui.spacing().item_spacing.x;
+    let wide = view.measure_count as f32 * MEASURE_WIDTH * view.zoom > matrix_width;
+    let column = egui::ScrollArea::vertical()
+        .id_salt("song_grid_rows")
+        .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysHidden)
+        .vertical_scroll_offset(offset.y)
+        .max_height(height)
+        .auto_shrink([true, false])
         .show(ui, |ui| {
-            ui.spacing_mut().item_spacing.y = 0.0;
-            ui.horizontal_top(|ui| {
+            // The area takes the panel's sideways layout; the rows and the room below go down.
+            ui.vertical(|ui| {
+                ui.spacing_mut().item_spacing.y = 0.0;
                 rows::body(ui, rows, master, view, levels, actions);
-                let scrolled = egui::ScrollArea::horizontal()
-                    .id_salt("song_grid")
-                    .show(ui, |ui| matrix::matrix(ui, rows, grid, view, actions));
-                ui.ctx().data_mut(|data| {
-                    data.insert_temp(scroll_id, scrolled.state.clamped_offset().x);
-                });
+                // Room for the matrix's horizontal bar, so both scroll down equally far.
+                if wide {
+                    ui.add_space(bar);
+                }
             });
         });
-    column_handle(ui, view, actions);
+    let scrolled = egui::ScrollArea::both()
+        .id_salt("song_grid")
+        .vertical_scroll_offset(column.state.clamped_offset().y)
+        .max_width(ui.available_width())
+        .max_height(height)
+        .auto_shrink([false, false])
+        .show(ui, |ui| matrix::matrix(ui, rows, grid, view, actions));
+    (scrolled.state.clamped_offset(), scrolled.inner_rect.width())
 }
 
 /// The track column's right edge, dragged to make the column wider or narrower.

@@ -13,19 +13,27 @@ use super::{CELL_PADDING, GridAction, GridView, MEASURE_WIDTH, ROW_HEIGHT, RULER
 
 /// The measure ruler above the tracks: measure numbers, section markers, repeats and
 /// alternative endings. It stays at the top while the tracks scroll under it, and follows
-/// the matrix sideways by `scroll_x`.
+/// the matrix sideways by `scroll_x`, and is as wide as the measures the matrix shows
+/// (`width`, when known), so it ends where the matrix's vertical scroll bar starts.
 pub(super) fn ruler(
     ui: &mut egui::Ui,
     grid: &GridData,
     view: GridView,
     scroll_x: f32,
+    width: Option<f32>,
     actions: &mut Vec<GridAction>,
 ) {
     let mw = MEASURE_WIDTH * view.zoom;
-    let width = view.measure_count as f32 * mw;
+    // Never wider than the panel, and never as wide as the song: a ruler wider than the
+    // window would widen the panel's contents, and the matrix below with them, past its
+    // scroll bar.
     let available = ui.available_width();
-    let (rect, response) =
-        ui.allocate_exact_size(vec2(width.max(available), RULER_HEIGHT), Sense::click());
+    let width = width.map_or(available, |width| width.min(available));
+    let (rect, response) = ui.allocate_exact_size(vec2(width, RULER_HEIGHT), Sense::click());
+    ui.ctx().accesskit_node_builder(response.id, |node| {
+        node.set_label("Measure ruler");
+        node.set_role(egui::Role::Group);
+    });
     let painter = ui.painter_at(rect);
     let visuals = ui.visuals().clone();
     painter.rect_filled(rect, 0.0, visuals.extreme_bg_color);
