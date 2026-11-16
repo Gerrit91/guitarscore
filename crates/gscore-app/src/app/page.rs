@@ -61,26 +61,33 @@ fn mark_name(kind: ScoreMarkKind) -> String {
     }
 }
 
-/// How the view scrolls to the cursor's column `column` when `visible` is shown. While
-/// playing, nothing moves until the column leaves the view; then the view turns over like
-/// a page: the playing line goes to the top (with `headroom` points above it), so what
-/// follows fills the screen. Otherwise the view scrolls just enough to show the column.
+/// How the view scrolls to the cursor's column `column` when `visible` is shown. When it
+/// `turn`s (playing, or a bar clicked in the song grid), nothing moves until the column
+/// leaves the view; then the view turns over like a page: the column's line goes to the
+/// top (with `headroom` points above it), so what follows fills the screen. Otherwise the
+/// view scrolls just enough to show the column.
 fn cursor_scroll(
     column: Rect,
     visible: Rect,
-    playing: bool,
+    turn: bool,
     headroom: f32,
 ) -> Option<(Rect, Option<Align>)> {
-    if !playing {
+    if !turn {
         return Some((column, None));
     }
     if visible.contains_rect(column) {
         return None;
     }
-    let line = Rect::from_min_max(
-        egui::pos2(column.left(), column.top() - headroom),
-        column.max,
-    );
+    // The alignment applies to both axes: across, the view stays where it is unless the
+    // column is out of view that way too.
+    let across = if visible.x_range().contains(column.left())
+        && visible.x_range().contains(column.right())
+    {
+        visible.x_range()
+    } else {
+        column.x_range()
+    };
+    let line = Rect::from_x_y_ranges(across, (column.top() - headroom)..=column.bottom());
     Some((line, Some(Align::TOP)))
 }
 
@@ -253,7 +260,11 @@ impl GuitarScoreApp {
         // The vertical views turn over while playing: once the playing line leaves the
         // view, it goes to the top. Pages side by side turn page by page, and the
         // horizontal screen screen by screen (`screen_turn`).
-        let turn_pages = playing && score_view.turns_pages();
+        // A bar clicked in the song grid turns the view the same way, playing or not, so
+        // the bar does not end up at the view's edge.
+        let grid_jump = std::mem::take(&mut tab.turn_to_cursor);
+        let turn = playing || grid_jump;
+        let turn_pages = turn && score_view.turns_pages();
         let shown_selection = shown_selection(document.editor().selection(), playing);
         let in_selection = shown_selection
             .is_some_and(|selection| selection_contains(selection, document.song(), cursor));
@@ -278,7 +289,7 @@ impl GuitarScoreApp {
         } else {
             None
         };
-        let scroll_to_cursor = tab.shown_cursor != Some((cursor, revision));
+        let scroll_to_cursor = grid_jump || tab.shown_cursor != Some((cursor, revision));
         ScrollArea::both().auto_shrink(false).show(ui, |ui| {
             let available = ui.available_width();
             let arrangement = match score_view {
@@ -506,7 +517,7 @@ impl GuitarScoreApp {
                         {
                             ui.scroll_to_rect(target, align);
                         }
-                    } else if playing && score_view.single_line() {
+                    } else if turn && score_view.single_line() {
                         if let Some((target, align)) =
                             screen_turn(column, ui.clip_rect(), TURN_HEADROOM * scale)
                         {
@@ -1005,6 +1016,8 @@ mod tests {
         let (target, align) = cursor_scroll(column(560.0), visible, true, 30.0).unwrap();
         assert_eq!(align, Some(egui::Align::TOP));
         assert!((target.top() - 530.0).abs() < 1e-3);
+        // Only down: the column is in view across, so the view does not move sideways.
+        assert_eq!(target.x_range(), visible.x_range());
         assert!((target.bottom() - column(560.0).bottom()).abs() < 1e-3);
         // A repeat jumps back above the view: the same, that line to the top.
         let (target, align) = cursor_scroll(column(-400.0), visible, true, 30.0).unwrap();

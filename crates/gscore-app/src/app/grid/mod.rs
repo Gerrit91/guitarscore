@@ -562,6 +562,7 @@ impl GuitarScoreApp {
         };
         document.editor_mut().set_cursor(cursor);
         tab.track = track;
+        tab.turn_to_cursor = true;
         self.jump_playback_to(track, measure);
     }
 

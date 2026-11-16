@@ -2,7 +2,7 @@
 
 use std::fs::{File, TryLockError};
 use std::path::{Path, PathBuf};
-use std::time::SystemTime;
+use std::time::{Duration, SystemTime};
 
 use gscore_edit::{Recorded, TabEditor};
 use gscore_io::{FileFormat, detect_format, import_guitar_pro_from_bytes};
@@ -11,6 +11,10 @@ use gscore_model::TrackIndex;
 use super::{
     BASE, JOURNAL, LOCK, META, SAVED, SNAPSHOT_INFO, SNAPSHOT_SONG, checksum, journal_entries,
 };
+
+/// How old a recovery folder without its metadata must be to count as left half made by a
+/// crash; a younger one is a journal still being created.
+const HALF_MADE_STALE: Duration = Duration::from_secs(10 * 60);
 
 /// A document that was not closed normally and has edits to recover.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -57,6 +61,10 @@ pub fn find_sessions(root: &Path) -> Vec<FoundSession> {
         .filter_map(Result::ok)
         .map(|entry| entry.path())
         .filter(|dir| dir.is_dir())
+        // A journal writes its metadata only once it holds the lock. Without it, the folder
+        // may be a journal being created right now (a file opened at the app's start, while
+        // this search runs): checking or taking its lock would race with it.
+        .filter(|dir| dir.join(META).exists() || half_made_long_ago(dir))
         .filter_map(|dir| {
             // Held by a running GuitarScore (or unreadable): not ours to touch.
             let _lock = lock(&dir)?;
@@ -164,6 +172,16 @@ pub fn discard(session: &FoundSession) -> Result<(), String> {
     drop(lock);
     std::fs::remove_dir_all(&session.dir)
         .map_err(|e| format!("cannot remove {}: {e}", session.dir.display()))
+}
+
+/// Whether `dir` (without its metadata) was last changed long ago: left half made by a
+/// crash while its journal was created. Unknown times count as recent.
+fn half_made_long_ago(dir: &Path) -> bool {
+    std::fs::metadata(dir)
+        .and_then(|metadata| metadata.modified())
+        .ok()
+        .and_then(|modified| modified.elapsed().ok())
+        .is_some_and(|age| age >= HALF_MADE_STALE)
 }
 
 /// The folder's lock, if no running GuitarScore holds it. A folder without a lock file
