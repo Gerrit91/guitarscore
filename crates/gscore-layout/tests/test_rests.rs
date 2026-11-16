@@ -101,11 +101,43 @@ fn a_run_of_rests_is_one_bar_with_its_count() {
             .iter()
             .any(|op| matches!(op, DrawOp::Rect { rect, .. } if rect.width > 5.0))
     );
-    // The folded bars share the rest's place, so the cursor finds them on it.
+    // Each bar of the run has its own equal slice of the rest, in order, so the cursor
+    // finds it there and playback crosses the rest once over its four bars.
     let places = bars(&folded);
     assert_eq!(places.len(), 6);
-    for folded_bar in 2..5 {
-        assert_eq!(places[folded_bar], places[1], "bar {}", folded_bar + 1);
+    let contents: Vec<f32> = folded.places.measures.iter().map(|p| p.content).collect();
+    let slice = places[1].1 - contents[1];
+    assert!(slice > 1.0, "{slice}");
+    for bar in 2..5 {
+        let (left, right) = places[bar];
+        assert!(
+            (left - places[bar - 1].1).abs() < 1e-3,
+            "bar {} follows",
+            bar + 1
+        );
+        assert!(
+            (right - left - slice).abs() < 1e-3,
+            "bar {} is a slice",
+            bar + 1
+        );
+    }
+    // The run's last slice ends at the rest's barline, where bar 6 starts.
+    assert!((places[4].1 - places[5].0).abs() < 1e-3);
+    // The playback cursor moves on bar by bar and beat by beat through the rest.
+    let mut last = f32::NEG_INFINITY;
+    for bar in 1..5 {
+        for beat in 0..4 {
+            let rect = folded
+                .places
+                .column_rect(
+                    MeasureIndex::new(bar),
+                    VoiceIndex::new(0),
+                    BeatIndex::new(beat),
+                )
+                .expect("a beat of the run");
+            assert!(rect.origin.x > last, "bar {}, beat {}", bar + 1, beat + 1);
+            last = rect.origin.x;
+        }
     }
     // Four bars take the room of one.
     assert!(folded.height <= plain.height);

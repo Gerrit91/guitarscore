@@ -671,6 +671,8 @@ pub struct Settings {
     pub hide_empty_staves: bool,
     /// Whether runs of rests are written as multi-bar rests (on by default).
     pub multi_bar_rests: bool,
+    /// The song grid's track column width, as dragged.
+    pub grid_track_column: f32,
     /// Height the song grid was dragged to; `None`: it follows the number of tracks. (The
     /// key is new: the old `grid_height_chosen` held whatever the panel happened to be.)
     pub grid_height_chosen: Option<f32>,
@@ -781,6 +783,7 @@ impl Default for Settings {
             legacy_page_view: None,
             hide_empty_staves: true,
             multi_bar_rests: true,
+            grid_track_column: crate::state::GRID_TRACK_COLUMN,
             grid_height_chosen: None,
             mixer_height_chosen: None,
             track_panel_width: None,
@@ -850,6 +853,7 @@ impl Settings {
         self.legacy_page_view = None;
         self.hide_empty_staves = view.hide_empty_staves;
         self.multi_bar_rests = view.multi_bar_rests;
+        self.grid_track_column = view.grid_track_column();
     }
 
     /// Applies the stored theme, zoom and panel visibility to `view`.
@@ -868,6 +872,7 @@ impl Settings {
         };
         view.hide_empty_staves = self.hide_empty_staves;
         view.multi_bar_rests = self.multi_bar_rests;
+        view.set_grid_track_column(self.grid_track_column);
     }
 
     /// Puts `path` first in the recent files, without duplicates.

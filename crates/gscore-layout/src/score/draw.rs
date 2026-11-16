@@ -152,9 +152,10 @@ pub(super) fn draw_part(
     let mut x = system.x;
     let mut content = Vec::new();
     let default_marks = MeasureMarks::default();
-    // The place of the multi-bar rest being drawn: the bars folded into it share it, so
-    // the cursor and clicks find them on the rest.
-    let mut run_place: Option<MeasurePlace> = None;
+    // The multi-bar rest being drawn: where its content starts, how wide each of its bars'
+    // slices is, and its place. Each bar of the run gets its own slice, in order, so the
+    // cursor finds it there and playback crosses the rest once over all its bars.
+    let mut run: Option<(f32, f32, MeasurePlace)> = None;
     for (offset, measure) in line.iter().enumerate() {
         let measure_marks = line_marks.get(offset).unwrap_or(&default_marks);
         let (before, after) = measure_marks.extra_width(ctx);
@@ -163,24 +164,22 @@ pub(super) fn draw_part(
         let mut place = measure.place(content_x, system.stretch, place_index);
         place.left = left;
         match measure.rest_run() {
-            RestRun::Leads(_) => run_place = Some(place.clone()),
+            RestRun::Leads(bars) => {
+                let slice = (place.right - place.content) / bars.max(1) as f32;
+                run = Some((place.content, slice, place.clone()));
+                place = slice_of(&place, &place.beats, place.content, slice, place.left);
+            }
             RestRun::Folded => {
-                if let Some(run) = &run_place {
-                    place = MeasurePlace {
+                if let Some((start, slice, lead)) = &mut run {
+                    *start += *slice;
+                    let own = MeasurePlace {
                         measure: measure.index(),
-                        beats: place
-                            .beats
-                            .iter()
-                            .map(|beat| BeatPlace {
-                                x: run.content,
-                                ..*beat
-                            })
-                            .collect(),
-                        ..run.clone()
+                        ..lead.clone()
                     };
+                    place = slice_of(&own, &place.beats, *start, *slice, *start);
                 }
             }
-            RestRun::None => run_place = None,
+            RestRun::None => run = None,
         }
         drawn.places.measures.push(place);
         let index = measure.index().get();
@@ -528,6 +527,38 @@ pub(super) fn draw_group(
         font: TextFont::Regular,
         color: ColorToken::Annotation,
     });
+}
+
+/// A bar's place in a multi-bar rest: `place` (the rest's, with the bar's own measure)
+/// cut to its slice from `start`, `width` wide (`left` is where a click into it counts
+/// from), each voice's `beats` spread evenly across the slice from its start, so a
+/// cursor gliding through them keeps the pace of the music.
+fn slice_of(
+    place: &MeasurePlace,
+    beats: &[BeatPlace],
+    start: f32,
+    width: f32,
+    left: f32,
+) -> MeasurePlace {
+    MeasurePlace {
+        left,
+        right: start + width,
+        content: start,
+        beats: beats
+            .iter()
+            .map(|beat| {
+                let voice: Vec<&BeatPlace> =
+                    beats.iter().filter(|b| b.voice == beat.voice).collect();
+                let rank = voice.iter().filter(|b| b.beat < beat.beat).count();
+                let share = rank as f32 / voice.len().max(1) as f32;
+                BeatPlace {
+                    x: start + width * share,
+                    ..*beat
+                }
+            })
+            .collect(),
+        ..place.clone()
+    }
 }
 
 /// The bracket joining one staff's rows at the system's start, as engraved scores draw it:

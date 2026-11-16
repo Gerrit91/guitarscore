@@ -751,3 +751,27 @@ fn the_grids_eyes_act_on_the_current_view() {
     click(&mut harness, "Show Electric Bass in the score view");
     assert_eq!(harness.state().score_tracks(), [4]);
 }
+
+/// The song grid's track column is wider by default and follows its edge when dragged; the
+/// width is kept in the settings.
+#[test]
+fn the_track_column_is_dragged_wider_at_its_edge() {
+    let mut harness = app_with_multi_staff();
+    let before = harness.state().view().grid_track_column();
+    assert!((before - 460.0).abs() < 0.5, "{before}");
+    let from = harness.get_by_label("Track column width").rect().center();
+    harness.drag_at(from);
+    harness.step();
+    let to = from + egui::vec2(100.0, 0.0);
+    harness.hover_at(to);
+    harness.step();
+    harness.hover_at(to);
+    harness.step();
+    harness.drop_at(to);
+    harness.run();
+    let after = harness.state().view().grid_track_column();
+    assert!((after - 560.0).abs() < 2.0, "{after}");
+    assert!((harness.state().settings().grid_track_column - after).abs() < 0.5);
+    park_pointer(&mut harness);
+    harness.snapshot("grid_wide_track_column");
+}

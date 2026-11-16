@@ -8,7 +8,7 @@ use gscore_edit::Command;
 use gscore_model::{MASTER_UNITY, MasterMix, TrackIndex};
 
 use super::rows::TrackRow;
-use super::{GridAction, GridView, ROW_HEIGHT, RULER_HEIGHT, TRACK_COLUMN, mixer};
+use super::{GridAction, GridView, ROW_HEIGHT, RULER_HEIGHT, mixer};
 use crate::app::icons::{self, Icon};
 use crate::app::style;
 
@@ -19,7 +19,7 @@ pub(super) fn header(
     view: GridView,
     actions: &mut Vec<GridAction>,
 ) {
-    let (rect, _) = ui.allocate_exact_size(vec2(TRACK_COLUMN, RULER_HEIGHT), Sense::hover());
+    let (rect, _) = ui.allocate_exact_size(vec2(view.track_column, RULER_HEIGHT), Sense::hover());
     // The panel's title bar already says "Tracks".
     let shown = view.shown_track;
     let after = shown.saturating_add(1);
@@ -192,8 +192,10 @@ enum Toggle {
 }
 
 /// The master row: mute/solo-all, and the volume and pan of all tracks together.
+#[allow(clippy::too_many_arguments)]
 pub(super) fn master_row(
     ui: &mut egui::Ui,
+    width: f32,
     master: MasterMix,
     level: f32,
     track_count: usize,
@@ -201,7 +203,7 @@ pub(super) fn master_row(
     all_soloed: bool,
     actions: &mut Vec<GridAction>,
 ) {
-    let (rect, _) = ui.allocate_exact_size(vec2(TRACK_COLUMN, ROW_HEIGHT), Sense::hover());
+    let (rect, _) = ui.allocate_exact_size(vec2(width, ROW_HEIGHT), Sense::hover());
     // Widgets in a child limited to the row, like the track rows (see `rows.rs`).
     let ui = &mut ui.new_child(egui::UiBuilder::new().max_rect(rect));
     let visuals = ui.visuals().clone();

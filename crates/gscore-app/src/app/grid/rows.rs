@@ -4,7 +4,7 @@ use egui::{Align2, Color32, FontId, Rect, Sense, pos2, vec2};
 use gscore_edit::Command;
 use gscore_model::{MasterMix, TrackColor, TrackIndex, TrackSound};
 
-use super::{GridAction, GridView, ROW_HEIGHT, RULER_HEIGHT, TRACK_COLUMN, bar, mixer};
+use super::{GridAction, GridView, ROW_HEIGHT, RULER_HEIGHT, bar, mixer};
 use crate::app::{instrument, style};
 use crate::document::Document;
 
@@ -102,7 +102,7 @@ pub(super) fn header(
     actions: &mut Vec<GridAction>,
 ) {
     ui.allocate_ui_with_layout(
-        vec2(TRACK_COLUMN, RULER_HEIGHT),
+        vec2(view.track_column, RULER_HEIGHT),
         egui::Layout::top_down(egui::Align::Min),
         |ui| {
             ui.spacing_mut().item_spacing.y = 0.0;
@@ -124,7 +124,7 @@ pub(super) fn body(
 ) {
     let height = (rows.len() as f32 + 1.0) * ROW_HEIGHT;
     ui.allocate_ui_with_layout(
-        vec2(TRACK_COLUMN, height),
+        vec2(view.track_column, height),
         egui::Layout::top_down(egui::Align::Min),
         |ui| {
             ui.spacing_mut().item_spacing.y = 0.0;
@@ -143,6 +143,7 @@ pub(super) fn body(
             let all_soloed = !rows.is_empty() && rows.iter().all(|row| row.soloed);
             bar::master_row(
                 ui,
+                view.track_column,
                 master,
                 master_level,
                 rows.len(),
@@ -164,7 +165,7 @@ fn track_header(
     level: f32,
     actions: &mut Vec<GridAction>,
 ) {
-    let (rect, _) = ui.allocate_exact_size(vec2(TRACK_COLUMN, ROW_HEIGHT), Sense::hover());
+    let (rect, _) = ui.allocate_exact_size(vec2(view.track_column, ROW_HEIGHT), Sense::hover());
     // The row's widgets go into a child limited to the row: placing them in the column
     // itself would move its layout cursor and shift the rows below out of line with the
     // matrix.

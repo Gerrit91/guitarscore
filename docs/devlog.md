@@ -6077,3 +6077,15 @@ choice's switches.
   score view it adds or removes the track (one undo step); with one track it shows that
   track.
 Tests: the menu's switches and views, the grid's eyes in all tracks and one track.
+
+## 2026-11-16 — A wider song grid track column, dragged at its edge
+
+- The song grid's track column is 460 px by default (was 384) and its right edge can be
+  dragged between 300 and 900 px (a resize cursor and a line show the handle); the mixer
+  view's header follows it. The width is kept in the settings (`grid_track_column`).
+Tests: dragging the edge widens the column and the settings keep it.
+- Multi-bar rests and playback: every bar of a run had the whole rest as its place, so
+  the playback cursor crossed the rest once per bar (four times for a repeated two-bar
+  rest; the owner noticed). Each bar now has its own equal slice of the rest, its beats
+  spread across it, so the cursor crosses the rest once over all its bars at the music's
+  pace. Test: the cursor's positions rise bar by bar and beat by beat through a run.
