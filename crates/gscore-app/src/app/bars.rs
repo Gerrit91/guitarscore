@@ -404,33 +404,45 @@ impl GuitarScoreApp {
                     audio_load(ui, load, rate);
                 });
             }
-            if let Some(document) = self.document() {
+            // The texts first: the zoom beside them changes the view.
+            let texts = self.document().map(|document| {
+                let song = document.song();
+                let counts = format!(
+                    "{}, {}",
+                    count(song.measure_count(), "measure"),
+                    count(song.track_count(), "track")
+                );
+                // Recorded by the page view; the view may have switched since.
+                let page = self
+                    .tabs
+                    .get(self.active)
+                    .and_then(|tab| tab.page_info)
+                    .filter(|_| self.view.score_view.on_pages())
+                    .map(|(page, pages)| format!("Page {page} of {pages}"));
+                let cursor = document.editor().cursor();
+                let at = format!(
+                    "Measure {}, beat {}, string {}",
+                    cursor.measure.get() + 1,
+                    cursor.beat.get() + 1,
+                    cursor.string
+                );
+                (counts, page, at)
+            });
+            if let Some((counts, page, at)) = texts {
                 ui.with_layout(UiLayout::right_to_left(Align::Center), |ui| {
                     if audio_load(ui, load, rate) {
                         ui.separator();
                     }
-                    let song = document.song();
-                    ui.label(format!(
-                        "{}, {}",
-                        count(song.measure_count(), "measure"),
-                        count(song.track_count(), "track")
-                    ));
+                    // The score's zoom, left of the audio load.
+                    self.status_zoom(ui);
                     ui.separator();
-                    // Recorded by the page view; the view may have switched since.
-                    if self.view.score_view.on_pages()
-                        && let Some((page, pages)) =
-                            self.tabs.get(self.active).and_then(|tab| tab.page_info)
-                    {
-                        ui.label(format!("Page {page} of {pages}"));
+                    ui.label(counts);
+                    ui.separator();
+                    if let Some(page) = page {
+                        ui.label(page);
                         ui.separator();
                     }
-                    let cursor = document.editor().cursor();
-                    ui.label(format!(
-                        "Measure {}, beat {}, string {}",
-                        cursor.measure.get() + 1,
-                        cursor.beat.get() + 1,
-                        cursor.string
-                    ));
+                    ui.label(at);
                 });
             }
         });

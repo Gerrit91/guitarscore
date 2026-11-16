@@ -12,6 +12,7 @@ mod effects;
 mod gaps;
 mod grace_marks;
 mod graces;
+mod rest_run;
 
 pub(crate) use align::align;
 pub(crate) use draw::draw_barline_ties;
@@ -29,6 +30,7 @@ use crate::ornaments::{self, ColumnMarks, Fret};
 
 use columns::{as_f64, beat_length, beat_starts, column_items};
 use graces::Grace;
+pub(crate) use rest_run::RestRun;
 
 /// Space before and after a time signature.
 const TIME_SIG_PAD: (f32, f32) = (0.8, 0.6);
@@ -112,6 +114,8 @@ pub(crate) struct MeasureLayout {
     /// across tracks, another track's column moved after this one's last moves the barline
     /// (0 on its own; set by [`align`]).
     tail_spacing: f32,
+    /// Its part in a multi-bar rest, if any (set by the score; see [`RestRun`]).
+    rest_run: RestRun,
 }
 
 /// A time signature as glyph rows, scaled to the staff.
@@ -577,26 +581,29 @@ impl MeasureLayout {
             end: starts.end,
             scale,
             tail_spacing: 0.0,
+            rest_run: RestRun::None,
         })
     }
 
-    /// Whether any column holds a note (a fret number, a notehead or a grace note), not
-    /// only rests.
+    /// Whether the bar holds music: a note in any column (a fret number, a notehead or a
+    /// grace note), or a bar-repetition sign; not only rests.
     pub(crate) fn has_notes(&self) -> bool {
-        self.columns.iter().any(|column| {
-            !column.graces.is_empty()
-                || column
-                    .items
-                    .iter()
-                    .any(|item| matches!(item, Item::Fret(_)))
-                || column
-                    .notation
-                    .iter()
-                    .chain(&column.slash)
-                    .flatten()
-                    .any(|item| matches!(item, NotationItem::Chord(_)))
-                || column.marks.dead_slapped
-        })
+        // A bar-repetition sign plays the bar before it again: music, not an empty bar.
+        self.simile.is_some()
+            || self.columns.iter().any(|column| {
+                !column.graces.is_empty()
+                    || column
+                        .items
+                        .iter()
+                        .any(|item| matches!(item, Item::Fret(_)))
+                    || column
+                        .notation
+                        .iter()
+                        .chain(&column.slash)
+                        .flatten()
+                        .any(|item| matches!(item, NotationItem::Chord(_)))
+                    || column.marks.dead_slapped
+            })
     }
 
     /// The measure's bar-repetition (simile) mark.

@@ -12,8 +12,8 @@ use gscore_layout::{
     ColorToken, DrawOp, Fonts, Glyph, Layout, LayoutCache, LayoutOptions, TextFont, layout_track,
 };
 use gscore_model::{
-    BeatIndex, BeatPosition, Dynamic, Feel, Fermata, Fret, MeasureIndex, Song, StringNumber,
-    TrackColor, TrackIndex, VoiceIndex, testing,
+    BeatIndex, BeatPosition, Direction, Dynamic, Feel, Fermata, Fret, MeasureIndex, Song,
+    StringNumber, TrackColor, TrackIndex, VoiceIndex, testing,
 };
 
 fn at(measure: usize, beat: usize) -> BeatPosition {
@@ -145,6 +145,56 @@ fn a_fermata_is_drawn_above_the_measure() {
         })
         .expect("the fermata glyph");
     assert!(y < laid_out.places.systems[0].top);
+}
+
+#[test]
+fn signs_start_a_bar_and_jumps_end_it() {
+    let mut song = testing::song(&[testing::GUITAR_6], 3).unwrap();
+    let _ = song
+        .set_directions(MeasureIndex::new(0), &[Direction::Segno])
+        .unwrap();
+    let _ = song
+        .set_directions(
+            MeasureIndex::new(1),
+            &[Direction::Fine, Direction::DaCoda, Direction::Coda],
+        )
+        .unwrap();
+    let _ = song
+        .set_directions(MeasureIndex::new(2), &[Direction::DaSegnoAlCoda])
+        .unwrap();
+    let laid_out = layout(&song);
+    // The coda sign at bar 2's start and after "To Coda"; the segno once.
+    assert_eq!(glyph_count(&laid_out, Glyph::Segno), 1);
+    assert_eq!(glyph_count(&laid_out, Glyph::Coda), 2);
+    let texts = texts(&laid_out);
+    let find = |text: &str| {
+        texts
+            .iter()
+            .find(|t| t.0 == text)
+            .unwrap_or_else(|| panic!("{text} is written"))
+            .clone()
+    };
+    let (fine, to_coda, jump) = (find("Fine"), find("To Coda"), find("D.S. al Coda"));
+    let place = |n: usize| &laid_out.places.measures[n];
+    // Texts are right-aligned at their bar's end, "Fine" before "To Coda".
+    assert!(fine.2 > place(1).left && fine.2 < to_coda.2 && to_coda.2 <= place(1).right);
+    assert!(jump.2 > place(2).left && jump.2 <= place(2).right);
+    // Above the staff, in one row.
+    let top = laid_out.places.systems[0].top;
+    assert!(fine.3 < top && (fine.3 - jump.3).abs() < 1e-3);
+    // Each bar's signs are a click area that names the bar.
+    let marks: Vec<_> = laid_out
+        .marks
+        .iter()
+        .filter_map(|mark| match mark.kind {
+            gscore_layout::ScoreMarkKind::Directions { measure } => Some(measure.get()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(marks, [0, 1, 1, 2]);
+    // A song without signs has no row for them.
+    let plain = layout(&testing::song(&[testing::GUITAR_6], 3).unwrap());
+    assert!(plain.places.systems[0].top < top);
 }
 
 #[test]

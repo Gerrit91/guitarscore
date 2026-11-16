@@ -8,11 +8,11 @@ use super::{NAME_GAP, NAME_SIZE};
 use crate::draw::{ColorToken, DrawOp, Point, TextAnchor, TextFont};
 use crate::glyph::Glyph;
 use crate::marks::{self, MeasureMarks, Rows};
-use crate::measure::{self, MeasureLayout, Tops};
+use crate::measure::{self, MeasureLayout, RestRun, Tops};
 use crate::metrics::MusicFont;
 use crate::notation;
 use crate::ornaments;
-use crate::place::{Places, SystemPlace};
+use crate::place::{BeatPlace, MeasurePlace, Places, SystemPlace};
 use crate::score_mark::{ScoreMark, ScoreMarkKind};
 use crate::staff::Staff;
 use crate::{Fonts, MEASURE_NUMBER_RISE, REPEAT_COUNT_GAP};
@@ -152,6 +152,10 @@ pub(super) fn draw_part(
     let mut x = system.x;
     let mut content = Vec::new();
     let default_marks = MeasureMarks::default();
+    // The multi-bar rest being drawn: where its content starts, how wide each of its bars'
+    // slices is, and its place. Each bar of the run gets its own slice, in order, so the
+    // cursor finds it there and playback crosses the rest once over all its bars.
+    let mut run: Option<(f32, f32, MeasurePlace)> = None;
     for (offset, measure) in line.iter().enumerate() {
         let measure_marks = line_marks.get(offset).unwrap_or(&default_marks);
         let (before, after) = measure_marks.extra_width(ctx);
@@ -159,6 +163,24 @@ pub(super) fn draw_part(
         let content_x = x + before;
         let mut place = measure.place(content_x, system.stretch, place_index);
         place.left = left;
+        match measure.rest_run() {
+            RestRun::Leads(bars) => {
+                let slice = (place.right - place.content) / bars.max(1) as f32;
+                run = Some((place.content, slice, place.clone()));
+                place = slice_of(&place, &place.beats, place.content, slice, place.left);
+            }
+            RestRun::Folded => {
+                if let Some((start, slice, lead)) = &mut run {
+                    *start += *slice;
+                    let own = MeasurePlace {
+                        measure: measure.index(),
+                        ..lead.clone()
+                    };
+                    place = slice_of(&own, &place.beats, *start, *slice, *start);
+                }
+            }
+            RestRun::None => run = None,
+        }
         drawn.places.measures.push(place);
         let index = measure.index().get();
         if let Some(slot) = drawn.measure_x.get_mut(index) {
@@ -437,6 +459,8 @@ pub(super) enum GroupJoin {
 
 /// Space between the brace and the line joining a track's staves.
 const BRACE_GAP: f32 = 0.35;
+/// Gap between a track's name and the brace or bracket joining its staves.
+const NAME_JOIN_GAP: f32 = 0.5;
 
 /// The bracket that joins one staff's rows: the space between it and the line joining the
 /// rows, and the thickness of its bar (SMuFL's `bracketThickness`).
@@ -450,7 +474,7 @@ pub(super) fn draw_group(
     part: &Part<'_>,
     group: Group,
     measures: std::ops::Range<usize>,
-    name: Option<&String>,
+    named: bool,
     left: f32,
     fonts: &Fonts,
     ops: &mut Vec<DrawOp>,
@@ -458,6 +482,8 @@ pub(super) fn draw_group(
     // Where the joining line starts and ends (the staff frames may reach past the lines).
     let top = part.join_top(group.top, measures.clone());
     let bottom = part.join_bottom(group.last_top, measures);
+    // How far left the joining brace or bracket reaches: the name stands beyond it.
+    let mut reach = left;
     if group.join != GroupJoin::None {
         let thin = fonts.music.engraving().thin_barline_thickness;
         ops.push(DrawOp::Line {
@@ -466,29 +492,73 @@ pub(super) fn draw_group(
             thickness: thin,
             color: ColorToken::Barline,
         });
-        match group.join {
+        reach = match group.join {
             GroupJoin::Brace => draw_brace(top, bottom, left, &fonts.music, ops),
-            GroupJoin::Bracket => draw_bracket(top, bottom, left, ops),
-            GroupJoin::None => {}
-        }
+            GroupJoin::Bracket => {
+                draw_bracket(top, bottom, left, ops);
+                left - BRACKET_GAP - BRACKET_THICKNESS
+            }
+            GroupJoin::None => left,
+        };
     }
-    let Some(name) = name else {
+    if !named {
         return;
-    };
-    // The name stands beside the group, centered on all its rows.
-    let middle = if group.join != GroupJoin::None {
-        (top + bottom) / 2.0
+    }
+    // The name stands before the group, reading upwards along all its rows, cut to their
+    // height.
+    let (middle, height) = if group.join != GroupJoin::None {
+        ((top + bottom) / 2.0, bottom - top)
     } else {
-        group.top + group.height / 2.0
+        (group.top + group.height / 2.0, group.height)
     };
-    ops.push(DrawOp::Text {
-        text: name.clone(),
-        at: Point::new(left - NAME_GAP, middle + NAME_SIZE * 0.35),
+    let name = part.margin_name(height);
+    if name.is_empty() {
+        return;
+    }
+    let gap = if reach < left {
+        NAME_JOIN_GAP
+    } else {
+        NAME_GAP
+    };
+    ops.push(DrawOp::VerticalText {
+        text: name,
+        at: Point::new(reach - gap, middle),
         size: NAME_SIZE,
         font: TextFont::Regular,
-        anchor: TextAnchor::End,
         color: ColorToken::Annotation,
     });
+}
+
+/// A bar's place in a multi-bar rest: `place` (the rest's, with the bar's own measure)
+/// cut to its slice from `start`, `width` wide (`left` is where a click into it counts
+/// from), each voice's `beats` spread evenly across the slice from its start, so a
+/// cursor gliding through them keeps the pace of the music.
+fn slice_of(
+    place: &MeasurePlace,
+    beats: &[BeatPlace],
+    start: f32,
+    width: f32,
+    left: f32,
+) -> MeasurePlace {
+    MeasurePlace {
+        left,
+        right: start + width,
+        content: start,
+        beats: beats
+            .iter()
+            .map(|beat| {
+                let voice: Vec<&BeatPlace> =
+                    beats.iter().filter(|b| b.voice == beat.voice).collect();
+                let rank = voice.iter().filter(|b| b.beat < beat.beat).count();
+                let share = rank as f32 / voice.len().max(1) as f32;
+                BeatPlace {
+                    x: start + width * share,
+                    ..*beat
+                }
+            })
+            .collect(),
+        ..place.clone()
+    }
 }
 
 /// The bracket joining one staff's rows at the system's start, as engraved scores draw it:
@@ -516,7 +586,8 @@ fn draw_bracket(top: f32, bottom: f32, left: f32, ops: &mut Vec<DrawOp>) {
 
 /// The brace joining a track's staves at the system's start, stretched from `top` to
 /// `bottom`, left of the line at `left`.
-fn draw_brace(top: f32, bottom: f32, left: f32, font: &MusicFont, ops: &mut Vec<DrawOp>) {
+/// Draws the brace and returns how far left it reaches.
+fn draw_brace(top: f32, bottom: f32, left: f32, font: &MusicFont, ops: &mut Vec<DrawOp>) -> f32 {
     let glyph = Glyph::Brace;
     let bbox = font.bbox(glyph);
     let natural = (bbox.y_max - bbox.y_min).max(f32::MIN_POSITIVE);
@@ -525,10 +596,12 @@ fn draw_brace(top: f32, bottom: f32, left: f32, font: &MusicFont, ops: &mut Vec<
     // scale, so a tall group gets a wide brace, as engraved braces do.
     let scale = (height / natural).max(f32::MIN_POSITIVE);
     let advance = font.advance(glyph) * scale;
+    let x = left - advance - BRACE_GAP;
     ops.push(DrawOp::Glyph {
         glyph,
-        at: Point::new(left - advance - BRACE_GAP, bottom - bbox.y_min * scale),
+        at: Point::new(x, bottom - bbox.y_min * scale),
         scale,
         color: ColorToken::Barline,
     });
+    x + bbox.x_min * scale
 }

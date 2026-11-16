@@ -469,6 +469,12 @@ impl GuitarScoreApp {
             tab.renaming = Some(super::grid::RenameTrack {
                 track: index,
                 name: snapshot.name.clone(),
+                short_name: tab
+                    .document
+                    .song()
+                    .track(TrackIndex::new(index))
+                    .map(|view| view.short_name().to_owned())
+                    .unwrap_or_default(),
                 focused: false,
                 pos: None,
             });

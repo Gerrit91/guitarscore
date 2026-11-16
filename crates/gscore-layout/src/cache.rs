@@ -27,6 +27,8 @@ struct StaffKey {
     percussion: bool,
     /// A track with several staves shows them in notation only.
     keyboard: bool,
+    /// The staves the track shows (its own, or a score view's choice).
+    staves: gscore_model::TrackStaves,
 }
 
 /// A measure's cache entry: its stamp, whether the time signature is shown, the key and
@@ -108,6 +110,7 @@ impl LayoutCache {
                     capo: staff_view.capo().ok(),
                     percussion: staff_view.is_percussion(),
                     keyboard,
+                    staves: options.staves_of(&view),
                 };
                 let at = (track, staff.index());
                 if let Some(cache) = self.staves.remove(&at)

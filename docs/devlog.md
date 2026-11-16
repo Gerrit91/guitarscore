@@ -5900,3 +5900,192 @@ no place (the source, In or Out); a chain over the whole board. It is greyed whi
 clipboard is empty, and its tip says which it will do. The same for a drum part's board.
 Tests: `the_header_copies_the_selected_block_and_pastes_what_was_copied`; the copy test
 between tracks and a drum part uses the header's menu and paste.
+
+## 2026-11-15 — Jumps and codas: drawn, edited, several per bar
+
+- **Data.** A bar holds a list of navigation signs (`MeasureHeader::directions`, was one).
+  GP7 reading kept one sign, the target winning, and a bar with two `<Target>`s failed to
+  open (one field each in the serde struct); writing put codas, segnos and fine under
+  `<Jump>`. Both fixed: targets and jumps each as a list, codas, segnos and fine written as
+  `<Target>`. GP3-5 (a table of where each sign is) keeps several signs at one measure.
+- **Playback.** `playback_order` applies the first sign of a bar that acts on this pass, a
+  fine before any jump, so a bar may carry a segno and a "to coda", or a fine and a D.C. al
+  fine.
+- **Command.** `set_directions measure=N directions=segno,da_coda|none` with undo; ids as
+  in `Direction::id`, kept in GPIF order whatever was typed.
+- **Score.** A row over a system's top staff, between the ending brackets and the tempo:
+  segno, segno segno (two segnos), coda and double coda (Bravura's `codaSquare`) at the
+  bar's start; Fine, D.C./D.S./D.S.S. (al Fine, al Coda, al Double Coda) and "To Coda" with
+  its sign bold and right-aligned at the bar's end. Both are click areas
+  (`ScoreMarkKind::Directions`) that open the dialog.
+- **Dialog.** Staff palette › Jumps and codas (coda tile, with the dialog triangle): return
+  points (combinable), a 3 × 4 grid of jumps back (D.C., D.S., D.S.S. by plain, al Fine,
+  al Coda, al Double Coda; one per bar) and the two "to coda" jumps (one per bar), each an
+  engraved tile; a line explains the sign under the mouse, and a warning names what a
+  chosen jump still misses in the song (a segno, a "To Coda", a coda...).
+- Tests: GPIF and GP5 round trips with several signs per bar, playback order with two
+  signs in a bar, undo, the parser, the layout (positions, one row, click areas), the
+  dialog in the app (`staff_directions_dialog` snapshot). The Staff palette gained a tile,
+  so every app snapshot showing the palette moved by one tile.
+
+## 2026-11-15 — A system taller than a page goes on over the next pages
+
+With many tracks (a band song with 21 tracks, notation and tab each) one system was taller
+than an A4 page: `place_systems` moves a system that does not fit to the next page, but a
+system taller than a whole page ran past the bottom margin and the page number on every
+page. Now, when the layout has pages, such a system is split between tracks (never inside
+a track: a keyboard's staves stay together) into pieces as tall as a page allows
+(`score/split.rs`; the room comes from `PageRoom`, the same limits `place_systems` checks,
+the first page less the title block). A split system starts a page and each further piece
+the next one, so the reader turns the page to go on with the same bars; every piece has
+bar numbers over its top staff and its own line joining its staves. The screen views are
+unchanged (no pages, nothing to split). A track taller than a page on its own still runs
+over.
+Tests: no staff of sixteen guitars runs past its page's bottom margin, the first system's
+tracks go over several pages in order and the next system starts after them; a system that
+fits is not split; the split itself (between tracks only, first page shorter).
+
+## 2026-11-15 — Hiding empty staves: no bars lost, bar repeats kept
+
+- A system where every track rests (a general pause) was drawn with no track at all once
+  empty staves were hidden: its bars vanished from the page and the PDF. Such a system now
+  keeps its first track.
+- A bar holding only a bar-repetition sign (%) counted as empty, so a track repeating its
+  bars was hidden. It counts as music now (`MeasureLayout::has_notes`).
+- Looked at with Ballad.gp (21 tracks, locally only): hiding takes it from 204 pages to 94.
+  Each line holds one 6/4 bar of sixteenths, even for one drum track alone: our spacing,
+  not the hiding (GP7's `ScoreSystemsDefaultLayout` asks for 4 bars per line; we read and
+  keep it, the layout does not use it).
+- GP7's `Content/LayoutConfiguration` (binary; u32, a flag byte 01/03, 0x00, one 0xFFFF
+  per track, a u32 that looks like the selected track) is dropped when we save a GP7 file.
+  The owner is checking what Guitar Pro keeps there (multitrack selection, hidden staves).
+Tests: a repeating track stays and a resting one goes; an all-resting song keeps every
+bar on the page.
+
+## 2026-11-15 — Guitar Pro's staff size: as many bars per line as Guitar Pro prints
+
+- The score was laid out with MuseScore's 1.75 mm staff space; Guitar Pro uses 1.5 mm
+  (GP7 style sheets: `Global/spaceSizeMM` 1.5 in all 26 band songs, `pageScale` 1.0,
+  `forceBarCountBySystem` false, so GP fits bars to the line rather than forcing a count).
+  The layout now uses 1.5 mm at score size 100 % (`STAFF_SPACE_MM`, also the default).
+- The screen draws 6 points per staff space instead of 7, so the page keeps its size on
+  screen and shows the music as it prints; zoom is unchanged.
+- Pages, one track each (locally only): Ballad guitar 6 → 5, bass 9 → 8, drums 9 → 7;
+  farewell drums 9 → 6 (Guitar Pro's own PDF of that track in the band folder has 6);
+  farewell guitar 3 → 2; Belarus 6 → 5; Ballad all tracks with empty staves hidden 94 → 67.
+- Still open: a 6/4 bar of unbeamed drum sixteenths keeps its line, as each flag is kept
+  clear of the next column at any height; Guitar Pro beams drum sixteenths per beat across
+  rests, which packs them tighter. GP's per-track bar count (`SystemsLayout`) stays a
+  maximum, not a target.
+Tests: golden SVGs and app snapshots regenerated (the music is smaller; nothing else moved).
+
+## 2026-11-15 — Guitar Pro's hidden tracks: read, kept and written
+
+- GP7 keeps which tracks are shown in its multi-track view (the eye in the track list) in
+  `Content/LayoutConfiguration`; we dropped that file on saving. Decoded from the owner's
+  two saves of one song (all tracks shown, six guitars hidden): one byte per track, `ff`
+  or `00`; the rest (a header, a second byte per track, the selected track) is kept as
+  read. Our save of the owner's file writes it back byte for byte.
+- GP5's track flags were read from the wrong bits: every GP5 track came in invisible and
+  the banjo flag came from the 12-string bit (the writer was right).
+- Not used yet: the score does not leave hidden tracks out. The owner wants our own views
+  of the score (a dialog to build them, saved with the song) rather than only GP's eye.
+Tests: GP5 flags round trip; Guitar Pro's bytes read and written back; wrong lengths
+ignored; hidden tracks of `multi_staff.gp` survive a save.
+
+## 2026-11-15 — Score views: named selections of tracks, saved with the song
+
+The owner wanted more than Guitar Pro's one eye per track: views people build for their
+part (strings only, percussion only, a rhythm section) and print.
+- Model: `ScoreView` (name, tracks in order with their staves, hide empty staves) kept on
+  the song; tracks are referred to by a per-session key, so a view follows moved tracks,
+  loses a deleted one and gets it back on undo. `set_score_views`, `set_track_visible`
+  (GP's eye; one track always stays shown), both undoable. Commands `set_score_view`,
+  `delete_score_view`, `set_track_visible`.
+- Layout: `LayoutOptions::track_staves` overrides a track's staves; each staff's cache key
+  holds the staves it shows.
+- App: the tab bar's right end chooses one track, all tracks (those Guitar Pro shows), or a
+  view (the toolbar had no room at 1000 px). View › Score views… and "Edit score views…"
+  open the dialog: the views on the left (new, duplicate, delete), the chosen one's tracks
+  on the right (checkbox, instrument icon, staves, up/down), hide empty staves. "All
+  tracks" is Guitar Pro's view: its checkboxes are GP's eyes, its staves each track's own.
+  Every change is one undo step and shows at once; choosing a view moves the cursor into
+  it. PDF export prints the view as built (no cursor track added). The ad-hoc "Tracks
+  shown" ticks in the View menu are gone (replaced by views).
+- Saving: views travel in GuitarScore's notes block, each track with its identity, so a
+  view finds its tracks after a reorder in Guitar Pro; a view whose tracks are all gone is
+  dropped.
+- Save warnings: a hidden track is reported before saving to GP3/4/GP6, which cannot keep
+  it.
+Open: quick picks (only drums, only strings), an eye in the track grid, `gscore-cli render
+--view`, the dialog covers the score (it can be dragged aside).
+
+## 2026-11-16 — Track names upright before their staves
+
+- With several tracks, each track's short name (GP7's "el.guit.", "el.bs.", "drm."; the
+  name when there is none) stands before its staves in every system, turned 90°
+  anticlockwise to read upwards, centered on the track's staves and clear of its brace
+  or bracket. It is cut only when longer than the staves are tall, no longer to the
+  margin's width (it read "el.gui…").
+- New drawing op `DrawOp::VerticalText`, drawn by the app (egui `TextShape` angle), SVG
+  (`rotate(-90)`) and PDF (text matrix).
+Tests: names of `multi_staff.gp` upright, whole, beside their own staves; goldens and
+one app snapshot regenerated.
+
+## 2026-11-16 — Empty staves hidden by default; short names editable
+
+- With all tracks shown, empty staves are now hidden unless switched off (View menu). The
+  setting has a new key (`empty_staves_hidden`): the old one held the old default for
+  everyone who never chose, so it is not read.
+- The rename dialog (track panel's pencil, the grid's Rename…) has a second field for the
+  short name written before the staves; name and short name changed together are one undo
+  step. Model `set_track_short_name` (at most 40 characters), command
+  `set_track_short_name`. GP6/GP7 keep it; saving to GP3-5 reports it as lost.
+Tests: settings migration; command set and undone, too long refused; the dialog sets it.
+
+## 2026-11-16 — Multi-bar rests; the view choice holds the score's switches
+
+- A run of at least two bars where every shown staff rests is written as one bar: a
+  thick bar across each staff's middle line with end strokes, and the number of bars
+  above in time-signature digits. The run's first bar keeps its signatures, section,
+  tempo and number; something written at a later bar's start (section, tempo, signature,
+  repeat, ending, jump/coda, fermata, feel, beat text, chord) or a double barline or
+  repeat inside ends the run; a page break does too, a line break does not (Guitar Pro
+  stores its bars-per-line layout as a break every few bars). Folded bars take no room,
+  share the rest's place (the cursor finds them there; typing a note unfolds the run)
+  and never start a line or count towards bars per line.
+- `LayoutOptions::multi_bar_rests`; `gscore-cli render --multi-bar-rests`; in the app on
+  by default (screen and PDF).
+- The tab bar's view choice shows an eye before the view's name; its list is indented to
+  the name, then "Hide empty staves" and "Multi-bar rests" (they stay open while ticked),
+  then "Edit score views…". New flat eye icon.
+- Ballad.gp, the solo track (locally only): 5 pages to 3 (an 8-bar rest in the verse).
+Tests: runs and their counts, marks and double bars ending a run, a line break not, every
+track must rest, folded bars share the rest's place; glued bars in the line breaker; the
+choice's switches.
+
+## 2026-11-16 — The score view's eye in the toolbar and on every track
+
+- The toolbar has an eye right after the panel toggles; its menu ticks the view shown
+  (one track, all tracks, each score view), then "Hide empty staves" and "Multi-bar
+  rests" (ticked rows; the menu stays open for them), then "Edit score views…". The
+  tab bar's drop-down is gone.
+- The score's zoom moved from the toolbar to the status bar, left of the audio load,
+  which leaves the toolbar room.
+- Every track row of the song grid has an eye left of mute and solo, acting on the
+  current view: with all tracks it is Guitar Pro's eye (saved in GP5/GP7 files); in a
+  score view it adds or removes the track (one undo step); with one track it shows that
+  track.
+Tests: the menu's switches and views, the grid's eyes in all tracks and one track.
+
+## 2026-11-16 — A wider song grid track column, dragged at its edge
+
+- The song grid's track column is 460 px by default (was 384) and its right edge can be
+  dragged between 300 and 900 px (a resize cursor and a line show the handle); the mixer
+  view's header follows it. The width is kept in the settings (`grid_track_column`).
+Tests: dragging the edge widens the column and the settings keep it.
+- Multi-bar rests and playback: every bar of a run had the whole rest as its place, so
+  the playback cursor crossed the rest once per bar (four times for a repeated two-bar
+  rest; the owner noticed). Each bar now has its own equal slice of the rest, its beats
+  spread across it, so the cursor crosses the rest once over all its bars at the music's
+  pace. Test: the cursor's positions rise bar by bar and beat by beat through a run.

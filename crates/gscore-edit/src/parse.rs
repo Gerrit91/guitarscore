@@ -9,9 +9,10 @@ use std::collections::BTreeMap;
 use std::fmt;
 
 use gscore_model::{
-    BeatEffect, BeatIndex, BeatPosition, Clef, Dynamic, Feel, Fermata, Fret, MAX_BARS_PER_SYSTEM,
-    MAX_STRINGS, MAX_TEMPO, MeasureIndex, NoteEffect, NoteValue, PageSetup, Pitch, Repeat,
-    SimileMark, SongTextField, StringNumber, SystemBreak, TrackIndex, TrackStaves, VoiceIndex,
+    BeatEffect, BeatIndex, BeatPosition, Clef, Direction, Dynamic, Feel, Fermata, Fret,
+    MAX_BARS_PER_SYSTEM, MAX_STRINGS, MAX_TEMPO, MeasureIndex, NoteEffect, NoteValue, PageSetup,
+    Pitch, Repeat, SimileMark, SongTextField, StringNumber, SystemBreak, TrackIndex, TrackStaves,
+    ViewTrack, VoiceIndex,
 };
 
 use crate::command::Command;
@@ -227,6 +228,10 @@ fn build(info: &'static CommandInfo, args: &mut Args) -> Result<Command, ParseEr
         "rename_track" => Ok(Command::RenameTrack {
             track: TrackIndex::new(optional_position(args, "track")?.unwrap_or(0)),
             name: text_arg(args, "name")?,
+        }),
+        "set_track_short_name" => Ok(Command::SetTrackShortName {
+            track: TrackIndex::new(optional_position(args, "track")?.unwrap_or(0)),
+            short_name: text_arg(args, "short_name")?,
         }),
         "set_track_color" => Ok(Command::SetTrackColor {
             track: TrackIndex::new(optional_position(args, "track")?.unwrap_or(0)),
@@ -510,6 +515,78 @@ fn build(info: &'static CommandInfo, args: &mut Args) -> Result<Command, ParseEr
                 fermata,
             })
         }
+        "set_directions" => {
+            let text = args.required("directions")?;
+            let mut directions = Vec::new();
+            if text != "none" {
+                for id in text.split(',').map(str::trim) {
+                    let direction = Direction::from_id(id).ok_or_else(|| {
+                        bad(
+                            args.command,
+                            "directions",
+                            &text,
+                            "none, or sign ids joined by commas (segno,da_coda)",
+                        )
+                    })?;
+                    if !directions.contains(&direction) {
+                        directions.push(direction);
+                    }
+                }
+            }
+            // One order whatever was typed: the line written back is the same.
+            let directions = Direction::ALL
+                .into_iter()
+                .filter(|direction| directions.contains(direction))
+                .collect();
+            Ok(Command::SetDirections {
+                measure: MeasureIndex::new(required_position(args, "measure")?),
+                directions,
+            })
+        }
+        "set_score_view" => {
+            let view = required_position(args, "view")?;
+            let name = text_arg(args, "name")?;
+            let raw = args.required("tracks")?;
+            let mut tracks = Vec::new();
+            for entry in raw.split(',') {
+                let parsed = entry.split_once(':').and_then(|(track, staves)| {
+                    let track: usize = track.parse().ok()?;
+                    Some(ViewTrack {
+                        track: TrackIndex::new(track.checked_sub(1)?),
+                        staves: TrackStaves::from_id(staves)?,
+                    })
+                });
+                tracks.push(parsed.ok_or_else(|| {
+                    bad(
+                        args.command,
+                        "tracks",
+                        &raw,
+                        "tracks with their staves, as 3:tab,1:both",
+                    )
+                })?);
+            }
+            let hide_empty_staves = match args.take("hide_empty") {
+                None => false,
+                Some(text) => match text.as_str() {
+                    "true" | "yes" | "1" => true,
+                    "false" | "no" | "0" => false,
+                    _ => return Err(bad(args.command, "hide_empty", &text, "true or false")),
+                },
+            };
+            Ok(Command::SetScoreView {
+                view,
+                name,
+                tracks,
+                hide_empty_staves,
+            })
+        }
+        "delete_score_view" => Ok(Command::DeleteScoreView {
+            view: required_position(args, "view")?,
+        }),
+        "set_track_visible" => Ok(Command::SetTrackVisible {
+            track: TrackIndex::new(optional_position(args, "track")?.unwrap_or(0)),
+            visible: bool_arg(args, "visible")?,
+        }),
         "set_clef" => {
             let text = args.required("clef")?;
             let clef = Clef::from_id(&text)

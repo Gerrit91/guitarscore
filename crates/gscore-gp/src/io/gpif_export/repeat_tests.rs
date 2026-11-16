@@ -85,3 +85,75 @@ fn feels_round_trip_through_gpif() {
         .collect();
     assert_eq!(reread_feels, feels);
 }
+
+/// A song of `count` empty 4/4 measures on one track.
+fn empty_song(count: u16) -> Song {
+    let mut song = Song::default();
+    song.tracks.push(Default::default());
+    for (index, number) in (0..count).zip(1..) {
+        song.measure_headers.push(crate::model::MeasureHeader {
+            number,
+            ..Default::default()
+        });
+        song.tracks[0].measures.push(crate::model::Measure {
+            header_index: usize::from(index),
+            ..Default::default()
+        });
+    }
+    song
+}
+
+/// A bar may hold several navigation signs; codas, segnos and fine are `<Target>`s and
+/// D.C./D.S./to coda `<Jump>`s. Every sign used to be written as a jump, and only one sign
+/// per bar was kept (two targets made the file fail to open).
+#[test]
+fn several_directions_in_one_bar_round_trip_through_gpif() {
+    use crate::model::DirectionSign as D;
+    let mut song = empty_song(3);
+    song.measure_headers[0].directions = vec![D::Segno, D::Coda];
+    song.measure_headers[1].directions = vec![D::Fine, D::DaCoda];
+    song.measure_headers[2].directions = vec![D::DaSegnoAlCoda];
+
+    let xml = song.write_gpif_xml().expect("written");
+    assert!(
+        xml.contains("<Directions><Target>Segno</Target><Target>Coda</Target></Directions>"),
+        "{xml}"
+    );
+    assert!(
+        xml.contains("<Directions><Target>Fine</Target><Jump>DaCoda</Jump></Directions>"),
+        "{xml}"
+    );
+
+    let bytes = song.write_gp().expect("written");
+    let mut reread = Song::default();
+    reread.read_gp(&bytes).expect("read back");
+    let read: Vec<_> = reread
+        .measure_headers
+        .iter()
+        .map(|header| header.directions.clone())
+        .collect();
+    assert_eq!(
+        read,
+        [
+            vec![D::Segno, D::Coda],
+            vec![D::Fine, D::DaCoda],
+            vec![D::DaSegnoAlCoda]
+        ]
+    );
+}
+
+/// GP5 stores where each sign is; two signs at one measure are both read back.
+#[test]
+fn several_directions_in_one_measure_round_trip_through_gp5() {
+    use crate::model::DirectionSign as D;
+    let mut song = empty_song(2);
+    song.measure_headers[1].directions = vec![D::Segno, D::Fine, D::DaCapoAlFine];
+    let bytes = song.write((5, 1, 0), None).expect("written");
+    let mut reread = Song::default();
+    reread.read_gp5(&bytes).expect("read back");
+    assert!(reread.measure_headers[0].directions.is_empty());
+    assert_eq!(
+        reread.measure_headers[1].directions,
+        [D::Segno, D::Fine, D::DaCapoAlFine]
+    );
+}

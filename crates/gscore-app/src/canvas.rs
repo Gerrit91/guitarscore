@@ -7,8 +7,9 @@ use gscore_layout::{DrawOp, Layout, Point, Rgb, TextAnchor, TextFont, Theme};
 
 use crate::fonts;
 
-/// Screen points per staff space at zoom 1 (about MuseScore's default 1.75 mm on screen).
-pub(crate) const POINTS_PER_SPACE: f32 = 7.0;
+/// Screen points per staff space at zoom 1: Guitar Pro's 1.5 mm staff space at 4 points per
+/// millimetre, so the page keeps its size on screen and shows the music as it prints.
+pub(crate) const POINTS_PER_SPACE: f32 = 6.0;
 /// Operations this far (in points) outside the visible area are still painted, so glyphs
 /// that extend beyond their anchor do not pop in at the edges.
 const CULL_MARGIN: f32 = 60.0;
@@ -336,8 +337,44 @@ pub(crate) fn paint(
                     );
                 }
             }
+            DrawOp::VerticalText {
+                text,
+                at,
+                size,
+                font,
+                color: token,
+            } => {
+                let at = to_screen(*at);
+                if visible.contains(at) {
+                    let family = match font {
+                        TextFont::Regular => FontFamily::Proportional,
+                        TextFont::Bold => FontFamily::Name(fonts::BOLD.into()),
+                    };
+                    let font = FontId::new(size * scale, family);
+                    vertical_text(painter, at, text.clone(), font, theme.color(*token));
+                }
+            }
         }
     }
+}
+
+/// Paints `text` turned 90° anticlockwise, reading upwards: centered on `at` along its
+/// length, its baseline on the vertical line through `at`.
+fn vertical_text(painter: &Painter, at: Pos2, text: String, font: FontId, rgb: Rgb) {
+    let ink = color(rgb);
+    let galley = painter.layout_no_wrap(text, font, ink);
+    let baseline = galley
+        .rows
+        .first()
+        .and_then(|row| row.row.glyphs.first().map(|glyph| row.pos.y + glyph.pos.y))
+        .unwrap_or(0.0);
+    let width = galley.size().x;
+    // Turned about the galley's top left: its baseline goes to `x + baseline`, its length
+    // upwards from `y`.
+    let origin = Pos2::new(at.x - baseline, at.y + width / 2.0);
+    painter.add(
+        egui::epaint::TextShape::new(origin, galley, ink).with_angle(-std::f32::consts::FRAC_PI_2),
+    );
 }
 
 /// Paints `text` so that its baseline (not its top) is at `at.y`, anchored horizontally.

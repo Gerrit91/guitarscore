@@ -351,8 +351,20 @@ impl Direction {
         }
     }
 
+    /// True for a sign the music jumps to or stops at (coda, segno, fine), false for a jump
+    /// (D.C., D.S., to coda).
+    pub fn is_target(self) -> bool {
+        matches!(
+            self,
+            Direction::Coda
+                | Direction::DoubleCoda
+                | Direction::Segno
+                | Direction::SegnoSegno
+                | Direction::Fine
+        )
+    }
+
     /// Guitar Pro's direction-sign field.
-    #[allow(dead_code)] // used by the test song builder, and by editing once it is exposed
     pub(crate) fn to_gp(self) -> GpDirectionSign {
         match self {
             Direction::Coda => GpDirectionSign::Coda,

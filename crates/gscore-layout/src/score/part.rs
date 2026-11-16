@@ -68,7 +68,7 @@ impl<'a> Part<'a> {
         let view = track_view
             .on_staff(staff)
             .ok_or(LayoutError::NoSuchStaff(track, staff))?;
-        let staves = track_view.staves();
+        let staves = options.staves_of(&track_view);
         // Drums are always written on a percussion staff. Their "frets" are MIDI drum
         // notes; the track's tablature switch adds a drum tab that shows them, as Guitar
         // Pro does. A track with several staves (a keyboard's treble and bass) is written
@@ -434,8 +434,9 @@ impl<'a> Part<'a> {
             .any(|measure| measure.has_notes())
     }
 
-    /// The name written in the margin before each system: the short name (else the
-    /// name), cut with "…" to fit `room`; empty when not even one letter fits.
+    /// The name written before the track's staves in each system, reading upwards: the
+    /// short name (else the name), cut with "…" to fit `room` (the staves' height); empty
+    /// when not even one letter fits.
     pub(super) fn margin_name(&self, room: f32) -> String {
         let short = self.view.short_name().trim();
         let name = if short.is_empty() {

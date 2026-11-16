@@ -342,11 +342,14 @@ impl SongGpifOps for Song {
             mh.x_properties = xproperties(mb.x_properties.as_ref());
 
             // Directions
+            // GuitarScore fix: every target and jump is kept (was one, the target winning).
             if let Some(dirs) = &mb.directions {
-                if let Some(target) = &dirs.target {
-                    mh.direction = parse_direction_sign(target);
-                } else if let Some(jump) = &dirs.jump {
-                    mh.direction = parse_direction_sign(jump);
+                for name in dirs.targets.iter().chain(&dirs.jumps) {
+                    if let Some(sign) = parse_direction_sign(name.trim())
+                        && !mh.directions.contains(&sign)
+                    {
+                        mh.directions.push(sign);
+                    }
                 }
             }
 

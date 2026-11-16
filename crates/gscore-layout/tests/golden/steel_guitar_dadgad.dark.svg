@@ -1,10 +1,10 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="210mm" height="112.49mm" viewBox="0 0 120 64.28">
+<svg xmlns="http://www.w3.org/2000/svg" width="210mm" height="96.42mm" viewBox="0 0 140 64.28">
 <rect width="100%" height="100%" fill="#1e1f22"/>
-<text x="60" y="14.5" font-family="Noto Sans" font-size="5" text-anchor="middle" fill="#eceef0">Steel Guitar DADGAD</text>
-<text x="60" y="18.56" font-family="Noto Sans" font-size="2.2" text-anchor="middle" fill="#eceef0">Test Material</text>
-<text x="60" y="21.42" font-family="Noto Sans" font-size="2.2" font-weight="bold" text-anchor="middle" fill="#eceef0">GuitarScore</text>
-<text x="60" y="24.28" font-family="Noto Sans" font-size="2.2" text-anchor="middle" fill="#eceef0">Basic Tests</text>
-<text x="112" y="26.62" font-family="Noto Sans" font-size="1.8" text-anchor="end" fill="#eceef0">Words &amp; Music by Gerrit91</text>
+<text x="70" y="14.5" font-family="Noto Sans" font-size="5" text-anchor="middle" fill="#eceef0">Steel Guitar DADGAD</text>
+<text x="70" y="18.56" font-family="Noto Sans" font-size="2.2" text-anchor="middle" fill="#eceef0">Test Material</text>
+<text x="70" y="21.42" font-family="Noto Sans" font-size="2.2" font-weight="bold" text-anchor="middle" fill="#eceef0">GuitarScore</text>
+<text x="70" y="24.28" font-family="Noto Sans" font-size="2.2" text-anchor="middle" fill="#eceef0">Basic Tests</text>
+<text x="132" y="26.62" font-family="Noto Sans" font-size="1.8" text-anchor="end" fill="#eceef0">Words &amp; Music by Gerrit91</text>
 <text x="8" y="30.07" font-family="Noto Sans" font-size="1.5" fill="#b8bcc2">Tuning: DADGAD (D A D G A D)</text>
 <text x="9.46" y="32.78" font-family="Noto Sans" font-size="1.7" font-weight="bold" fill="#b8bcc2">= 120</text>
 <text x="8" y="32.78" font-family="Bravura" font-size="3.2" fill="#b8bcc2" data-glyph="metNoteQuarterUp">&#xECA5;</text>

@@ -119,8 +119,14 @@ impl Tab {
 
     /// The tracks the score shows, top to bottom (the cursor's among them).
     pub(super) fn shown_tracks(&self) -> Vec<usize> {
+        self.score.tracks(self.document.song(), self.track)
+    }
+
+    /// What the score shows: on screen with the cursor's track kept (`cursor_shown`), or
+    /// printed exactly as chosen.
+    pub(super) fn shown_score(&self, cursor_shown: bool) -> super::score_view::ShownScore {
         self.score
-            .tracks(self.track, self.document.song().track_count())
+            .resolve(self.document.song(), self.track, cursor_shown)
     }
 
     /// A tab for `document` with the id number `id`, showing its first track and nothing

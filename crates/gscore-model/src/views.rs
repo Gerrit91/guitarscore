@@ -258,6 +258,12 @@ impl<'a> TrackView<'a> {
         )
     }
 
+    /// Whether the track is shown when all tracks are shown together (Guitar Pro's eye in
+    /// its track list; see [`crate::Song::set_track_visible`]).
+    pub fn is_visible(&self) -> bool {
+        self.inner.visible
+    }
+
     /// True for drum tracks, whose "frets" are MIDI drum notes.
     pub fn is_percussion(&self) -> bool {
         self.inner.percussion_track

@@ -156,6 +156,11 @@ impl MeasureSelection {
     }
 }
 
+/// The song grid's track column width by default, and how narrow and wide it may be
+/// dragged (its name, eye, mute and solo, volume and pan must fit).
+pub(crate) const GRID_TRACK_COLUMN: f32 = 460.0;
+pub(crate) const GRID_TRACK_COLUMN_RANGE: (f32, f32) = (300.0, 900.0);
+
 /// How the open document is shown, shared by every tab: the theme, the zoom and which
 /// panels are visible. What differs per tab (the shown track and the measure selection)
 /// lives on each [`super::app::tab::Tab`].
@@ -181,8 +186,13 @@ pub struct ViewState {
     /// How the score is shown: pages or one endless surface, vertical or horizontal.
     pub score_view: ScoreView,
     /// With several tracks shown, whether a track is left out of a line where it has no
-    /// note (the cursor's track always stays).
+    /// note (the cursor's track always stays); on unless switched off.
     pub hide_empty_staves: bool,
+    /// Whether a run of bars where every shown staff rests is written as one multi-bar
+    /// rest (on screen and in print).
+    pub multi_bar_rests: bool,
+    /// The song grid's track column width (see [`Self::set_grid_track_column`]).
+    grid_track_column: f32,
     /// Guitar Pro's design mode: dashed guides and drag handles for every beat column and
     /// barline, with the buttons that set how many bars a line holds. A view mode, not part
     /// of the song.
@@ -201,7 +211,9 @@ impl Default for ViewState {
             show_track_panel: true,
             show_edit_panel: true,
             score_view: ScoreView::PageVertical,
-            hide_empty_staves: false,
+            hide_empty_staves: true,
+            multi_bar_rests: true,
+            grid_track_column: GRID_TRACK_COLUMN,
             design_mode: false,
         }
     }
@@ -263,6 +275,21 @@ impl ViewState {
         if factor.is_finite() && factor > 0.0 {
             self.set_zoom(self.zoom * factor);
         }
+    }
+
+    /// The song grid's track column width.
+    pub fn grid_track_column(&self) -> f32 {
+        self.grid_track_column
+    }
+
+    /// Sets the song grid's track column width, clamped to [`GRID_TRACK_COLUMN_RANGE`];
+    /// nonsense values reset it to [`GRID_TRACK_COLUMN`].
+    pub fn set_grid_track_column(&mut self, width: f32) {
+        self.grid_track_column = if width.is_finite() {
+            width.clamp(GRID_TRACK_COLUMN_RANGE.0, GRID_TRACK_COLUMN_RANGE.1)
+        } else {
+            GRID_TRACK_COLUMN
+        };
     }
 
     /// Sets the song grid's measure width factor, clamped to [`GRID_ZOOM_RANGE`];

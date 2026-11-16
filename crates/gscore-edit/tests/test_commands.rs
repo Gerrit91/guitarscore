@@ -1173,3 +1173,80 @@ fn a_moved_beat_column_is_one_undoable_step() {
     );
     assert!(editor.song().beat(pos(0, 0, 0)).is_some());
 }
+
+/// Score views are added, replaced and deleted by their number, each undone in one step;
+/// commands that would break the views are refused before they run.
+#[test]
+fn score_views_are_added_replaced_and_deleted() {
+    use gscore_model::{TrackStaves, ViewTrack};
+    let song = testing::song_with_notes_on_tracks(3, &[]).unwrap();
+    let entry = |track: usize| ViewTrack {
+        track: TrackIndex::new(track),
+        staves: TrackStaves::TAB_ONLY,
+    };
+    let set = |view: usize, name: &str, tracks: Vec<ViewTrack>| Command::SetScoreView {
+        view,
+        name: name.to_owned(),
+        tracks,
+        hide_empty_staves: false,
+    };
+    apply_then_undo(&song, &set(0, "Drums", vec![entry(2)]));
+    apply_then_undo(
+        &song,
+        &Command::SetTrackVisible {
+            track: TrackIndex::new(1),
+            visible: false,
+        },
+    );
+
+    let mut editor = Editor::new(song.clone());
+    editor.execute(set(0, "Drums", vec![entry(2)])).unwrap();
+    editor
+        .execute(set(1, "Guitars", vec![entry(1), entry(0)]))
+        .unwrap();
+    editor
+        .execute(set(0, "Kit", vec![entry(2), entry(0)]))
+        .unwrap();
+    let names: Vec<String> = editor
+        .song()
+        .score_views()
+        .into_iter()
+        .map(|view| view.name)
+        .collect();
+    assert_eq!(names, ["Kit", "Guitars"]);
+    apply_then_undo(editor.song(), &Command::DeleteScoreView { view: 0 });
+    for refused in [
+        set(3, "Gap", vec![entry(0)]),
+        set(2, "kit", vec![entry(0)]),
+        set(2, "Empty", Vec::new()),
+        set(2, "Twice", vec![entry(0), entry(0)]),
+        set(2, "Missing", vec![entry(3)]),
+        Command::DeleteScoreView { view: 2 },
+    ] {
+        assert!(
+            editor.execute(refused.clone()).is_err(),
+            "{}",
+            refused.to_line()
+        );
+    }
+    assert_eq!(editor.song().score_views().len(), 2);
+}
+
+/// A track's short name is set and undone; one longer than the limit is refused.
+#[test]
+fn a_tracks_short_name_is_set_and_undone() {
+    let song = testing::song_with_notes_on_tracks(2, &[]).unwrap();
+    apply_then_undo(
+        &song,
+        &Command::SetTrackShortName {
+            track: TrackIndex::new(1),
+            short_name: "vln.".to_owned(),
+        },
+    );
+    let mut editor = Editor::new(song);
+    let long = Command::SetTrackShortName {
+        track: TrackIndex::new(0),
+        short_name: "x".repeat(gscore_model::MAX_SHORT_NAME_CHARS + 1),
+    };
+    assert!(editor.execute(long).is_err());
+}

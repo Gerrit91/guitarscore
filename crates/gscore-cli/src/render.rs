@@ -29,6 +29,15 @@ impl ThemeArg {
     }
 }
 
+/// How the score's staves are written.
+#[derive(Debug, Clone, Copy, Default)]
+pub(crate) struct Staves {
+    /// With several tracks, a track is left out of a line where it has no note.
+    pub(crate) hide_empty: bool,
+    /// A run of bars where every track rests is one multi-bar rest.
+    pub(crate) multi_bar_rests: bool,
+}
+
 /// Reads `input`, lays out `tracks` (1-based; every track with `all`, track 1 when none is
 /// given) and writes them to `output`, as SVG or PDF by the extension.
 pub(crate) fn run(
@@ -36,7 +45,7 @@ pub(crate) fn run(
     output: &Path,
     tracks: &[usize],
     all: bool,
-    hide_empty_staves: bool,
+    staves: Staves,
     theme: ThemeArg,
 ) -> Result<String, CliError> {
     // Only ever write an .svg or a .pdf, so a typo cannot overwrite the song itself.
@@ -83,11 +92,12 @@ pub(crate) fn run(
         LayoutOptions::default()
     };
     let options = LayoutOptions {
-        empty_staves: if hide_empty_staves {
+        empty_staves: if staves.hide_empty {
             EmptyStaves::Hidden
         } else {
             EmptyStaves::Shown
         },
+        multi_bar_rests: staves.multi_bar_rests,
         ..options
     };
     let layout = layout_tracks(&imported.song, &indices, first, &options, &fonts)

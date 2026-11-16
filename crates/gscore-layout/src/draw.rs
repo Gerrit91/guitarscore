@@ -145,4 +145,19 @@ pub enum DrawOp {
         /// What the text is.
         color: ColorToken,
     },
+    /// Text turned 90° anticlockwise, reading upwards (a track's name before its staves):
+    /// centered on `at` along its length, its baseline on the vertical line through `at`
+    /// (the letters stand to its left).
+    VerticalText {
+        /// The text.
+        text: String,
+        /// The middle of the baseline.
+        at: Point,
+        /// Font size (em) in staff spaces.
+        size: f32,
+        /// Regular or bold.
+        font: TextFont,
+        /// What the text is.
+        color: ColorToken,
+    },
 }

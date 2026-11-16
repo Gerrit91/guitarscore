@@ -279,3 +279,125 @@ fn the_primary_track_is_kept_when_asked() {
     let rhythm = layout.places_of(tracks[1]).unwrap();
     assert!(rhythm.measure(MeasureIndex::new(4)).is_none());
 }
+
+#[test]
+fn a_bar_repeat_sign_is_not_an_empty_staff() {
+    // Two guitars: the first plays bar 1 and repeats it with % signs; the second rests.
+    let mut song = gscore_model::testing::song(
+        &[
+            gscore_model::testing::GUITAR_6,
+            gscore_model::testing::GUITAR_6,
+        ],
+        40,
+    )
+    .unwrap();
+    let first = gscore_model::BeatPosition {
+        staff: gscore_model::StaffIndex::new(0),
+        track: TrackIndex::new(0),
+        measure: MeasureIndex::new(0),
+        voice: gscore_model::VoiceIndex::new(0),
+        beat: gscore_model::BeatIndex::new(0),
+    };
+    let _ = song
+        .set_note(
+            first,
+            gscore_model::StringNumber::new(1).unwrap(),
+            gscore_model::Fret::new(3).unwrap(),
+        )
+        .unwrap();
+    for measure in 1..40 {
+        let _ = song
+            .set_simile_mark(
+                TrackIndex::new(0),
+                MeasureIndex::new(measure),
+                Some(gscore_model::SimileMark::Simple),
+            )
+            .unwrap();
+    }
+    let fonts = Fonts::bundled().unwrap();
+    let tracks = all_tracks(&song);
+    let options = LayoutOptions {
+        empty_staves: EmptyStaves::Hidden,
+        ..LayoutOptions::default()
+    };
+    let hidden = layout_tracks(&song, &tracks, tracks[0], &options, &fonts).unwrap();
+    let counts = drawn_per_system(&hidden);
+    assert!(counts.len() > 1, "{counts:?}");
+    // Every later system keeps the repeating guitar and leaves out the resting one.
+    assert!(counts.iter().skip(1).all(|&count| count == 1), "{counts:?}");
+    let repeating = hidden.places_of(tracks[0]).unwrap();
+    assert!(repeating.measure(MeasureIndex::new(39)).is_some());
+}
+
+#[test]
+fn a_system_where_every_track_rests_keeps_its_first_track() {
+    let song = gscore_model::testing::song(
+        &[
+            gscore_model::testing::GUITAR_6,
+            gscore_model::testing::GUITAR_6,
+        ],
+        40,
+    )
+    .unwrap();
+    let fonts = Fonts::bundled().unwrap();
+    let tracks = all_tracks(&song);
+    let options = LayoutOptions {
+        empty_staves: EmptyStaves::Hidden,
+        ..LayoutOptions::default()
+    };
+    let hidden = layout_tracks(&song, &tracks, tracks[0], &options, &fonts).unwrap();
+    let counts = drawn_per_system(&hidden);
+    assert!(counts.iter().skip(1).all(|&count| count == 1), "{counts:?}");
+    // Every bar is still on the page.
+    let first = hidden.places_of(tracks[0]).unwrap();
+    assert!((0..40).all(|bar| first.measure(MeasureIndex::new(bar)).is_some()));
+}
+
+/// With several tracks, each track's short name stands before every system, turned to read
+/// upwards along its staves, whole (it used to be cut to the margin's width: "el.gui…").
+#[test]
+fn short_names_read_upwards_before_each_tracks_staves() {
+    let song = common::open("basic/multi_staff.gp");
+    let layout = layout_all(&song, &LayoutOptions::default());
+    let names: Vec<(&str, Point)> = layout
+        .ops
+        .iter()
+        .filter_map(|op| match op {
+            DrawOp::VerticalText { text, at, .. } => Some((text.as_str(), *at)),
+            _ => None,
+        })
+        .collect();
+    let systems = layout.places.systems.len();
+    assert_eq!(names.len(), systems * song.track_count(), "{names:?}");
+    let short: Vec<&str> = names
+        .iter()
+        .take(song.track_count())
+        .map(|(n, _)| *n)
+        .collect();
+    assert_eq!(
+        short,
+        [
+            "el.guit.", "el.guit.", "el.guit.", "el.guit.", "el.bs.", "drm."
+        ]
+    );
+    // Each stands left of the system's first bar, level with its own track's staves.
+    for (track, places) in layout.tracks.iter().enumerate() {
+        let system = &places.places.systems[0];
+        let first_bar = places.places.measures[0].left;
+        let (_, at) = names[track];
+        assert!(at.x < first_bar, "{track}: {at:?}");
+        assert!(
+            at.y > system.top && at.y < system.tab_bottom() + 0.01,
+            "{track}: {at:?} not within {}..{}",
+            system.top,
+            system.tab_bottom()
+        );
+    }
+    assert!(
+        !layout
+            .ops
+            .iter()
+            .any(|op| matches!(op, DrawOp::Text { text, .. } if text.contains('…'))),
+        "no name is cut"
+    );
+}

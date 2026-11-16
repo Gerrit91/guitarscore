@@ -8,9 +8,10 @@
 
 use std::sync::Arc;
 
-use gscore_model::{Dynamic, Feel, Fermata, Repeat, Song};
+use gscore_model::{Direction, Dynamic, Feel, Fermata, Repeat, Song};
 
 mod chord;
+mod directions;
 mod feel;
 mod text;
 
@@ -75,6 +76,8 @@ pub(crate) struct MeasureMarks {
     pub(crate) free_time_starts: bool,
     /// The fermata over the measure's first note, if any.
     pub(crate) fermata: Option<Fermata>,
+    /// The bar's jumps and codas (segno, coda, fine, D.C., D.S., to coda), targets first.
+    pub(crate) directions: Vec<Direction>,
     /// The feel, written where it changes (and at the start unless straight).
     pub(crate) feel: Option<Feel>,
     /// The ending bracket over this measure, if it is an alternative ending.
@@ -145,6 +148,7 @@ pub(crate) fn plan(song: &Song, measures: &[Arc<MeasureLayout>]) -> Vec<MeasureM
                 free_time: song.free_time(index).unwrap_or(false),
                 free_time_starts: false,
                 fermata: song.fermata(index),
+                directions: song.directions(index),
                 beat_effects: measure.has_beat_effects(),
                 lane_ornaments: measure.has_lane_ornaments(),
                 beat_text: measure.has_beat_text(),
@@ -212,6 +216,8 @@ pub(crate) struct Rows {
     beat_text: bool,
     fermata: bool,
     endings: bool,
+    /// Jumps and codas.
+    directions: bool,
     tempo: bool,
     section: bool,
     /// Chord diagrams, above every other row.
@@ -234,6 +240,7 @@ impl Rows {
             beat_text: marks.iter().any(|m| m.beat_text),
             fermata: marks.iter().any(|m| m.fermata.is_some()),
             endings: system && marks.iter().any(|m| m.ending.is_some()),
+            directions: system && marks.iter().any(|m| !m.directions.is_empty()),
             tempo: system && marks.iter().any(MeasureMarks::has_tempo),
             section: system && marks.iter().any(|m| m.section.is_some()),
             chords: marks.iter().any(|m| m.chord_diagram),
@@ -244,7 +251,16 @@ impl Rows {
     pub(crate) fn height(self) -> f32 {
         let rows = self.text_rows();
         let chords = if self.chords { chord::ROW } else { 0.0 };
-        rows as f32 * ROW_HEIGHT + self.band() + chords
+        rows as f32 * ROW_HEIGHT + self.band() + chords + self.directions_extra()
+    }
+
+    /// The directions' row is taller than a text row (the coda sign).
+    fn directions_extra(self) -> f32 {
+        if self.directions {
+            directions::EXTRA_HEIGHT
+        } else {
+            0.0
+        }
     }
 
     /// The number of text rows (everything but the band and the chord diagrams).
@@ -253,6 +269,7 @@ impl Rows {
             self.beat_text,
             self.fermata,
             self.endings,
+            self.directions,
             self.tempo,
             self.section,
         ]
@@ -284,7 +301,13 @@ impl Rows {
 
     /// The baseline of the `n`-th row (0 nearest the staff) above `top`.
     fn baseline(self, n: usize, top: f32) -> f32 {
-        top - self.band() - FIRST_ROW - n as f32 * ROW_HEIGHT
+        // Rows above the directions' row make room for its extra height.
+        let extra = if self.directions && n > self.directions_row() {
+            directions::EXTRA_HEIGHT
+        } else {
+            0.0
+        };
+        top - self.band() - FIRST_ROW - n as f32 * ROW_HEIGHT - extra
     }
 
     /// The beat text sits nearest the staff, above the measure numbers.
@@ -300,8 +323,13 @@ impl Rows {
         usize::from(self.beat_text).saturating_add(usize::from(self.fermata))
     }
 
-    fn tempo_row(self) -> usize {
+    fn directions_row(self) -> usize {
         self.ending_row().saturating_add(usize::from(self.endings))
+    }
+
+    fn tempo_row(self) -> usize {
+        self.directions_row()
+            .saturating_add(usize::from(self.directions))
     }
 
     fn section_row(self) -> usize {
@@ -383,6 +411,15 @@ pub(crate) fn draw(
             ending,
             rows.baseline(rows.ending_row(), top),
             ops,
+        );
+    }
+    if !marks.directions.is_empty() {
+        directions::draw(
+            placed,
+            rows.baseline(rows.directions_row(), top),
+            ctx,
+            ops,
+            clickable,
         );
     }
     let tempo_y = rows.baseline(rows.tempo_row(), top);

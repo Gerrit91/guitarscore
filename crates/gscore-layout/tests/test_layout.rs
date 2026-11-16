@@ -35,7 +35,9 @@ fn points(op: &DrawOp) -> Vec<Point> {
             ..
         } => vec![*from, *to, *control1, *control2],
         DrawOp::Polygon { points, .. } => points.clone(),
-        DrawOp::Glyph { at, .. } | DrawOp::Text { at, .. } => vec![*at],
+        DrawOp::Glyph { at, .. } | DrawOp::Text { at, .. } | DrawOp::VerticalText { at, .. } => {
+            vec![*at]
+        }
     }
 }
 

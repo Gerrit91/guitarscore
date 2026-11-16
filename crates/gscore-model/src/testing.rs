@@ -507,7 +507,10 @@ pub fn song_with_directions(
             .measure_headers
             .get_mut(measure)
             .ok_or_else(|| ModelError::Invalid(format!("no measure {measure} for a direction")))?;
-        header.direction = Some(direction.to_gp());
+        let sign = direction.to_gp();
+        if !header.directions.contains(&sign) {
+            header.directions.push(sign);
+        }
     }
     Song::from_inner(inner)
 }

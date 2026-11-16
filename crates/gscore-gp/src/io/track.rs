@@ -160,8 +160,12 @@ impl SongTrackOps for Song {
         }
         let flags1 = read_byte(data, seek)?;
         track.percussion_track = (flags1 & 0x01) == 0x01;
-        track.banjo_track = (flags1 & 0x02) == 0x02;
-        track.visible = (flags1 & 0x04) == 0x04;
+        // GuitarScore fix: the bits as documented above (12-string 0x02, banjo 0x04,
+        // visible 0x08); every track read as invisible and its banjo flag came from the
+        // 12-string bit.
+        track.twelve_stringed_guitar_track = (flags1 & 0x02) == 0x02;
+        track.banjo_track = (flags1 & 0x04) == 0x04;
+        track.visible = (flags1 & 0x08) == 0x08;
         track.solo = (flags1 & 0x10) == 0x10;
         track.mute = (flags1 & 0x20) == 0x20;
         track.use_rse = (flags1 & 0x40) == 0x40;
@@ -316,4 +320,46 @@ fn bits_u8(flags: &[bool; 8]) -> u8 {
         .iter()
         .rev()
         .fold(0_u8, |byte, &on| (byte << 1) | u8::from(on))
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::model::{Measure, MeasureHeader, Song, Track};
+
+    /// GP5's track flags: 12-string 0x02, banjo 0x04, visible 0x08. The reader took banjo
+    /// from 0x02 and visibility from 0x04, so every track came back invisible.
+    #[test]
+    fn gp5_track_flags_are_read_as_written() {
+        for (twelve, banjo, visible) in [
+            (false, false, true),
+            (true, false, true),
+            (false, true, false),
+            (false, false, false),
+        ] {
+            let mut song = Song::default();
+            song.measure_headers.push(MeasureHeader {
+                number: 1,
+                ..MeasureHeader::default()
+            });
+            song.tracks.push(Track {
+                twelve_stringed_guitar_track: twelve,
+                banjo_track: banjo,
+                visible,
+                measures: vec![Measure::default()],
+                ..Track::default()
+            });
+            let bytes = song.write((5, 1, 0), None).expect("written");
+            let mut reread = Song::default();
+            reread.read_gp5(&bytes).expect("read back");
+            let track = &reread.tracks[0];
+            assert_eq!(
+                (
+                    track.twelve_stringed_guitar_track,
+                    track.banjo_track,
+                    track.visible
+                ),
+                (twelve, banjo, visible)
+            );
+        }
+    }
 }

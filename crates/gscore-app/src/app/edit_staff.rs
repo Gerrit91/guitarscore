@@ -8,8 +8,8 @@
 use egui::{Align, Layout, Margin, RichText, vec2};
 use gscore_edit::{ActionId, Command};
 use gscore_model::{
-    Clef, Feel, Fermata, MeasureIndex, Repeat, Section, SimileMark, SystemBreak, TrackColor,
-    TrackIndex,
+    Clef, Direction, Feel, Fermata, MeasureIndex, Repeat, Section, SimileMark, SystemBreak,
+    TrackColor, TrackIndex,
 };
 
 use super::edit_palette::PaletteSnapshot;
@@ -31,6 +31,7 @@ pub(super) enum Dialog {
     Endings,
     Feel,
     Fermata,
+    Directions,
     Break,
     Bars,
 }
@@ -67,6 +68,10 @@ pub(super) struct StaffState {
     pub(super) bars: u8,
     pub(super) feel: Feel,
     pub(super) fermata: Option<Fermata>,
+    /// The bar's jumps and codas.
+    pub(super) directions: Vec<Direction>,
+    /// The signs other bars of the song carry (what a jump can go to).
+    pub(super) directions_elsewhere: Vec<Direction>,
     /// When "Tap tempo" was clicked (seconds), the last few clicks.
     taps: Vec<f64>,
     /// When the tempo dialog's metronome was started (seconds), while it swings.
@@ -97,6 +102,8 @@ impl Default for StaffState {
             bars: 4,
             feel: Feel::None,
             fermata: None,
+            directions: Vec::new(),
+            directions_elsewhere: Vec::new(),
             taps: Vec::new(),
             swinging: None,
             error: None,
@@ -159,6 +166,9 @@ impl StaffState {
         self.bars = snapshot.bars_per_system.unwrap_or(4);
         self.feel = snapshot.feel;
         self.fermata = snapshot.fermata;
+        self.directions.clone_from(&snapshot.directions);
+        self.directions_elsewhere
+            .clone_from(&snapshot.directions_elsewhere);
     }
 
     /// Draws the dialog while one is open; OK pushes one command.
@@ -290,6 +300,13 @@ impl StaffState {
                 measure: target.measure,
                 fermata: self.fermata,
             },
+            Dialog::Directions => Command::SetDirections {
+                measure: target.measure,
+                directions: Direction::ALL
+                    .into_iter()
+                    .filter(|direction| self.directions.contains(direction))
+                    .collect(),
+            },
             Dialog::Break => Command::SetSystemBreak {
                 track: target.track,
                 measure: target.measure,
@@ -392,6 +409,13 @@ const CLEF_FACE: Face<'static> = Face::GlyphMore {
     baseline: 4.0,
 };
 
+/// The jumps-and-codas tile: the coda sign.
+const DIRECTIONS_FACE: Face<'static> = Face::Glyph {
+    text: "\u{E048}",
+    size: 21.0,
+    baseline: 7.5,
+};
+
 /// Every staff tile's face, for the test that they fit their tiles.
 #[cfg(test)]
 pub(super) fn faces() -> Vec<Face<'static>> {
@@ -404,6 +428,7 @@ pub(super) fn faces() -> Vec<Face<'static>> {
         Face::RepeatStart,
         Face::RepeatEnd,
         Face::Endings,
+        DIRECTIONS_FACE,
         Face::Swing,
         Face::Fermata,
         Face::DoubleBar,
@@ -528,6 +553,13 @@ pub(super) fn section(
                     "Alternative endings",
                     "Mark this bar as an alternative ending",
                     snapshot.repeat.endings != 0,
+                ),
+                dialog(
+                    Dialog::Directions,
+                    DIRECTIONS_FACE,
+                    "Jumps and codas",
+                    "Segno, coda and fine, D.C. and D.S. jumps at this bar",
+                    !snapshot.directions.is_empty(),
                 ),
                 StaffTile::BarRepeat { double: false },
                 StaffTile::BarRepeat { double: true },

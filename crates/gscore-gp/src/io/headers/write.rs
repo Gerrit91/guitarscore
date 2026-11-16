@@ -167,11 +167,9 @@ const DIRECTIONS: [DirectionSign; 19] = [
 pub(super) fn directions(data: &mut Vec<u8>, headers: &[MeasureHeader]) -> GpResult<()> {
     let mut map: HashMap<DirectionSign, i16> = HashMap::with_capacity(DIRECTIONS.len());
     for (i, header) in headers.iter().enumerate() {
-        if let Some(d) = &header.direction {
-            map.insert(
-                d.clone(),
-                i.saturating_add(1).to_i16_gp("direction measure index")?,
-            );
+        for d in &header.directions {
+            map.entry(d.clone())
+                .or_insert(i.saturating_add(1).to_i16_gp("direction measure index")?);
         }
     }
     for d in &DIRECTIONS {

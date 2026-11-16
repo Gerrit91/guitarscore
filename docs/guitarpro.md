@@ -344,3 +344,17 @@ Code comments mark changed spots with "GuitarScore". Each fix could be offered u
     it is kept in GuitarScore's own `GuitarScoreSpacing` beat property (a `<Float>`, in
     staff spaces, clamped to `SPACING_RANGE`), which Guitar Pro ignores. Tests:
     `gpif_import/design_tests.rs`.
+49. GP5 track flags (`src/io/track.rs`, 2026-11-15): the reader took the banjo flag from
+    bit 0x02 (12-string) and visibility from 0x04 (banjo), and never read the 12-string
+    bit, against its own doc comment and the writer (12-string 0x02, banjo 0x04, visible
+    0x08). Every GP5 track came in invisible. Test
+    `track::tests::gp5_track_flags_are_read_as_written`.
+50. Track visibility in GP7 (`src/io/gpx/layout_configuration.rs` (new), `src/io/gpx/mod.rs`,
+    `src/io/gpx/write.rs`, `src/io/song.rs`, `Song::layout_configuration`,
+    `Track::layout_second`, 2026-11-15): GP7 keeps the eye of its track list (shown when
+    all tracks are shown together) in the binary `Content/LayoutConfiguration`, which was
+    dropped on saving. Decoded from two Guitar Pro saves of one song (all shown, six
+    hidden): `u32` + two bytes, one byte per track (`ff` shown, `00` hidden) into
+    `Track::visible`, a second byte per track of unknown meaning (kept), a `u32` that looks
+    like the selected track (kept, reset to 0 if that track is gone). Data of the wrong
+    length is ignored. Tests in the module, one on `testdata/basic/multi_staff.gp`.

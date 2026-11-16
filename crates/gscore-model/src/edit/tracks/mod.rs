@@ -34,6 +34,8 @@ const MAX_CHANNELS: usize = 64;
 /// Longest track name accepted (characters). Keeps a hostile file from making the UI
 /// allocate without bound.
 pub const MAX_TRACK_NAME_CHARS: usize = 256;
+/// The longest short name of a track (written before its staves), in characters.
+pub const MAX_SHORT_NAME_CHARS: usize = 40;
 
 /// Which mixer flag an edit changes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -71,6 +73,27 @@ impl Song {
     /// Renames the track at `at`.
     pub fn rename_track(&mut self, at: TrackIndex, name: &str) -> Result<Change, ModelError> {
         rename(self, at, name)
+    }
+
+    /// Sets the short name written before the track's staves when several tracks are shown
+    /// ("el.guit."); empty uses the name. GP6 and GP7 files keep it; GP3-5 have no field.
+    pub fn set_track_short_name(
+        &mut self,
+        at: TrackIndex,
+        short_name: &str,
+    ) -> Result<Change, ModelError> {
+        if short_name.chars().count() > MAX_SHORT_NAME_CHARS {
+            return Err(ModelError::Invalid(format!(
+                "the short name is longer than {MAX_SHORT_NAME_CHARS} characters"
+            )));
+        }
+        self.edit_track_settings(|inner| {
+            let track = track_mut(inner, at)?;
+            let previous = std::mem::replace(&mut track.short_name, short_name.to_owned());
+            Ok(Change {
+                kind: ChangeKind::TrackShortName { at, previous },
+            })
+        })
     }
 
     /// Sets the track's color.
@@ -205,6 +228,8 @@ pub(super) fn duplicate(song: &mut Song, at: TrackIndex) -> Result<Change, Model
         copy.name = unique_name(inner, &source.name);
         copy.short_name = String::new();
         copy.channel_index = channel;
+        // A copy is a track of its own: no view shows it until it is added.
+        copy.session_key = crate::score_views::new_track_key();
         let to = TrackIndex::new(at.get().saturating_add(1));
         inner.tracks.insert(to.get(), copy);
         renumber(inner)?;

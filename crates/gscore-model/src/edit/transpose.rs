@@ -266,6 +266,7 @@ impl Song {
         let transpose_active = self.transpose_active;
         let mut wrapped = Song::from_inner(candidate)?;
         wrapped.replace_sound_state(sound_state);
+        wrapped.score_views = std::mem::take(&mut self.score_views);
         wrapped.transpose_active = transpose_active;
         *self = wrapped;
         Ok(Change {

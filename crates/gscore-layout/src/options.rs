@@ -3,7 +3,7 @@
 /// Layout settings. Lengths are in staff spaces unless the name says otherwise.
 #[derive(Debug, Clone, PartialEq)]
 pub struct LayoutOptions {
-    /// Size of one staff space in millimetres (MuseScore's default is 1.75).
+    /// Size of one staff space in millimetres (Guitar Pro's 1.5 at score size 100 %).
     pub staff_space_mm: f32,
     /// Page width.
     pub page_width: f32,
@@ -43,6 +43,12 @@ pub struct LayoutOptions {
     /// Lay the whole score out on one line that scrolls horizontally, instead of breaking
     /// it into systems (the app's horizontal screen view).
     pub single_line: bool,
+    /// The staves a track shows instead of its own (a score view's choice); a track not
+    /// listed shows its own.
+    pub track_staves: Vec<(gscore_model::TrackIndex, gscore_model::TrackStaves)>,
+    /// Write a run of bars where every shown staff rests as one multi-bar rest (a thick
+    /// bar with the number of bars above it).
+    pub multi_bar_rests: bool,
 }
 
 /// With several tracks shown, what happens to a track's staves in a system where it has
@@ -85,8 +91,10 @@ pub struct Spacing {
 /// A4 width and height in millimetres.
 const A4_WIDTH_MM: f32 = 210.0;
 const A4_HEIGHT_MM: f32 = 297.0;
-/// The staff space at score size 100 %, in millimetres.
-const STAFF_SPACE_MM: f32 = 1.75;
+/// The staff space at score size 100 %, in millimetres: Guitar Pro's (GP7 files store it
+/// as `Global/spaceSizeMM` in their style sheet, 1.5 in every file seen), so a song breaks
+/// into about as many bars per line and pages as Guitar Pro prints it.
+const STAFF_SPACE_MM: f32 = 1.5;
 
 impl LayoutOptions {
     /// These options with the score on separate pages of the options' paper (A4 unless
@@ -144,8 +152,20 @@ impl LayoutOptions {
             running_header: page.running_header,
             // Which systems a track is drawn in does not change a measure.
             empty_staves: page.empty_staves,
+            // Each staff's cache key holds its own track's staves.
+            track_staves: Vec::new(),
+            // Runs of rests are made from the measures' layouts, after them.
+            multi_bar_rests: false,
             ..self.clone()
         }
+    }
+
+    /// The staves `track` shows: the options' choice for it, else the track's own.
+    pub fn staves_of(&self, track: &gscore_model::TrackView<'_>) -> gscore_model::TrackStaves {
+        self.track_staves
+            .iter()
+            .find(|(index, _)| *index == track.index())
+            .map_or_else(|| track.staves(), |(_, staves)| *staves)
     }
 
     /// The width between the left and right margins.
@@ -156,7 +176,7 @@ impl LayoutOptions {
 
 impl Default for LayoutOptions {
     fn default() -> Self {
-        let staff_space_mm = 1.75;
+        let staff_space_mm = STAFF_SPACE_MM;
         LayoutOptions {
             staff_space_mm,
             page_width: A4_WIDTH_MM / staff_space_mm,
@@ -178,6 +198,8 @@ impl Default for LayoutOptions {
             notation_gap: 8.0,
             empty_staves: EmptyStaves::Shown,
             single_line: false,
+            track_staves: Vec::new(),
+            multi_bar_rests: false,
         }
     }
 }

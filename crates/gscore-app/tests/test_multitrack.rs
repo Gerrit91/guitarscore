@@ -172,16 +172,18 @@ fn the_bar_menu_sets_the_multitrack_line_breaks_when_all_tracks_are_shown() {
 }
 
 #[test]
-fn empty_staves_can_be_hidden_from_the_view_menu() {
+fn empty_staves_are_hidden_unless_switched_off_in_the_view_menu() {
     let mut harness = app_with_multi_staff();
     view_menu(&mut harness, "All tracks");
-    assert!(!harness.state().view().hide_empty_staves);
+    assert!(harness.state().view().hide_empty_staves, "on by default");
     view_menu(&mut harness, "Hide empty staves");
-    assert!(harness.state().view().hide_empty_staves);
+    assert!(!harness.state().view().hide_empty_staves);
     assert!(
-        harness.state().settings().hide_empty_staves,
+        !harness.state().settings().hide_empty_staves,
         "remembered in the settings"
     );
+    view_menu(&mut harness, "Hide empty staves");
+    assert!(harness.state().view().hide_empty_staves);
     assert_eq!(harness.state().notice(), None, "the score lays out");
     // The cursor's track stays reachable: moving it down to a bar where the clean guitar
     // has nothing still works.
@@ -626,4 +628,150 @@ fn only_a_track_the_modelled_strings_play_starts_with_a_lower_trim() {
     harness.run();
     assert_eq!(trim(&harness, guitar), 0.0);
     assert_eq!(trim(&harness, drums), 0.0);
+}
+
+/// The tracks of the song's score views, as indices.
+fn view_tracks(harness: &Harness<'static, GuitarScoreApp>) -> Vec<Vec<usize>> {
+    harness
+        .state()
+        .document()
+        .unwrap()
+        .song()
+        .score_views()
+        .iter()
+        .map(|view| view.tracks.iter().map(|entry| entry.track.get()).collect())
+        .collect()
+}
+
+fn click(harness: &mut Harness<'static, GuitarScoreApp>, label: &str) {
+    harness.get_by_label(label).click();
+    harness.run();
+}
+
+#[test]
+fn a_score_view_is_built_in_its_dialog_and_shown() {
+    let mut harness = app_with_multi_staff();
+    view_menu(&mut harness, "All tracks");
+    view_menu(&mut harness, "Score views…");
+    // A new view starts as the score shows now, and is shown.
+    click(&mut harness, "New view");
+    assert_eq!(view_tracks(&harness), [vec![0, 1, 2, 3, 4, 5]]);
+    // Three guitars out, the drums above the bass: the score follows each step.
+    click(&mut harness, "2. Rhythm Guitar");
+    click(&mut harness, "3. Crunch Guitar");
+    click(&mut harness, "4. Crunch Guitar");
+    assert_eq!(view_tracks(&harness), [vec![0, 4, 5]]);
+    click(&mut harness, "Move 6. Drumkit up");
+    assert_eq!(view_tracks(&harness), [vec![0, 5, 4]]);
+    assert_eq!(harness.state().score_tracks(), [0, 5, 4]);
+    // Named as typed, when the field is left.
+    harness.get_by_label("Name").click();
+    harness.run();
+    harness.key_press_modifiers(egui::Modifiers::COMMAND, Key::A);
+    harness.get_by_label("Name").type_text("Rhythm section");
+    harness.run();
+    harness.key_press(Key::Enter);
+    harness.run();
+    let song = harness.state().document().unwrap().song().clone();
+    assert_eq!(song.score_views()[0].name, "Rhythm section");
+    park_pointer(&mut harness);
+    harness.snapshot("score_views_dialog");
+    // Each change is one undo step.
+    click(&mut harness, "Edit");
+    harness.get_by_label_contains("Undo ctrl+z").click();
+    harness.run();
+    assert_eq!(
+        harness.state().document().unwrap().song().score_views()[0].name,
+        "View 1"
+    );
+    assert_eq!(view_tracks(&harness), [vec![0, 5, 4]]);
+
+    // All tracks is Guitar Pro's view: switching a track off there hides it from it.
+    harness
+        .get_all_by_label("All tracks")
+        .next()
+        .expect("the dialog's entry")
+        .click();
+    harness.run();
+    click(&mut harness, "6. Drumkit");
+    let shown: Vec<bool> = harness
+        .state()
+        .document()
+        .unwrap()
+        .song()
+        .tracks()
+        .map(|track| track.is_visible())
+        .collect();
+    assert_eq!(shown, [true, true, true, true, true, false]);
+    assert_eq!(harness.state().score_tracks(), [0, 1, 2, 3, 4]);
+}
+
+/// The tab bar's choice of view: an eye before the view's name; the views, then what the
+/// score leaves out (empty staves, runs of rests), then the views dialog.
+#[test]
+fn the_view_choice_holds_the_views_and_the_score_switches() {
+    let mut harness = app_with_multi_staff();
+    click(&mut harness, "Score view");
+    park_pointer(&mut harness);
+    harness.snapshot("score_view_choice");
+    assert!(harness.state().view().multi_bar_rests, "on by default");
+    click(&mut harness, "Multi-bar rests");
+    assert!(!harness.state().view().multi_bar_rests);
+    assert!(!harness.state().settings().multi_bar_rests, "remembered");
+    click(&mut harness, "Multi-bar rests");
+    assert!(harness.state().view().multi_bar_rests);
+    click(&mut harness, "All tracks");
+    assert_eq!(harness.state().score_tracks(), [0, 1, 2, 3, 4, 5]);
+}
+
+/// The song grid's eyes act on the score's view: with all tracks, Guitar Pro's eye (saved
+/// in the file); with one track, the track shown.
+#[test]
+fn the_grids_eyes_act_on_the_current_view() {
+    let mut harness = app_with_multi_staff();
+    view_menu(&mut harness, "All tracks");
+    click(&mut harness, "Show Drumkit in the score view");
+    let visible: Vec<bool> = harness
+        .state()
+        .document()
+        .unwrap()
+        .song()
+        .tracks()
+        .map(|track| track.is_visible())
+        .collect();
+    assert_eq!(visible, [true, true, true, true, true, false]);
+    assert_eq!(harness.state().score_tracks(), [0, 1, 2, 3, 4]);
+    park_pointer(&mut harness);
+    harness.snapshot("grid_eyes");
+    // Back on: the drums are shown again.
+    click(&mut harness, "Show Drumkit in the score view");
+    assert_eq!(harness.state().score_tracks(), [0, 1, 2, 3, 4, 5]);
+    // With one track, an eye shows that track.
+    view_menu(&mut harness, "One track");
+    click(&mut harness, "Show Electric Bass in the score view");
+    assert_eq!(harness.state().score_tracks(), [4]);
+}
+
+/// The song grid's track column is wider by default and follows its edge when dragged; the
+/// width is kept in the settings.
+#[test]
+fn the_track_column_is_dragged_wider_at_its_edge() {
+    let mut harness = app_with_multi_staff();
+    let before = harness.state().view().grid_track_column();
+    assert!((before - 460.0).abs() < 0.5, "{before}");
+    let from = harness.get_by_label("Track column width").rect().center();
+    harness.drag_at(from);
+    harness.step();
+    let to = from + egui::vec2(100.0, 0.0);
+    harness.hover_at(to);
+    harness.step();
+    harness.hover_at(to);
+    harness.step();
+    harness.drop_at(to);
+    harness.run();
+    let after = harness.state().view().grid_track_column();
+    assert!((after - 560.0).abs() < 2.0, "{after}");
+    assert!((harness.state().settings().grid_track_column - after).abs() < 0.5);
+    park_pointer(&mut harness);
+    harness.snapshot("grid_wide_track_column");
 }

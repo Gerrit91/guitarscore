@@ -192,14 +192,28 @@ impl Song {
             .map(|(kind, _)| crate::marks::Fermata::from_gp(kind))
     }
 
-    /// The navigation sign at `measure` (a coda, segno, fine or D.C./D.S. direction), or
-    /// `None` if it has none or there is no such measure.
-    pub fn direction(&self, measure: MeasureIndex) -> Option<crate::marks::Direction> {
-        let header = self.inner().measure_headers.get(measure.get())?;
-        header
-            .direction
-            .as_ref()
-            .map(crate::marks::Direction::from_gp)
+    /// The navigation signs at `measure` (codas, segnos, fine and D.C./D.S. directions),
+    /// targets first; empty if it has none or there is no such measure.
+    pub fn directions(&self, measure: MeasureIndex) -> Vec<crate::marks::Direction> {
+        self.inner()
+            .measure_headers
+            .get(measure.get())
+            .map(|header| {
+                header
+                    .directions
+                    .iter()
+                    .map(crate::marks::Direction::from_gp)
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    /// True if `measure` carries the navigation sign `direction`.
+    pub fn has_direction(&self, measure: MeasureIndex, direction: crate::marks::Direction) -> bool {
+        self.inner()
+            .measure_headers
+            .get(measure.get())
+            .is_some_and(|header| header.directions.contains(&direction.to_gp()))
     }
 
     /// The tempo (beats per minute) set at the start of `measure` (GP6 and later store tempo
@@ -483,7 +497,10 @@ mod tests {
         gp.measure_headers[1].repeat_close = 2;
         gp.measure_headers[1].repeat_alternative = 0b10;
         gp.measure_headers[1].tempo = 140;
-        gp.measure_headers[1].direction = Some(gscore_gp::DirectionSign::DaCapoAlCoda);
+        gp.measure_headers[1].directions = vec![
+            gscore_gp::DirectionSign::Segno,
+            gscore_gp::DirectionSign::DaCapoAlCoda,
+        ];
         let song = from_gp(gp).unwrap();
         assert_eq!(
             song.repeat(MeasureIndex::new(0)).unwrap(),
@@ -499,9 +516,12 @@ mod tests {
         assert_eq!(song.tempo_change(MeasureIndex::new(1)), Some(140));
         assert_eq!(song.repeat(MeasureIndex::new(2)), None);
         assert_eq!(
-            song.direction(MeasureIndex::new(1)),
-            Some(crate::marks::Direction::DaCapoAlCoda)
+            song.directions(MeasureIndex::new(1)),
+            [
+                crate::marks::Direction::Segno,
+                crate::marks::Direction::DaCapoAlCoda
+            ]
         );
-        assert_eq!(song.direction(MeasureIndex::new(0)), None);
+        assert!(song.directions(MeasureIndex::new(0)).is_empty());
     }
 }

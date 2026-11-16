@@ -457,6 +457,74 @@ fn a_click_on_the_tempo_or_the_time_signature_opens_its_dialog() {
 /// A section name opens the section dialog of its bar, and a tuning in the header the
 /// tuning dialog of its track.
 #[test]
+fn the_jumps_and_codas_dialog_sets_a_bars_signs() {
+    let _gpu = common::lock_gpu();
+    let mut harness = Harness::builder()
+        .with_size(egui::vec2(1000.0, 760.0))
+        .wgpu()
+        .build_eframe(|cc| {
+            GuitarScoreApp::new(&cc.egui_ctx, Some(testdata("basic/steel_guitar_dadgad.gp")))
+        });
+    let started = Instant::now();
+    while harness.state().is_busy() {
+        assert!(
+            started.elapsed() < Duration::from_secs(30),
+            "opening timed out"
+        );
+        harness.step();
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    harness.run();
+    harness.get_by_label("Jumps and codas").scroll_to_me();
+    harness.run();
+    harness.get_by_label("Jumps and codas").click();
+    harness.run();
+    harness.get_by_label("Segno").click();
+    harness.run();
+    harness.get_by_label("Dal segno al coda").click();
+    harness.run();
+    // One jump back per bar: D.C. replaces D.S. al coda, and back again.
+    harness.get_by_label("Da capo (D.C.)").click();
+    harness.run();
+    harness.get_by_label("Dal segno al coda").click();
+    harness.run();
+    harness.snapshot("staff_directions_dialog");
+    harness.get_by_label("OK").click();
+    harness.run();
+    let document = harness.state().document().unwrap();
+    let measure = document.editor().cursor().measure;
+    assert_eq!(
+        document.song().directions(measure),
+        [
+            gscore_model::Direction::Segno,
+            gscore_model::Direction::DaSegnoAlCoda
+        ]
+    );
+    // The signs on the page open the dialog again, with the bar's signs chosen.
+    let bar = measure.get() + 1;
+    let mark = format!("Edit the jumps and codas of bar {bar}");
+    // The segno at the bar's start and the jump at its end are each a click area.
+    assert_eq!(harness.get_all_by_label(&mark).count(), 2);
+    harness
+        .get_all_by_label(&mark)
+        .next()
+        .unwrap()
+        .scroll_to_me();
+    harness.run();
+    harness.get_all_by_label(&mark).next().unwrap().click();
+    harness.run();
+    harness.get_by_label("Segno").click();
+    harness.run();
+    harness.get_by_label("OK").click();
+    harness.run();
+    let document = harness.state().document().unwrap();
+    assert_eq!(
+        document.song().directions(measure),
+        [gscore_model::Direction::DaSegnoAlCoda]
+    );
+}
+
+#[test]
 fn a_click_on_a_section_or_a_tuning_opens_its_dialog() {
     let mut harness = app_with(Some(testdata("basic/multi_staff.gp")));
     harness
@@ -1776,6 +1844,20 @@ fn the_track_panel_edits_the_shown_track() {
     harness.run();
     harness.key_press(egui::Key::Enter);
     harness.run();
+    assert_eq!(first_track(&harness).name(), "Renamed");
+    // The same window sets the short name written before the staves; the name stays.
+    harness.get_by_label("Rename track").click();
+    harness.run();
+    // It shows the file's own short name; typed over, it gets a new one.
+    harness.get_by_label("Short name").click();
+    harness.run();
+    harness.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::A);
+    harness.run();
+    harness.get_by_label("Short name").type_text("st.gtr.");
+    harness.run();
+    harness.key_press(egui::Key::Enter);
+    harness.run();
+    assert_eq!(first_track(&harness).short_name(), "st.gtr.");
     assert_eq!(first_track(&harness).name(), "Renamed");
 
     // Neither editing a name nor a name too long for the header widens the panel (the

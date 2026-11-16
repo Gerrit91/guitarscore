@@ -92,9 +92,11 @@ in AGENTS.md section 9.
 
 ## Score and layout
 
-11. **Missing in the score:** D.C./D.S./coda and other directions, lyrics, rhythm under
+11. **Missing in the score:** lyrics, rhythm under
     the tab (shown in the notation instead), a bracket or brace for multi-track systems,
-    native printing (print from the PDF). Beat text can collide with high notes in the
+    native printing (print from the PDF). A system taller than a page goes on over the
+    next pages, split between tracks (2026-11-15); a single track taller than a page still
+    runs over. Beat text can collide with high notes in the
     notation ("Bend", "Slides" in `ornaments.gp`). Text widths are estimated for
     non-digits.
 11a. **Design mode (2026-11-14).** Bar widths and moved beat columns are live

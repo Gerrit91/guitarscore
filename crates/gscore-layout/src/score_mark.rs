@@ -13,6 +13,11 @@ pub enum ScoreMarkKind {
         /// The bar the tempo belongs to.
         measure: MeasureIndex,
     },
+    /// A bar's jumps and codas: the signs at its start and the jump text at its end.
+    Directions {
+        /// The bar that carries them.
+        measure: MeasureIndex,
+    },
     /// A section name in its frame.
     Section {
         /// The bar the section starts at.

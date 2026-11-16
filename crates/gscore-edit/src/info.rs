@@ -323,6 +323,17 @@ const FEEL: ParamInfo = ParamInfo {
     help: "none, eighth, sixteenth, dotted_eighth, dotted_sixteenth, scottish_eighth or scottish_sixteenth",
 };
 
+const DIRECTIONS: ParamInfo = ParamInfo {
+    name: "directions",
+    required: true,
+    default: None,
+    help: "none, or ids joined by commas: coda, double_coda, segno, segno_segno, fine, \
+           da_capo, da_capo_al_coda, da_capo_al_double_coda, da_capo_al_fine, da_segno, \
+           da_segno_al_coda, da_segno_al_double_coda, da_segno_al_fine, da_segno_segno, \
+           da_segno_segno_al_coda, da_segno_segno_al_double_coda, da_segno_segno_al_fine, \
+           da_coda, da_double_coda",
+};
+
 const FERMATA: ParamInfo = ParamInfo {
     name: "fermata",
     required: true,
@@ -442,6 +453,22 @@ pub(crate) const RENAME_TRACK: CommandInfo = CommandInfo {
     label: "Rename a track",
     help: "Gives a track a new name. The command line cannot pass spaces.",
     params: &[TRACK, NAME],
+};
+
+const SHORT_NAME: ParamInfo = ParamInfo {
+    name: "short_name",
+    required: true,
+    default: None,
+    help: "The short name written before the track's staves (empty uses the name)",
+};
+
+pub(crate) const SET_TRACK_SHORT_NAME: CommandInfo = CommandInfo {
+    id: "set_track_short_name",
+    aliases: &[],
+    label: "Set a track's short name",
+    help: "Sets the short name written before the track's staves when several tracks are \
+           shown (\"el.guit.\"); empty uses the name.",
+    params: &[TRACK, SHORT_NAME],
 };
 
 pub(crate) const SET_TRACK_COLOR: CommandInfo = CommandInfo {
@@ -994,6 +1021,77 @@ pub(crate) const SET_FEEL: CommandInfo = CommandInfo {
     params: &[MEASURE, FEEL],
 };
 
+const VIEW: ParamInfo = ParamInfo {
+    name: "view",
+    required: true,
+    default: None,
+    help: "Score view, 1-based (one past the last adds a view)",
+};
+
+const VIEW_NAME: ParamInfo = ParamInfo {
+    name: "name",
+    required: true,
+    default: None,
+    help: "The view's name",
+};
+
+const VIEW_TRACKS: ParamInfo = ParamInfo {
+    name: "tracks",
+    required: true,
+    default: None,
+    help: "The tracks shown, top to bottom, each with its staves: 3:tab,1:both",
+};
+
+const HIDE_EMPTY: ParamInfo = ParamInfo {
+    name: "hide_empty",
+    required: false,
+    default: Some("false"),
+    help: "true to leave a track out of a line where it has no note",
+};
+
+const VISIBLE: ParamInfo = ParamInfo {
+    name: "visible",
+    required: true,
+    default: None,
+    help: "true or false",
+};
+
+pub(crate) const SET_SCORE_VIEW: CommandInfo = CommandInfo {
+    id: "set_score_view",
+    aliases: &[],
+    label: "Set a score view",
+    help: "Sets a named view of the score: which tracks it shows, in what order, with \
+           which staves, and whether empty staves are left out; one past the last view adds \
+           one. The app saves the views in the song's notes.",
+    params: &[VIEW, VIEW_NAME, VIEW_TRACKS, HIDE_EMPTY],
+};
+
+pub(crate) const DELETE_SCORE_VIEW: CommandInfo = CommandInfo {
+    id: "delete_score_view",
+    aliases: &[],
+    label: "Delete a score view",
+    help: "Removes a named view of the score; the tracks stay as they are.",
+    params: &[VIEW],
+};
+
+pub(crate) const SET_TRACK_VISIBLE: CommandInfo = CommandInfo {
+    id: "set_track_visible",
+    aliases: &[],
+    label: "Show or hide a track in all tracks",
+    help: "Whether the track is shown when all tracks are shown together (Guitar Pro's eye \
+           in its track list); one track always stays shown.",
+    params: &[TRACK, VISIBLE],
+};
+
+pub(crate) const SET_DIRECTIONS: CommandInfo = CommandInfo {
+    id: "set_directions",
+    aliases: &["set_direction"],
+    label: "Set the jumps and codas",
+    help: "Sets the measure's navigation signs: where the music jumps to (segno, coda, fine) \
+           and where it jumps from (D.C., D.S., to coda), or none.",
+    params: &[MEASURE, DIRECTIONS],
+};
+
 pub(crate) const SET_FERMATA: CommandInfo = CommandInfo {
     id: "set_fermata",
     aliases: &["set_fermatas"],
@@ -1080,6 +1178,7 @@ pub const COMMANDS: &[CommandInfo] = &[
     DUPLICATE_TRACK,
     MOVE_TRACK,
     RENAME_TRACK,
+    SET_TRACK_SHORT_NAME,
     SET_TRACK_COLOR,
     SET_TRACK_SYMBOL,
     SET_TRACK_SOUND,
@@ -1128,6 +1227,10 @@ pub const COMMANDS: &[CommandInfo] = &[
     SET_DOUBLE_BAR,
     SET_FEEL,
     SET_FERMATA,
+    SET_DIRECTIONS,
+    SET_SCORE_VIEW,
+    DELETE_SCORE_VIEW,
+    SET_TRACK_VISIBLE,
     SET_CLEF,
     SET_FREE_TIME,
     SET_SIMILE_MARK,

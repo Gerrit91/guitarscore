@@ -23,12 +23,13 @@ mod notes;
 mod page;
 mod song;
 mod tracks;
+mod views;
 
 pub use crate::validate::MAX_STRINGS;
 pub use design::{DESIGN_SCALE_RANGE, DESIGN_SPACING_RANGE, ScaleScope};
 pub use headers::MAX_SECTION_TITLE_CHARS;
 pub(crate) use page::system_break;
-pub use tracks::{MAX_TRACK_NAME_CHARS, MAX_TRACKS};
+pub use tracks::{MAX_SHORT_NAME_CHARS, MAX_TRACK_NAME_CHARS, MAX_TRACKS};
 
 use gscore_gp::{
     Beat as GpBeat, BeatStatus, Duration as GpDuration, Measure as GpMeasure,
@@ -166,6 +167,8 @@ enum ChangeKind {
     TrackMoved { from: TrackIndex, to: TrackIndex },
     /// A track's name changed.
     TrackRenamed { at: TrackIndex, previous: String },
+    /// A track's short name changed.
+    TrackShortName { at: TrackIndex, previous: String },
     /// A track's color changed.
     TrackColor { at: TrackIndex, previous: i32 },
     /// The instrument symbol drawn for a track changed.
@@ -181,6 +184,12 @@ enum ChangeKind {
     /// The song-wide sound state (GuitarScore's opaque payload: the mixer's buses, ...)
     /// changed.
     SongSoundState { previous: Option<String> },
+    /// The score views changed; `previous` is the whole list.
+    ScoreViews {
+        previous: Vec<crate::score_views::StoredView>,
+    },
+    /// Whether a track is shown when all are shown together changed.
+    TrackVisible { at: TrackIndex, previous: bool },
     /// A track's mute or solo flag changed.
     TrackFlag {
         at: TrackIndex,
@@ -355,6 +364,11 @@ enum ChangeKind {
         previous: gscore_gp::TripletFeel,
         previous_initial: Option<gscore_gp::TripletFeel>,
     },
+    /// A measure's navigation signs changed; `previous` is the whole list.
+    Directions {
+        measure: MeasureIndex,
+        previous: Vec<gscore_gp::DirectionSign>,
+    },
     /// A measure's fermatas changed; `previous` is the whole list.
     Fermata {
         measure: MeasureIndex,
@@ -425,7 +439,8 @@ impl Change {
             ChangeKind::NoteCleared { .. } => size_of::<GpNote>(),
             ChangeKind::DurationSet { .. }
             | ChangeKind::BeatInserted { .. }
-            | ChangeKind::MeasureInserted { .. } => 0,
+            | ChangeKind::MeasureInserted { .. }
+            | ChangeKind::TrackVisible { .. } => 0,
             ChangeKind::BeatRemoved { beat, .. } => beat_size(beat),
             ChangeKind::MeasureRemoved { measures, .. } => {
                 size_of::<GpMeasureHeader>().saturating_add(measures.iter().map(measure_size).sum())
@@ -434,7 +449,8 @@ impl Change {
                 .iter()
                 .map(|(_, notes)| notes.len().saturating_mul(size_of::<gscore_gp::Note>()))
                 .sum(),
-            ChangeKind::TrackRenamed { previous, .. } => previous.len(),
+            ChangeKind::TrackRenamed { previous, .. }
+            | ChangeKind::TrackShortName { previous, .. } => previous.len(),
             ChangeKind::TrackSymbol { previous, .. } => previous.as_ref().map_or(0, String::len),
             ChangeKind::TrackSoundState { previous, .. }
             | ChangeKind::SongSoundState { previous } => previous.as_ref().map_or(0, String::len),
@@ -523,6 +539,19 @@ impl Change {
             | ChangeKind::FreeTime { .. }
             | ChangeKind::Clef { .. }
             | ChangeKind::SimileMark { .. } => 0,
+            ChangeKind::Directions { previous, .. } => previous.len(),
+            ChangeKind::ScoreViews { previous } => {
+                previous
+                    .iter()
+                    .map(|view| {
+                        view.name.len().saturating_add(
+                            view.tracks
+                                .len()
+                                .saturating_mul(size_of::<(u64, crate::TrackStaves)>()),
+                        )
+                    })
+                    .sum()
+            }
             ChangeKind::Fermata { previous, .. } => previous
                 .iter()
                 .map(|(kind, offset)| kind.len().saturating_add(offset.len()))
@@ -741,6 +770,10 @@ impl Song {
                 inner.tracks.insert(from.get(), track);
                 tracks::renumber(inner)
             }),
+            ChangeKind::TrackShortName { at, previous } => self.edit_track_settings(|inner| {
+                track_mut(inner, *at)?.short_name.clone_from(previous);
+                Ok(())
+            }),
             ChangeKind::TrackRenamed { at, previous } => self.edit_track_settings(|inner| {
                 track_mut(inner, *at)?.name = previous.clone();
                 Ok(())
@@ -761,6 +794,14 @@ impl Song {
                 self.replace_sound_state(previous.clone());
                 Ok(())
             }
+            ChangeKind::ScoreViews { previous } => {
+                self.restore_score_views(previous);
+                Ok(())
+            }
+            ChangeKind::TrackVisible { at, previous } => self.edit_track_settings(|inner| {
+                track_mut(inner, *at)?.visible = *previous;
+                Ok(())
+            }),
             ChangeKind::TrackFlag { at, flag, previous } => self.edit_track_settings(|inner| {
                 let track = track_mut(inner, *at)?;
                 match flag {
@@ -1145,6 +1186,14 @@ impl Song {
                 }
                 Ok(())
             }),
+            ChangeKind::Directions { measure, previous } => self.edit_headers(|inner| {
+                let header = inner
+                    .measure_headers
+                    .get_mut(measure.get())
+                    .ok_or_else(|| ModelError::Invalid(format!("{measure}: no such measure")))?;
+                header.directions.clone_from(previous);
+                Ok(())
+            }),
             ChangeKind::Fermata { measure, previous } => self.edit_headers(|inner| {
                 let header = inner
                     .measure_headers
@@ -1295,3 +1344,5 @@ pub use transpose::MAX_TRANSPOSE;
 mod track_tests;
 #[cfg(test)]
 mod transpose_tests;
+#[cfg(test)]
+mod view_tests;

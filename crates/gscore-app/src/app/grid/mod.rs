@@ -26,8 +26,8 @@ pub(super) mod strips;
 
 pub(crate) use strips::MixerState;
 
-/// Width of the fixed track column on the left.
-pub(super) const TRACK_COLUMN: f32 = 384.0;
+/// How wide the handle on the column's right edge is.
+const COLUMN_HANDLE: f32 = 6.0;
 /// Height of one track row.
 pub(super) const ROW_HEIGHT: f32 = 24.0;
 /// Height of the ruler above the matrix (measure numbers, sections, repeats).
@@ -79,12 +79,16 @@ pub(super) enum GridAction {
     Select(MeasureSelection),
     /// Open the rename window for a track.
     Rename { track: usize },
+    /// Show the track in the score's current view, or leave it out (the row's eye).
+    ToggleShown { track: usize },
     /// Show a track in the track panel.
     ShowTrack { track: usize },
     /// Set the metronome's click volume (0 to 1).
     SetMetronomeVolume(f32),
     /// Set the measure columns' width factor (the zoom buttons).
     SetGridZoom(f32),
+    /// Set the track column's width (dragged at its edge); `done` once the drag ends.
+    SetTrackColumn { width: f32, done: bool },
     /// Open the window of the mixer's reverb bus.
     OpenReverbBus,
     /// Set the mixer's reverb bus (an edit of the song, heard at once).
@@ -135,6 +139,8 @@ pub(super) struct RenameTrack {
     pub track: usize,
     /// The text typed so far.
     pub name: String,
+    /// The short name typed so far (written before the track's staves).
+    pub short_name: String,
     /// Whether the text field has been focused yet.
     pub focused: bool,
     /// Where the window sits (remembered while it is open).
@@ -148,10 +154,11 @@ impl GuitarScoreApp {
             return;
         };
         let sound = tab.sound();
+        let shown = tab.shown_score(false).tracks;
         let document = &mut tab.document;
         let grid = document.grid();
         let cursor = document.editor().cursor();
-        let rows = rows::track_rows(document);
+        let rows = rows::track_rows(document, &shown);
         let master = document.song().master_mix();
         let measure_count = document.song().measure_count();
         let playing = self.playback.current_measure().map(|m| m.saturating_sub(1));
@@ -348,6 +355,7 @@ impl GuitarScoreApp {
                     self.playback.metronome_volume(),
                     self.playback.metronome_level(),
                 ),
+                track_column: self.view.grid_track_column(),
             },
             &levels,
             &comp_sends,
@@ -425,16 +433,20 @@ impl GuitarScoreApp {
                     self.jump_playback_to(track, selection.start());
                 }
             }
+            GridAction::ToggleShown { track } => self.toggle_track_shown(track),
             GridAction::Rename { track } => {
-                let name = self
+                let (name, short_name) = self
                     .tabs
                     .get(self.active)
                     .and_then(|tab| tab.document.song().tracks().nth(track))
-                    .map_or_else(String::new, |row| row.name().to_owned());
+                    .map_or_else(Default::default, |row| {
+                        (row.name().to_owned(), row.short_name().to_owned())
+                    });
                 if let Some(tab) = self.tabs.get_mut(self.active) {
                     tab.renaming = Some(RenameTrack {
                         track,
                         name,
+                        short_name,
                         focused: false,
                         pos: None,
                     });
@@ -447,6 +459,12 @@ impl GuitarScoreApp {
                 self.view.show_track_panel = true;
             }
             GridAction::SetMetronomeVolume(volume) => self.set_metronome_volume(volume),
+            GridAction::SetTrackColumn { width, done } => {
+                self.view.set_grid_track_column(width);
+                if done {
+                    self.save_settings();
+                }
+            }
             GridAction::SetGridZoom(zoom) => {
                 self.view.set_grid_zoom(zoom);
                 self.save_settings();
@@ -579,7 +597,7 @@ impl GuitarScoreApp {
         };
         let title = "Rename track";
         let width = 420.0;
-        let size = vec2(width + 32.0, 230.0);
+        let size = vec2(width + 32.0, 300.0);
         let pos = *rename
             .pos
             .get_or_insert_with(|| style::centered_window_pos(ctx, size));
@@ -617,6 +635,24 @@ impl GuitarScoreApp {
                             response.request_focus();
                             rename.focused = true;
                         }
+                        ui.add_space(10.0);
+                        ui.label(
+                            RichText::new(
+                                "The short name, written before the track's staves when \
+                                 several tracks are shown (empty: the name).",
+                            )
+                            .weak(),
+                        );
+                        ui.add_space(6.0);
+                        let short = ui.add(
+                            egui::TextEdit::singleline(&mut rename.short_name)
+                                .hint_text("Short name, such as el.guit.")
+                                .char_limit(gscore_model::MAX_SHORT_NAME_CHARS)
+                                .desired_width(width),
+                        );
+                        ui.ctx().accesskit_node_builder(short.id, |node| {
+                            node.set_label("Short name");
+                        });
                         ui.add_space(6.0);
                         ui.separator();
                         ui.add_space(4.0);
@@ -655,14 +691,30 @@ impl GuitarScoreApp {
             });
         match outcome {
             Outcome::Apply => {
-                let name = rename.name.trim().to_owned();
-                self.apply_command(
-                    Command::RenameTrack {
-                        track: TrackIndex::new(rename.track),
-                        name,
-                    },
-                    false,
-                );
+                let track = TrackIndex::new(rename.track);
+                let (name, short_name) = (rename.name.trim(), rename.short_name.trim());
+                let (old_name, old_short) = self
+                    .tabs
+                    .get(self.active)
+                    .and_then(|tab| tab.document.song().track(track))
+                    .map_or_else(Default::default, |view| {
+                        (view.name().to_owned(), view.short_name().to_owned())
+                    });
+                // What changed, as one undo step.
+                let mut commands = Vec::new();
+                if name != old_name {
+                    commands.push(Command::RenameTrack {
+                        track,
+                        name: name.to_owned(),
+                    });
+                }
+                if short_name != old_short {
+                    commands.push(Command::SetTrackShortName {
+                        track,
+                        short_name: short_name.to_owned(),
+                    });
+                }
+                self.apply_commands(commands);
             }
             Outcome::Cancel => {}
             Outcome::Open | Outcome::Remove | Outcome::Listen => {
@@ -690,6 +742,8 @@ pub(super) struct GridView {
     zoom: f32,
     /// The metronome's volume and how loud it sounds right now (both 0 to 1).
     metronome: (f32, f32),
+    /// The track column's width.
+    track_column: f32,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -751,4 +805,45 @@ fn draw(
                 });
             });
         });
+    column_handle(ui, view, actions);
+}
+
+/// The track column's right edge, dragged to make the column wider or narrower.
+fn column_handle(ui: &mut egui::Ui, view: GridView, actions: &mut Vec<GridAction>) {
+    let area = ui.min_rect();
+    let x = area.left() + view.track_column;
+    let rect = egui::Rect::from_min_max(
+        egui::pos2(x - COLUMN_HANDLE / 2.0, area.top()),
+        egui::pos2(x + COLUMN_HANDLE / 2.0, area.bottom()),
+    );
+    let response = ui.interact(
+        rect,
+        ui.scope_id().with("track_column_handle"),
+        egui::Sense::drag(),
+    );
+    response.widget_info(|| {
+        egui::WidgetInfo::labeled(egui::Role::Splitter, true, "Track column width")
+    });
+    if response.hovered() || response.dragged() {
+        ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeHorizontal);
+        ui.painter().vline(
+            x,
+            area.y_range(),
+            egui::Stroke::new(2.0, ui.visuals().selection.bg_fill),
+        );
+    }
+    if response.dragged()
+        && let Some(pointer) = response.interact_pointer_pos()
+    {
+        actions.push(GridAction::SetTrackColumn {
+            width: pointer.x - area.left(),
+            done: false,
+        });
+    }
+    if response.drag_stopped() {
+        actions.push(GridAction::SetTrackColumn {
+            width: view.track_column,
+            done: true,
+        });
+    }
 }

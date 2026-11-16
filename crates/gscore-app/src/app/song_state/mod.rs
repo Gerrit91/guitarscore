@@ -46,6 +46,52 @@ pub(crate) struct SongState {
     /// settings; editing it in the mixer gives the song its own copy.
     #[serde(default, skip_serializing_if = "Buses::is_default")]
     pub buses: Buses,
+    /// The song's score views (see [`gscore_model::ScoreView`]).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub views: Vec<ViewState>,
+}
+
+/// One score view in the block: its name, whether empty staves are hidden, and its tracks
+/// in order, each recognised as the sound entries are.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub(crate) struct ViewState {
+    pub name: String,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub hide_empty: bool,
+    pub tracks: Vec<ViewTrackState>,
+}
+
+/// One track of a view in the block.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub(crate) struct ViewTrackState {
+    /// The track in the song.
+    pub track: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub identity: Option<TrackIdentity>,
+    /// Its staves in the view, as the command language names them (`both`, `tab`, ...).
+    pub staves: String,
+}
+
+impl ViewState {
+    /// The views of `song` as the block keeps them.
+    pub(crate) fn of_song(song: &Song) -> Vec<ViewState> {
+        song.score_views()
+            .into_iter()
+            .map(|view| ViewState {
+                name: view.name,
+                hide_empty: view.hide_empty_staves,
+                tracks: view
+                    .tracks
+                    .iter()
+                    .map(|entry| ViewTrackState {
+                        track: entry.track.get(),
+                        identity: TrackIdentity::of(song, entry.track.get()),
+                        staves: entry.staves.id().to_owned(),
+                    })
+                    .collect(),
+            })
+            .collect()
+    }
 }
 
 /// The mixer's song-wide buses: the shared reverb and the parallel compressor. Each is
@@ -399,13 +445,21 @@ impl SongState {
         self.tracks.iter().find(|state| state.track == track)
     }
 
-    /// The state of `tracks` and `buses`, or `None` when nothing needs keeping.
-    pub(crate) fn new(tracks: Vec<TrackState>, buses: Buses) -> Option<Self> {
+    /// The state of `tracks`, `buses` and `views`, or `None` when nothing needs keeping.
+    pub(crate) fn new(
+        tracks: Vec<TrackState>,
+        buses: Buses,
+        views: Vec<ViewState>,
+    ) -> Option<Self> {
         let tracks: Vec<TrackState> = tracks
             .into_iter()
             .filter(|track| !track.sound.is_default())
             .collect();
-        (!tracks.is_empty() || !buses.is_default()).then_some(SongState { tracks, buses })
+        (!tracks.is_empty() || !buses.is_default() || !views.is_empty()).then_some(SongState {
+            tracks,
+            buses,
+            views,
+        })
     }
 
     /// Writes the state into `song`: each track's entry on the track it belongs to (see
@@ -424,6 +478,48 @@ impl SongState {
         if let Some(json) = self.buses.json() {
             let _ = song.set_sound_state(Some(json));
         }
+        self.apply_views(song);
+    }
+
+    /// Gives `song` the block's score views, each track on the track it belongs to (as
+    /// [`Self::resolve`] finds them). A track that is not found is left out, a view left
+    /// with none is dropped, and a view the song refuses (a name given twice in a
+    /// hand-edited block) is skipped.
+    fn apply_views(&self, song: &mut Song) {
+        let tracks: Vec<TrackIdentity> = (0..song.track_count())
+            .map(|track| TrackIdentity::of(song, track).unwrap_or_default())
+            .collect();
+        let mut views: Vec<gscore_model::ScoreView> = Vec::new();
+        for state in &self.views {
+            let entries: Vec<(usize, Option<&TrackIdentity>)> = state
+                .tracks
+                .iter()
+                .map(|entry| (entry.track, entry.identity.as_ref()))
+                .collect();
+            let matched = match_tracks(&entries, &tracks);
+            let view_tracks: Vec<gscore_model::ViewTrack> = matched
+                .into_iter()
+                .zip(&state.tracks)
+                .filter_map(|(track, entry)| {
+                    Some(gscore_model::ViewTrack {
+                        track: TrackIndex::new(track?),
+                        staves: gscore_model::TrackStaves::from_id(&entry.staves)
+                            .unwrap_or_default(),
+                    })
+                })
+                .collect();
+            let candidate = gscore_model::ScoreView {
+                name: state.name.clone(),
+                tracks: view_tracks,
+                hide_empty_staves: state.hide_empty,
+            };
+            let mut with = views.clone();
+            with.push(candidate.clone());
+            if song.set_score_views(&with).is_ok() {
+                views.push(candidate);
+            }
+        }
+        let _ = song.set_score_views(&views);
     }
 
     /// The entries with the track of `song` each belongs to, in the block's order.
@@ -442,65 +538,79 @@ impl SongState {
 
     /// [`Self::resolve`] with the tracks given as identities (what the matching sees).
     fn resolve_in<'a>(&'a self, tracks: &[TrackIdentity]) -> Vec<(usize, &'a TrackState)> {
-        let mut taken = vec![false; tracks.len()];
-        let mut matched: Vec<Option<usize>> = vec![None; self.tracks.len()];
-
-        // First by number, so two reordered tracks cannot take each other's place.
-        for (entry_index, state) in self.tracks.iter().enumerate() {
-            let fits = match &state.identity {
-                Some(identity) => tracks
-                    .get(state.track)
-                    .is_some_and(|track| identity.fits(track)),
-                None => tracks.get(state.track).is_some(),
-            };
-            if !fits || taken.get(state.track).copied().unwrap_or(true) {
-                continue;
-            }
-            if let Some(slot) = taken.get_mut(state.track) {
-                *slot = true;
-            }
-            if let Some(slot) = matched.get_mut(entry_index) {
-                *slot = Some(state.track);
-            }
-        }
-
-        // Then by the one remaining track with the same name and instrument.
-        for (entry_index, state) in self.tracks.iter().enumerate() {
-            if matched.get(entry_index).is_some_and(Option::is_some) {
-                continue;
-            }
-            let Some(identity) = state.identity.as_ref() else {
-                continue;
-            };
-            let mut found = None;
-            let mut found_count = 0_usize;
-            for (track, candidate) in tracks.iter().enumerate() {
-                if taken.get(track).copied().unwrap_or(true) || !identity.fits(candidate) {
-                    continue;
-                }
-                found_count = found_count.saturating_add(1);
-                found = Some(track);
-            }
-            // None or several: dropping the entry beats applying it to the wrong track.
-            if found_count != 1 {
-                continue;
-            }
-            if let Some(track) = found {
-                if let Some(slot) = taken.get_mut(track) {
-                    *slot = true;
-                }
-                if let Some(slot) = matched.get_mut(entry_index) {
-                    *slot = Some(track);
-                }
-            }
-        }
-
-        matched
+        let entries: Vec<(usize, Option<&TrackIdentity>)> = self
+            .tracks
+            .iter()
+            .map(|state| (state.track, state.identity.as_ref()))
+            .collect();
+        match_tracks(&entries, tracks)
             .into_iter()
             .zip(self.tracks.iter())
             .filter_map(|(track, state)| track.map(|track| (track, state)))
             .collect()
     }
+}
+
+/// The track of the song (as `tracks`, their identities now) each entry belongs to: an
+/// entry `(number, identity)` goes to the track with its number when that is still the same
+/// track; otherwise to the one remaining track with the same name and instrument; otherwise
+/// to none rather than to the wrong track. An entry without an identity (a block from
+/// before identities existed) can only rely on the number. Each track takes one entry.
+fn match_tracks(
+    entries: &[(usize, Option<&TrackIdentity>)],
+    tracks: &[TrackIdentity],
+) -> Vec<Option<usize>> {
+    let mut taken = vec![false; tracks.len()];
+    let mut matched: Vec<Option<usize>> = vec![None; entries.len()];
+
+    // First by number, so two reordered tracks cannot take each other's place.
+    for (entry_index, &(number, identity)) in entries.iter().enumerate() {
+        let fits = match identity {
+            Some(identity) => tracks.get(number).is_some_and(|track| identity.fits(track)),
+            None => tracks.get(number).is_some(),
+        };
+        if !fits || taken.get(number).copied().unwrap_or(true) {
+            continue;
+        }
+        if let Some(slot) = taken.get_mut(number) {
+            *slot = true;
+        }
+        if let Some(slot) = matched.get_mut(entry_index) {
+            *slot = Some(number);
+        }
+    }
+
+    // Then by the one remaining track with the same name and instrument.
+    for (entry_index, &(_, identity)) in entries.iter().enumerate() {
+        if matched.get(entry_index).is_some_and(Option::is_some) {
+            continue;
+        }
+        let Some(identity) = identity else {
+            continue;
+        };
+        let mut found = None;
+        let mut found_count = 0_usize;
+        for (track, candidate) in tracks.iter().enumerate() {
+            if taken.get(track).copied().unwrap_or(true) || !identity.fits(candidate) {
+                continue;
+            }
+            found_count = found_count.saturating_add(1);
+            found = Some(track);
+        }
+        // None or several: dropping the entry beats applying it to the wrong track.
+        if found_count != 1 {
+            continue;
+        }
+        if let Some(track) = found {
+            if let Some(slot) = taken.get_mut(track) {
+                *slot = true;
+            }
+            if let Some(slot) = matched.get_mut(entry_index) {
+                *slot = Some(track);
+            }
+        }
+    }
+    matched
 }
 
 /// The notes a song is saved with: the user's own, and our block when there is state.
@@ -584,7 +694,7 @@ mod tests {
 
     /// The state of `tracks`, with no song-wide buses (most tests).
     fn state_of(tracks: Vec<TrackState>) -> Option<SongState> {
-        SongState::new(tracks, Buses::default())
+        SongState::new(tracks, Buses::default(), Vec::new())
     }
 
     fn tone() -> PresetTone {
@@ -630,7 +740,77 @@ mod tests {
                 }
             })
             .collect();
-        SongState::new(tracks, Buses::default()).expect("tracks have state")
+        SongState::new(tracks, Buses::default(), Vec::new()).expect("tracks have state")
+    }
+
+    /// A song of named guitar tracks.
+    fn named_song(names: &[&str]) -> Song {
+        let tunings = vec![gscore_model::testing::GUITAR_6; names.len()];
+        let mut song = gscore_model::testing::song(&tunings, 1).expect("a song");
+        for (index, name) in names.iter().enumerate() {
+            let _ = song
+                .rename_track(TrackIndex::new(index), name)
+                .expect("renamed");
+        }
+        song
+    }
+
+    #[test]
+    fn score_views_travel_in_the_block_and_find_their_tracks_after_a_reorder() {
+        use gscore_model::{ScoreView, TrackStaves, ViewTrack};
+        let mut song = named_song(&["Violin", "Viola", "Bass", "Drums"]);
+        let views = vec![
+            ScoreView {
+                name: "Strings".to_owned(),
+                tracks: vec![
+                    ViewTrack {
+                        track: TrackIndex::new(2),
+                        staves: TrackStaves::NOTATION_ONLY,
+                    },
+                    ViewTrack {
+                        track: TrackIndex::new(0),
+                        staves: TrackStaves::NOTATION_AND_TAB,
+                    },
+                ],
+                hide_empty_staves: true,
+            },
+            ScoreView {
+                name: "Kit".to_owned(),
+                tracks: vec![ViewTrack {
+                    track: TrackIndex::new(3),
+                    staves: TrackStaves::TAB_ONLY,
+                }],
+                hide_empty_staves: false,
+            },
+        ];
+        let _ = song.set_score_views(&views).expect("views");
+        let state = SongState::new(Vec::new(), Buses::default(), ViewState::of_song(&song))
+            .expect("the views are kept");
+        let notes = encode(Vec::new(), Some(&state));
+        let (_, back) = split(notes);
+        let back = back.expect("the state is read");
+        assert_eq!(back, state);
+
+        // Opened as it was: the same views.
+        let mut same = named_song(&["Violin", "Viola", "Bass", "Drums"]);
+        back.apply_to_song(&mut same);
+        assert_eq!(same.score_views(), views);
+
+        // Someone moved the drums to the top in Guitar Pro: the views follow by name.
+        let mut moved = named_song(&["Drums", "Violin", "Viola", "Bass"]);
+        back.apply_to_song(&mut moved);
+        let tracks: Vec<Vec<usize>> = moved
+            .score_views()
+            .iter()
+            .map(|view| view.tracks.iter().map(|entry| entry.track.get()).collect())
+            .collect();
+        assert_eq!(tracks, [vec![3, 1], vec![0]]);
+
+        // A track that is gone leaves its view; a view left empty is dropped.
+        let mut fewer = named_song(&["Violin", "Viola", "Bass"]);
+        back.apply_to_song(&mut fewer);
+        let names: Vec<String> = fewer.score_views().into_iter().map(|v| v.name).collect();
+        assert_eq!(names, ["Strings"]);
     }
 
     #[test]
@@ -715,7 +895,8 @@ mod tests {
             chorus: Some(ChorusBus::default()),
             master: Some(master),
         };
-        let state = SongState::new(Vec::new(), buses.clone()).expect("the buses are kept");
+        let state =
+            SongState::new(Vec::new(), buses.clone(), Vec::new()).expect("the buses are kept");
         let notes = encode([], Some(&state));
         assert!(!notes.is_empty());
         let (kept, back) = split(notes);
@@ -730,7 +911,8 @@ mod tests {
             chorus: None,
             master: None,
         };
-        let state = SongState::new(Vec::new(), only.clone()).expect("the reverb is kept");
+        let state =
+            SongState::new(Vec::new(), only.clone(), Vec::new()).expect("the reverb is kept");
         assert_eq!(state.buses, only);
 
         // Applying the state gives the song its own buses (the model's payload).
@@ -740,7 +922,7 @@ mod tests {
         assert_eq!(Buses::of_song(&song), only);
 
         // Buses alone are enough for a state; when everything is default there is none.
-        assert!(SongState::new(Vec::new(), Buses::default()).is_none());
+        assert!(SongState::new(Vec::new(), Buses::default(), Vec::new()).is_none());
     }
 
     #[test]
@@ -863,6 +1045,7 @@ mod tests {
                     },
                 }],
                 Buses::default(),
+                Vec::new(),
             )
             .expect("a state");
             let song = song.with_notes(encode(Vec::new(), Some(&state)));

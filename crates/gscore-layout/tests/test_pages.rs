@@ -179,3 +179,77 @@ fn a_tiny_page_still_takes_one_system_each() {
     let layout = layout_track(&song, TrackIndex::new(0), &options, &fonts).unwrap();
     assert_eq!(layout.pages.len(), layout.places.systems.len());
 }
+
+/// Every staff of every track in `layout`, as (track, system, top, bottom).
+fn staves(layout: &gscore_layout::Layout) -> Vec<(usize, usize, f32, f32)> {
+    layout
+        .tracks
+        .iter()
+        .enumerate()
+        .flat_map(|(track, places)| {
+            places
+                .places
+                .systems
+                .iter()
+                .enumerate()
+                .map(move |(system, place)| (track, system, place.top, place.tab_bottom()))
+        })
+        .collect()
+}
+
+#[test]
+fn a_system_taller_than_a_page_goes_on_over_the_next_pages() {
+    // Sixteen guitars with notation and tab stack far taller than an A4 page.
+    let tunings = vec![GUITAR_6; 16];
+    let song = testing::song(&tunings, 12).unwrap();
+    let fonts = Fonts::bundled().unwrap();
+    let options = paged();
+    let tracks: Vec<TrackIndex> = (0..16).map(TrackIndex::new).collect();
+    let layout = gscore_layout::layout_tracks(&song, &tracks, tracks[0], &options, &fonts).unwrap();
+    let bottom_margin = options.margin_bottom;
+    let staves = staves(&layout);
+    // No staff runs off its page or into the bottom margin.
+    for &(track, system, top, bottom) in &staves {
+        let page = page_of(&layout.pages, top)
+            .unwrap_or_else(|| panic!("track {track} system {system} is on no page"));
+        let rect = layout.pages[page];
+        assert!(
+            bottom <= rect.origin.y + rect.height - bottom_margin,
+            "track {track} system {system} runs past page {page}'s bottom margin"
+        );
+    }
+    // The first system's tracks are spread over several pages, in their order, and the
+    // second system starts on a page of its own.
+    let pages_of = |system: usize| -> Vec<usize> {
+        staves
+            .iter()
+            .filter(|s| s.1 == system)
+            .map(|s| page_of(&layout.pages, s.2).unwrap())
+            .collect()
+    };
+    let first = pages_of(0);
+    assert!(first.windows(2).all(|pair| pair[0] <= pair[1]), "{first:?}");
+    assert!(first.last() > first.first(), "{first:?}");
+    let second = pages_of(1);
+    assert!(
+        second[0] > *first.last().unwrap(),
+        "{first:?} then {second:?}"
+    );
+    // The endless page stays as it was: one block per system, never split.
+    let endless =
+        gscore_layout::layout_tracks(&song, &tracks, tracks[0], &LayoutOptions::default(), &fonts)
+            .unwrap();
+    assert_eq!(endless.pages.len(), 1);
+}
+
+#[test]
+fn a_system_that_fits_is_not_split() {
+    let song = testing::song(&[GUITAR_6, GUITAR_6, GUITAR_6], 40).unwrap();
+    let fonts = Fonts::bundled().unwrap();
+    let tracks: Vec<TrackIndex> = (0..3).map(TrackIndex::new).collect();
+    let layout = gscore_layout::layout_tracks(&song, &tracks, tracks[0], &paged(), &fonts).unwrap();
+    for (_, system, top, _) in staves(&layout) {
+        let first = layout.tracks[0].places.systems[system].top;
+        assert_eq!(page_of(&layout.pages, top), page_of(&layout.pages, first));
+    }
+}

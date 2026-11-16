@@ -35,6 +35,7 @@ mod metadata;
 mod page;
 mod playback;
 mod position;
+mod score_views;
 mod song;
 mod staff_view;
 mod style;
@@ -55,8 +56,8 @@ pub use compare::{Difference, differences, settings_differences};
 pub use duration::{Duration, NoteValue, TimeSignature};
 pub use dynamics::Dynamic;
 pub use edit::{
-    Change, DESIGN_SCALE_RANGE, DESIGN_SPACING_RANGE, MAX_SECTION_TITLE_CHARS, MAX_STRINGS,
-    MAX_TRACK_NAME_CHARS, MAX_TRACKS, MAX_TRANSPOSE, ScaleScope,
+    Change, DESIGN_SCALE_RANGE, DESIGN_SPACING_RANGE, MAX_SECTION_TITLE_CHARS,
+    MAX_SHORT_NAME_CHARS, MAX_STRINGS, MAX_TRACK_NAME_CHARS, MAX_TRACKS, MAX_TRANSPOSE, ScaleScope,
 };
 pub use effects::{
     AccentKind, BEND_MAX_POSITION, BEND_MAX_VALUE, BeatEffect, Bend, BendKind, BendPoint,
@@ -81,6 +82,7 @@ pub use position::{
     BeatIndex, BeatPosition, Fret, MeasureIndex, Pitch, StaffIndex, StringNumber, TrackIndex,
     VoiceIndex,
 };
+pub use score_views::{MAX_SCORE_VIEWS, MAX_VIEW_NAME_CHARS, ScoreView, ViewTrack};
 pub use song::Song;
 pub use staff_view::StaffView;
 pub use style::{Clef, KeySignature, Section, SimileMark, TrackColor, TrackStaves};

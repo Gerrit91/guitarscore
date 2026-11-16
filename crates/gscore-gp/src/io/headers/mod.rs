@@ -130,8 +130,15 @@ impl SongHeaderOps for Song {
                             measure_count
                         ))
                     })?;
-                header.direction = Some(s.0.clone());
+                // GuitarScore fix: several signs at one measure are all kept.
+                if !header.directions.contains(s.0) {
+                    header.directions.push(s.0.clone());
+                }
             }
+        }
+        // The signs came from hash maps: put each measure's in the enum's (GPIF) order.
+        for header in &mut self.measure_headers {
+            header.directions.sort_by_key(|sign| sign.clone() as u8);
         }
         Ok(())
     }

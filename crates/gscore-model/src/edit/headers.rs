@@ -13,7 +13,7 @@ use gscore_gp::{
 use super::{Change, ChangeKind};
 use crate::duration::TimeSignature;
 use crate::error::ModelError;
-use crate::marks::{Feel, Fermata};
+use crate::marks::{Direction, Feel, Fermata};
 use crate::metadata::MAX_TEMPO;
 use crate::playback::Repeat;
 use crate::position::MeasureIndex;
@@ -154,6 +154,27 @@ impl Song {
                     previous,
                     previous_initial,
                 },
+            })
+        })
+    }
+
+    /// Sets a measure's navigation signs (codas, segnos, fine, D.C./D.S. jumps); an empty
+    /// list clears them. Kept targets first, each sign once, in [`Direction::ALL`] order.
+    pub fn set_directions(
+        &mut self,
+        measure: MeasureIndex,
+        directions: &[Direction],
+    ) -> Result<Change, ModelError> {
+        let signs: Vec<_> = Direction::ALL
+            .into_iter()
+            .filter(|direction| directions.contains(direction))
+            .map(Direction::to_gp)
+            .collect();
+        self.edit_headers(|inner| {
+            let header = header_mut(inner, measure)?;
+            let previous = std::mem::replace(&mut header.directions, signs);
+            Ok(Change {
+                kind: ChangeKind::Directions { measure, previous },
             })
         })
     }
