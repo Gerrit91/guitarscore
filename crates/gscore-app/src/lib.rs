@@ -26,6 +26,9 @@ pub mod tone_tool;
 mod update;
 #[cfg(target_arch = "wasm32")]
 pub mod web;
+// Used by the build script (`build.rs`); compiled here only for its tests.
+#[cfg(test)]
+mod windows_icon;
 
 #[cfg(not(target_arch = "wasm32"))]
 pub(crate) use std::time::{Instant, SystemTime, UNIX_EPOCH};
