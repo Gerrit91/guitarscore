@@ -205,3 +205,26 @@ fn the_track_column_scrolls_with_the_matrix() {
         );
     }
 }
+
+/// The ruler ends with the matrix, before its vertical scroll bar, not above the bar.
+#[test]
+fn the_ruler_ends_at_the_vertical_bar() {
+    let mut harness = wide_song(14);
+    park_pointer(&mut harness);
+    let grid = song_grid(&harness);
+    let vertical = harness
+        .query_all_by_role(Role::ScrollBar)
+        .map(|node| node.rect())
+        .find(|bar| {
+            bar.height() > bar.width() && bar.left() > grid.left() && bar.top() >= grid.top()
+        })
+        .expect("the song grid has a vertical scroll bar");
+    // The matrix ends 4 px (the solid bar's inner margin) before its bar; so does the ruler.
+    let ruler = harness.get_by_label("Measure ruler").rect();
+    assert!(
+        ruler.right() <= vertical.left() && ruler.right() >= vertical.left() - 4.5,
+        "the ruler ends at {}, the bar starts at {}",
+        ruler.right(),
+        vertical.left()
+    );
+}
