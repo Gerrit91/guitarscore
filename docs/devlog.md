@@ -6042,3 +6042,24 @@ one app snapshot regenerated.
   step. Model `set_track_short_name` (at most 40 characters), command
   `set_track_short_name`. GP6/GP7 keep it; saving to GP3-5 reports it as lost.
 Tests: settings migration; command set and undone, too long refused; the dialog sets it.
+
+## 2026-11-16 — Multi-bar rests; the view choice holds the score's switches
+
+- A run of at least two bars where every shown staff rests is written as one bar: a
+  thick bar across each staff's middle line with end strokes, and the number of bars
+  above in time-signature digits. The run's first bar keeps its signatures, section,
+  tempo and number; something written at a later bar's start (section, tempo, signature,
+  repeat, ending, jump/coda, fermata, feel, beat text, chord) or a double barline or
+  repeat inside ends the run; a page break does too, a line break does not (Guitar Pro
+  stores its bars-per-line layout as a break every few bars). Folded bars take no room,
+  share the rest's place (the cursor finds them there; typing a note unfolds the run)
+  and never start a line or count towards bars per line.
+- `LayoutOptions::multi_bar_rests`; `gscore-cli render --multi-bar-rests`; in the app on
+  by default (screen and PDF).
+- The tab bar's view choice shows an eye before the view's name; its list is indented to
+  the name, then "Hide empty staves" and "Multi-bar rests" (they stay open while ticked),
+  then "Edit score views…". New flat eye icon.
+- Ballad.gp, the solo track (locally only): 5 pages to 3 (an 8-bar rest in the verse).
+Tests: runs and their counts, marks and double bars ending a run, a line break not, every
+track must rest, folded bars share the rest's place; glued bars in the line breaker; the
+choice's switches.

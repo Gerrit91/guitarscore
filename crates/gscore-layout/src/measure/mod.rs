@@ -12,6 +12,7 @@ mod effects;
 mod gaps;
 mod grace_marks;
 mod graces;
+mod rest_run;
 
 pub(crate) use align::align;
 pub(crate) use draw::draw_barline_ties;
@@ -29,6 +30,7 @@ use crate::ornaments::{self, ColumnMarks, Fret};
 
 use columns::{as_f64, beat_length, beat_starts, column_items};
 use graces::Grace;
+pub(crate) use rest_run::RestRun;
 
 /// Space before and after a time signature.
 const TIME_SIG_PAD: (f32, f32) = (0.8, 0.6);
@@ -112,6 +114,8 @@ pub(crate) struct MeasureLayout {
     /// across tracks, another track's column moved after this one's last moves the barline
     /// (0 on its own; set by [`align`]).
     tail_spacing: f32,
+    /// Its part in a multi-bar rest, if any (set by the score; see [`RestRun`]).
+    rest_run: RestRun,
 }
 
 /// A time signature as glyph rows, scaled to the staff.
@@ -577,6 +581,7 @@ impl MeasureLayout {
             end: starts.end,
             scale,
             tail_spacing: 0.0,
+            rest_run: RestRun::None,
         })
     }
 

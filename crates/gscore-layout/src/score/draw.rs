@@ -8,11 +8,11 @@ use super::{NAME_GAP, NAME_SIZE};
 use crate::draw::{ColorToken, DrawOp, Point, TextAnchor, TextFont};
 use crate::glyph::Glyph;
 use crate::marks::{self, MeasureMarks, Rows};
-use crate::measure::{self, MeasureLayout, Tops};
+use crate::measure::{self, MeasureLayout, RestRun, Tops};
 use crate::metrics::MusicFont;
 use crate::notation;
 use crate::ornaments;
-use crate::place::{Places, SystemPlace};
+use crate::place::{BeatPlace, MeasurePlace, Places, SystemPlace};
 use crate::score_mark::{ScoreMark, ScoreMarkKind};
 use crate::staff::Staff;
 use crate::{Fonts, MEASURE_NUMBER_RISE, REPEAT_COUNT_GAP};
@@ -152,6 +152,9 @@ pub(super) fn draw_part(
     let mut x = system.x;
     let mut content = Vec::new();
     let default_marks = MeasureMarks::default();
+    // The place of the multi-bar rest being drawn: the bars folded into it share it, so
+    // the cursor and clicks find them on the rest.
+    let mut run_place: Option<MeasurePlace> = None;
     for (offset, measure) in line.iter().enumerate() {
         let measure_marks = line_marks.get(offset).unwrap_or(&default_marks);
         let (before, after) = measure_marks.extra_width(ctx);
@@ -159,6 +162,26 @@ pub(super) fn draw_part(
         let content_x = x + before;
         let mut place = measure.place(content_x, system.stretch, place_index);
         place.left = left;
+        match measure.rest_run() {
+            RestRun::Leads(_) => run_place = Some(place.clone()),
+            RestRun::Folded => {
+                if let Some(run) = &run_place {
+                    place = MeasurePlace {
+                        measure: measure.index(),
+                        beats: place
+                            .beats
+                            .iter()
+                            .map(|beat| BeatPlace {
+                                x: run.content,
+                                ..*beat
+                            })
+                            .collect(),
+                        ..run.clone()
+                    };
+                }
+            }
+            RestRun::None => run_place = None,
+        }
         drawn.places.measures.push(place);
         let index = measure.index().get();
         if let Some(slot) = drawn.measure_x.get_mut(index) {

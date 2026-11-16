@@ -200,6 +200,7 @@ impl GuitarScoreApp {
                 gscore_layout::EmptyStaves::Shown
             },
             track_staves: score.staves,
+            multi_bar_rests: self.view.multi_bar_rests,
             ..options
         };
         let shown = score.tracks;

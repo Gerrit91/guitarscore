@@ -183,6 +183,9 @@ pub struct ViewState {
     /// With several tracks shown, whether a track is left out of a line where it has no
     /// note (the cursor's track always stays); on unless switched off.
     pub hide_empty_staves: bool,
+    /// Whether a run of bars where every shown staff rests is written as one multi-bar
+    /// rest (on screen and in print).
+    pub multi_bar_rests: bool,
     /// Guitar Pro's design mode: dashed guides and drag handles for every beat column and
     /// barline, with the buttons that set how many bars a line holds. A view mode, not part
     /// of the song.
@@ -202,6 +205,7 @@ impl Default for ViewState {
             show_edit_panel: true,
             score_view: ScoreView::PageVertical,
             hide_empty_staves: true,
+            multi_bar_rests: true,
             design_mode: false,
         }
     }

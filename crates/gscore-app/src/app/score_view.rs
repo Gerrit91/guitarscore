@@ -123,7 +123,9 @@ impl ScoreTracks {
 }
 
 /// The width of the tab bar's choice of score view.
-pub(super) const SCORE_VIEW_WIDTH: f32 = 130.0;
+pub(super) const SCORE_VIEW_WIDTH: f32 = 150.0;
+/// Room before the view's name for the eye (and the list's indentation).
+const EYE_ROOM: f32 = 20.0;
 
 impl super::GuitarScoreApp {
     /// Shows `choice` in the active tab. A view that leaves the cursor's track out takes
@@ -153,6 +155,7 @@ impl super::GuitarScoreApp {
         };
         let song = tab.document.song();
         let current = tab.score;
+        let label = current.label(song);
         let mut entries = vec![
             (ScoreTracks::Cursor, "One track".to_owned()),
             (ScoreTracks::All, "All tracks".to_owned()),
@@ -165,20 +168,67 @@ impl super::GuitarScoreApp {
         );
         let mut chosen = None;
         let mut edit = false;
+        let view = &mut self.view;
+        // The button shows an eye before the view's name; the list's rows are indented to
+        // line up with the name.
+        let font = egui::TextStyle::Button.resolve(ui.style());
+        let mut job = egui::text::LayoutJob::simple_singleline(
+            label,
+            font,
+            ui.visuals().widgets.inactive.text_color(),
+        );
+        if let Some(section) = job.sections.first_mut() {
+            section.leading_space = EYE_ROOM;
+        }
         let combo = egui::ComboBox::from_id_salt("score_view_choice")
             .width(SCORE_VIEW_WIDTH)
-            .selected_text(current.label(song))
+            .selected_text(job)
+            // The switches stay open while ticked; a view chosen closes the list.
+            .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
             .show_ui(ui, |ui| {
                 for (choice, name) in &entries {
-                    if ui.selectable_label(*choice == current, name).clicked() {
+                    let clicked = ui
+                        .horizontal(|ui| {
+                            ui.add_space(EYE_ROOM);
+                            ui.selectable_label(*choice == current, name).clicked()
+                        })
+                        .inner;
+                    if clicked {
                         chosen = Some(*choice);
+                        ui.close();
                     }
                 }
                 ui.separator();
+                ui.checkbox(&mut view.hide_empty_staves, "Hide empty staves")
+                    .on_hover_text(
+                        "With all tracks: leave a track out of a line where it plays nothing \
+                         (each score view has its own choice)",
+                    );
+                ui.checkbox(&mut view.multi_bar_rests, "Multi-bar rests")
+                    .on_hover_text(
+                        "Write a run of bars where every shown track rests as one bar with \
+                         the number of bars above it",
+                    );
+                ui.separator();
                 if ui.button("Edit score views…").clicked() {
                     edit = true;
+                    ui.close();
                 }
             });
+        let button = combo.response.rect;
+        let eye = egui::Rect::from_center_size(
+            egui::pos2(
+                button.left() + ui.spacing().button_padding.x + EYE_ROOM / 2.0 - 2.0,
+                button.center().y,
+            ),
+            egui::vec2(14.0, 14.0),
+        );
+        super::icons::paint(
+            ui.painter(),
+            eye,
+            ui.visuals().widgets.inactive.text_color(),
+            super::icons::Icon::Eye,
+        );
         ui.ctx().accesskit_node_builder(combo.response.id, |node| {
             node.set_label("Score view");
         });
@@ -245,6 +295,11 @@ impl super::GuitarScoreApp {
                 "With all tracks: leave a track out of a line where it plays nothing (the \
                  first line and the cursor's track always show). Each score view has its own \
                  choice.",
+            );
+        ui.checkbox(&mut self.view.multi_bar_rests, "Multi-bar rests")
+            .on_hover_text(
+                "Write a run of bars where every shown track rests as one bar with the \
+                 number of bars above it, as parts are printed",
             );
         if ui
             .button("Score views…")

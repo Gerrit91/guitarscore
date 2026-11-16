@@ -13,6 +13,7 @@
 
 mod draw;
 mod part;
+mod rests;
 mod split;
 
 use std::ops::Range;
@@ -25,7 +26,7 @@ use self::part::Part;
 use self::split::split_system;
 use crate::draw::{ColorToken, DrawOp, Point, Rect};
 use crate::marks::{self, Rows};
-use crate::measure::MeasureLayout;
+use crate::measure::{MeasureLayout, RestRun};
 use crate::options::EmptyStaves;
 use crate::pages::{PageDecor, PageRoom, place_systems};
 use crate::system::{Breaks, MeasureWidth, break_systems};
@@ -117,6 +118,70 @@ pub(crate) fn layout_with(
         part.measures.truncate(count);
         part.marks = marks::plan(song, &part.measures);
     }
+    // One track breaks where it does on its own. Several break where the song's
+    // multitrack layout says, and start a page where any shown track has a page break.
+    let score_breaks = if multi {
+        song.score_line_breaks()
+    } else {
+        Vec::new()
+    };
+    let system_breaks: Vec<SystemBreak> = (0..count)
+        .map(|index| {
+            let own = |part: &Part<'_>| {
+                part.view
+                    .measure(gscore_model::MeasureIndex::new(index))
+                    .map_or(SystemBreak::None, |m| m.system_break())
+            };
+            if !multi {
+                return parts.first().map_or(SystemBreak::None, own);
+            }
+            if parts.iter().any(|part| own(part) == SystemBreak::Page) {
+                SystemBreak::Page
+            } else if score_breaks.get(index).copied().unwrap_or(false) {
+                SystemBreak::Line
+            } else {
+                SystemBreak::None
+            }
+        })
+        .collect();
+    let forced: Vec<bool> = system_breaks
+        .iter()
+        .map(|kind| *kind != SystemBreak::None)
+        .collect();
+    // Runs of bars where every shown staff rests are written as multi-bar rests, each in
+    // its first bar; the bars folded into it take no room and never start a line.
+    let runs: Vec<RestRun> = if options.multi_bar_rests {
+        let bars: Vec<Vec<rests::StaffBar<'_>>> = (0..count)
+            .map(|index| {
+                parts
+                    .iter()
+                    .filter_map(|part| {
+                        Some(rests::StaffBar {
+                            layout: part.measures.get(index)?,
+                            marks: part.marks.get(index)?,
+                        })
+                    })
+                    .collect()
+            })
+            .collect();
+        let pages: Vec<bool> = system_breaks
+            .iter()
+            .map(|kind| *kind == SystemBreak::Page)
+            .collect();
+        rests::rest_runs(&bars, &pages)
+    } else {
+        vec![RestRun::None; count]
+    };
+    for part in &mut parts {
+        for (measure, run) in part.measures.iter_mut().zip(&runs) {
+            match run {
+                RestRun::Leads(bars) => *measure = Arc::new(measure.leading_rest_run(*bars)),
+                RestRun::Folded => *measure = Arc::new(measure.folded_into_rest_run()),
+                RestRun::None => {}
+            }
+        }
+    }
+    let glued: Vec<bool> = runs.iter().map(|run| *run == RestRun::Folded).collect();
     let Some(top) = parts.first() else {
         return Err(LayoutError::NoSuchTrack(first));
     };
@@ -168,42 +233,13 @@ pub(crate) fn layout_with(
     // The tracks' short names stand before every system, turned to read upwards along
     // their staves (the header lists the full names).
     let named = multi;
-    // One track breaks where it does on its own. Several break where the song's
-    // multitrack layout says, and start a page where any shown track has a page break.
-    let score_breaks = if multi {
-        song.score_line_breaks()
-    } else {
-        Vec::new()
-    };
-    let system_breaks: Vec<SystemBreak> = (0..count)
-        .map(|index| {
-            let own = |part: &Part<'_>| {
-                part.view
-                    .measure(gscore_model::MeasureIndex::new(index))
-                    .map_or(SystemBreak::None, |m| m.system_break())
-            };
-            if !multi {
-                return own(top);
-            }
-            if parts.iter().any(|part| own(part) == SystemBreak::Page) {
-                SystemBreak::Page
-            } else if score_breaks.get(index).copied().unwrap_or(false) {
-                SystemBreak::Line
-            } else {
-                SystemBreak::None
-            }
-        })
-        .collect();
-    let forced: Vec<bool> = system_breaks
-        .iter()
-        .map(|kind| *kind != SystemBreak::None)
-        .collect();
     let plans = break_systems(
         &widths,
         options.line_width(),
         &prefixes,
         Breaks {
             forced: &forced,
+            glued: &glued,
             // A track's bar limit is for its own view.
             max_measures: top
                 .view

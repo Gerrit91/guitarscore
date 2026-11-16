@@ -172,6 +172,10 @@ enum Command {
         /// first line shows every track)
         #[arg(long)]
         hide_empty_staves: bool,
+        /// Write a run of bars where every track rests as one multi-bar rest (a thick bar
+        /// with the number of bars above it), as parts are printed
+        #[arg(long)]
+        multi_bar_rests: bool,
         /// Color theme
         #[arg(long, value_enum, default_value = "light")]
         theme: render::ThemeArg,
@@ -353,13 +357,17 @@ where
             tracks,
             all_tracks,
             hide_empty_staves,
+            multi_bar_rests,
             theme,
         } => render::run(
             &file,
             &output,
             &tracks,
             all_tracks,
-            hide_empty_staves,
+            render::Staves {
+                hide_empty: hide_empty_staves,
+                multi_bar_rests,
+            },
             theme,
         ),
         Command::Convert {

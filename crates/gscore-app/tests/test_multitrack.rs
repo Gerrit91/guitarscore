@@ -705,3 +705,21 @@ fn a_score_view_is_built_in_its_dialog_and_shown() {
     assert_eq!(shown, [true, true, true, true, true, false]);
     assert_eq!(harness.state().score_tracks(), [0, 1, 2, 3, 4]);
 }
+
+/// The tab bar's choice of view: an eye before the view's name; the views, then what the
+/// score leaves out (empty staves, runs of rests), then the views dialog.
+#[test]
+fn the_view_choice_holds_the_views_and_the_score_switches() {
+    let mut harness = app_with_multi_staff();
+    click(&mut harness, "Score view");
+    park_pointer(&mut harness);
+    harness.snapshot("score_view_choice");
+    assert!(harness.state().view().multi_bar_rests, "on by default");
+    click(&mut harness, "Multi-bar rests");
+    assert!(!harness.state().view().multi_bar_rests);
+    assert!(!harness.state().settings().multi_bar_rests, "remembered");
+    click(&mut harness, "Multi-bar rests");
+    assert!(harness.state().view().multi_bar_rests);
+    click(&mut harness, "All tracks");
+    assert_eq!(harness.state().score_tracks(), [0, 1, 2, 3, 4, 5]);
+}

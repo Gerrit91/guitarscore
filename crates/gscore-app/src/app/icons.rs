@@ -84,6 +84,8 @@ pub(crate) enum Icon {
     PanelRight,
     /// Rename (a pencil).
     Rename,
+    /// What the score shows (an eye).
+    Eye,
     /// The transposition (a tuning fork).
     TuningFork,
     /// A tuner (a sound wave).
@@ -775,6 +777,21 @@ pub(crate) fn paint(painter: &Painter, rect: Rect, color: Color32, icon: Icon) {
                 stroke.color,
                 Stroke::NONE,
             ));
+        }
+        Icon::Eye => {
+            // An almond outline of two lids meeting at the corners, and a round pupil.
+            let half = size * 0.46;
+            let left = center + vec2(-half, 0.0);
+            let right = center + vec2(half, 0.0);
+            for lid in [-1.0, 1.0] {
+                painter.add(egui::epaint::QuadraticBezierShape::from_points_stroke(
+                    [left, center + vec2(0.0, lid * size * 0.62), right],
+                    false,
+                    Color32::TRANSPARENT,
+                    stroke,
+                ));
+            }
+            painter.circle_filled(center, size * 0.17, color);
         }
         Icon::Filter => {
             // A magnifying glass, the clearest small sign for narrowing a list: drawn from

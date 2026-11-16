@@ -46,6 +46,9 @@ pub struct LayoutOptions {
     /// The staves a track shows instead of its own (a score view's choice); a track not
     /// listed shows its own.
     pub track_staves: Vec<(gscore_model::TrackIndex, gscore_model::TrackStaves)>,
+    /// Write a run of bars where every shown staff rests as one multi-bar rest (a thick
+    /// bar with the number of bars above it).
+    pub multi_bar_rests: bool,
 }
 
 /// With several tracks shown, what happens to a track's staves in a system where it has
@@ -151,6 +154,8 @@ impl LayoutOptions {
             empty_staves: page.empty_staves,
             // Each staff's cache key holds its own track's staves.
             track_staves: Vec::new(),
+            // Runs of rests are made from the measures' layouts, after them.
+            multi_bar_rests: false,
             ..self.clone()
         }
     }
@@ -194,6 +199,7 @@ impl Default for LayoutOptions {
             empty_staves: EmptyStaves::Shown,
             single_line: false,
             track_staves: Vec::new(),
+            multi_bar_rests: false,
         }
     }
 }

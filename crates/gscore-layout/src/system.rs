@@ -52,6 +52,10 @@ pub(crate) struct SystemPlan {
 pub(crate) struct Breaks<'a> {
     /// `forced[i]`: measure `i` starts a new line (a line or page break).
     pub(crate) forced: &'a [bool],
+    /// `glued[i]`: measure `i` stays on the line of the measure before it, whatever
+    /// `forced` says, and does not count towards `max_measures` (a bar folded into a
+    /// multi-bar rest).
+    pub(crate) glued: &'a [bool],
     /// At most this many measures on a line.
     pub(crate) max_measures: Option<usize>,
     /// Put every measure on one line, however wide it gets.
@@ -80,17 +84,23 @@ pub(crate) fn break_systems(
     let mut start = 0;
     // The line so far squeezed as far as it may.
     let mut used = prefix_at(0);
+    // The measures on the line so far that count towards `max_measures`.
+    let mut counted = 0_usize;
     for (index, width) in widths.iter().enumerate() {
+        if breaks.glued.get(index).copied().unwrap_or(false) {
+            used += width.narrowest();
+            continue;
+        }
         let forced = breaks.forced.get(index).copied().unwrap_or(false);
-        let full = breaks
-            .max_measures
-            .is_some_and(|max| index.saturating_sub(start) >= max.max(1));
+        let full = breaks.max_measures.is_some_and(|max| counted >= max.max(1));
         if index > start && (forced || full || used + width.narrowest() > line_width) {
             plans.push(start..index);
             start = index;
             used = prefix_at(start);
+            counted = 0;
         }
         used += width.narrowest();
+        counted = counted.saturating_add(1);
     }
     if start < widths.len() {
         plans.push(start..widths.len());
@@ -214,6 +224,28 @@ mod tests {
         plans.iter().map(|p| p.measures.clone()).collect()
     }
 
+    /// Bars folded into a multi-bar rest stay on their rest's line, whatever is forced,
+    /// and do not count towards the bar limit.
+    #[test]
+    fn glued_bars_stay_on_their_line_and_are_not_counted() {
+        let mut widths = [w(1.0, 4.0); 8];
+        for width in widths.iter_mut().skip(2).take(4) {
+            *width = w(0.0, 0.0);
+        }
+        let glued = [false, false, true, true, true, true, false, false];
+        let forced = [false, false, false, true, false, false, false, false];
+        let breaks = Breaks {
+            forced: &forced,
+            glued: &glued,
+            max_measures: Some(3),
+            single_line: false,
+        };
+        assert_eq!(
+            ranges(&break_systems(&widths, 32.0, &PREFIX, breaks)),
+            [0..7, 7..8]
+        );
+    }
+
     #[test]
     fn forced_breaks_and_a_bar_limit_start_new_lines() {
         let widths = [w(1.0, 4.0); 8];
@@ -224,7 +256,7 @@ mod tests {
         let breaks = Breaks {
             forced: &forced,
             max_measures: None,
-            single_line: false,
+            ..Breaks::default()
         };
         assert_eq!(
             ranges(&break_systems(&widths, 32.0, &PREFIX, breaks)),
@@ -233,7 +265,7 @@ mod tests {
         let limited = Breaks {
             forced: &forced,
             max_measures: Some(3),
-            single_line: false,
+            ..Breaks::default()
         };
         assert_eq!(
             ranges(&break_systems(&widths, 32.0, &PREFIX, limited)),
@@ -244,7 +276,7 @@ mod tests {
         let odd = Breaks {
             forced: &first,
             max_measures: Some(0),
-            single_line: false,
+            ..Breaks::default()
         };
         assert_eq!(
             ranges(&break_systems(&widths[..3], 32.0, &PREFIX, odd)),
