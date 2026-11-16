@@ -2174,3 +2174,76 @@ fn a_fret_typed_on_the_second_staff_lands_there_and_the_click_finds_it() {
     assert_eq!(hit.staff, gscore_model::StaffIndex::new(1));
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// Left-clicks the score page at `at` with `modifiers` held.
+fn click_page(
+    harness: &mut Harness<'static, GuitarScoreApp>,
+    at: egui::Pos2,
+    modifiers: Modifiers,
+) {
+    harness.event(Event::ModifiersChanged(modifiers));
+    harness.event(Event::PointerMoved(at));
+    for pressed in [true, false] {
+        harness.event(Event::PointerButton {
+            pos: at,
+            button: egui::PointerButton::Primary,
+            pressed,
+            modifiers,
+        });
+    }
+    harness.run();
+    harness.event(Event::ModifiersChanged(Modifiers::NONE));
+    harness.run();
+}
+
+#[test]
+fn shift_click_extends_the_selection_from_the_cursor_to_the_beat_clicked() {
+    let mut harness = app_with(&testdata("basic/note_lengths.gp"));
+    let spot = |harness: &Harness<'static, GuitarScoreApp>| {
+        let cursor = harness.state().document().unwrap().editor().cursor();
+        (cursor.measure, cursor.beat)
+    };
+    let selection = |harness: &Harness<'static, GuitarScoreApp>| {
+        harness.state().document().unwrap().editor().selection()
+    };
+    let page = harness.get_by_label("Score page").rect();
+    // On the first line of music, below the header.
+    let at = |dx: f32| egui::pos2(page.left() + dx, page.top() + 300.0);
+    click_page(&mut harness, at(250.0), Modifiers::NONE);
+    let from = spot(&harness);
+    assert_eq!(from, (MeasureIndex::new(1), BeatIndex::new(1)));
+    assert!(selection(&harness).is_none());
+
+    click_page(&mut harness, at(350.0), Modifiers::SHIFT);
+    let to = spot(&harness);
+    assert_eq!(
+        to,
+        (MeasureIndex::new(2), BeatIndex::new(0)),
+        "the cursor moved"
+    );
+    let Some(gscore_edit::Selection::Beats { anchor, focus, .. }) = selection(&harness) else {
+        panic!("a beat selection");
+    };
+    assert_eq!((anchor.measure, anchor.beat), from);
+    assert_eq!((focus.measure, focus.beat), to);
+
+    // Another shift-click keeps the start and moves the end.
+    click_page(&mut harness, at(300.0), Modifiers::SHIFT);
+    let Some(gscore_edit::Selection::Beats {
+        anchor: kept,
+        focus,
+        ..
+    }) = selection(&harness)
+    else {
+        panic!("still a beat selection");
+    };
+    assert_eq!(kept, anchor, "the selection still starts where it did");
+    assert_eq!(
+        (focus.measure, focus.beat),
+        (MeasureIndex::new(1), BeatIndex::new(2))
+    );
+
+    // A plain click ends it.
+    click_page(&mut harness, at(450.0), Modifiers::NONE);
+    assert!(selection(&harness).is_none());
+}

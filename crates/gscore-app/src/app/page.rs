@@ -642,6 +642,30 @@ impl GuitarScoreApp {
                     });
                     text_opened = true;
                     ui.ctx().request_repaint();
+                } else if ui.input(|input| input.modifiers.shift) {
+                    // A shift-click extends the selection to the beat clicked, in the
+                    // cursor's voice, as a drag from the cursor would.
+                    let cursor = document.editor().cursor();
+                    if let Some(hit) = point.and_then(|point| {
+                        layout.hit_in_voice_on(point, cursor.track, cursor.staff, cursor.voice)
+                    }) {
+                        let focus = Cursor {
+                            measure: hit.measure,
+                            beat: hit.beat,
+                            string: hit.string,
+                            ..cursor
+                        };
+                        let anchor = shift_click_anchor(document.editor().selection(), cursor);
+                        document.editor_mut().set_selection(Some(Selection::Beats {
+                            staff: cursor.staff,
+                            track: cursor.track,
+                            voice: cursor.voice,
+                            anchor,
+                            focus: BeatSpot::of(focus),
+                        }));
+                        document.editor_mut().set_cursor(focus);
+                        tab.selection = None;
+                    }
                 } else {
                     // A click clears a selection and moves the cursor.
                     document.editor_mut().set_selection(None);
@@ -772,6 +796,21 @@ impl GuitarScoreApp {
         {
             self.recent.failed(path, error);
         }
+    }
+}
+
+/// Where a shift-click's selection starts: at the anchor of a beat selection in the
+/// cursor's track, staff and voice, or else at the cursor's beat.
+fn shift_click_anchor(selection: Option<Selection>, cursor: Cursor) -> BeatSpot {
+    match selection {
+        Some(Selection::Beats {
+            track,
+            staff,
+            voice,
+            anchor,
+            ..
+        }) if track == cursor.track && staff == cursor.staff && voice == cursor.voice => anchor,
+        _ => BeatSpot::of(cursor),
     }
 }
 
