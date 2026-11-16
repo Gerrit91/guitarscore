@@ -6019,3 +6019,15 @@ part (strings only, percussion only, a rhythm section) and print.
   it.
 Open: quick picks (only drums, only strings), an eye in the track grid, `gscore-cli render
 --view`, the dialog covers the score (it can be dragged aside).
+
+## 2026-11-16 — Track names upright before their staves
+
+- With several tracks, each track's short name (GP7's "el.guit.", "el.bs.", "drm."; the
+  name when there is none) stands before its staves in every system, turned 90°
+  anticlockwise to read upwards, centered on the track's staves and clear of its brace
+  or bracket. It is cut only when longer than the staves are tall, no longer to the
+  margin's width (it read "el.gui…").
+- New drawing op `DrawOp::VerticalText`, drawn by the app (egui `TextShape` angle), SVG
+  (`rotate(-90)`) and PDF (text matrix).
+Tests: names of `multi_staff.gp` upright, whole, beside their own staves; goldens and
+one app snapshot regenerated.

@@ -211,7 +211,9 @@ fn page_of(pages: &[Rect], op: &DrawOp) -> usize {
         DrawOp::Line { from, .. } | DrawOp::Curve { from, .. } => from.y,
         DrawOp::Rect { rect, .. } => rect.origin.y,
         DrawOp::Polygon { points, .. } => points.first().map_or(0.0, |point| point.y),
-        DrawOp::Glyph { at, .. } | DrawOp::Text { at, .. } => at.y,
+        DrawOp::Glyph { at, .. } | DrawOp::Text { at, .. } | DrawOp::VerticalText { at, .. } => {
+            at.y
+        }
     };
     pages
         .iter()
@@ -351,8 +353,7 @@ pub fn to_pdf(
                     content,
                     music.resource,
                     size,
-                    x,
-                    y,
+                    [1.0, 0.0, 0.0, 1.0, x, y],
                     theme.color(*color),
                     &bytes,
                 );
@@ -381,8 +382,31 @@ pub fn to_pdf(
                     content,
                     used.resource,
                     size,
-                    x,
-                    y,
+                    [1.0, 0.0, 0.0, 1.0, x, y],
+                    theme.color(*color),
+                    &bytes,
+                );
+            }
+            DrawOp::VerticalText {
+                text: words,
+                at: anchor,
+                size,
+                font,
+                color,
+            } => {
+                let used = match font {
+                    TextFont::Regular => &mut text,
+                    TextFont::Bold => &mut bold,
+                };
+                let (bytes, ems) = used.encode(words);
+                let size = size * scale;
+                let (x, y) = at(*anchor);
+                // Reading upwards (PDF's y grows upwards), centered on the anchor.
+                show(
+                    content,
+                    used.resource,
+                    size,
+                    [0.0, 1.0, -1.0, 0.0, x, y - ems * size / 2.0],
                     theme.color(*color),
                     &bytes,
                 );
@@ -450,8 +474,7 @@ fn show(
     content: &mut Content,
     resource: &[u8],
     size: f32,
-    x: f32,
-    y: f32,
+    matrix: [f32; 6],
     color: Rgb,
     bytes: &[u8],
 ) {
@@ -459,7 +482,7 @@ fn show(
     content
         .begin_text()
         .set_font(Name(resource), size)
-        .set_text_matrix([1.0, 0.0, 0.0, 1.0, x, y])
+        .set_text_matrix(matrix)
         .show(Str(bytes))
         .end_text();
 }

@@ -437,6 +437,8 @@ pub(super) enum GroupJoin {
 
 /// Space between the brace and the line joining a track's staves.
 const BRACE_GAP: f32 = 0.35;
+/// Gap between a track's name and the brace or bracket joining its staves.
+const NAME_JOIN_GAP: f32 = 0.5;
 
 /// The bracket that joins one staff's rows: the space between it and the line joining the
 /// rows, and the thickness of its bar (SMuFL's `bracketThickness`).
@@ -450,7 +452,7 @@ pub(super) fn draw_group(
     part: &Part<'_>,
     group: Group,
     measures: std::ops::Range<usize>,
-    name: Option<&String>,
+    named: bool,
     left: f32,
     fonts: &Fonts,
     ops: &mut Vec<DrawOp>,
@@ -458,6 +460,8 @@ pub(super) fn draw_group(
     // Where the joining line starts and ends (the staff frames may reach past the lines).
     let top = part.join_top(group.top, measures.clone());
     let bottom = part.join_bottom(group.last_top, measures);
+    // How far left the joining brace or bracket reaches: the name stands beyond it.
+    let mut reach = left;
     if group.join != GroupJoin::None {
         let thin = fonts.music.engraving().thin_barline_thickness;
         ops.push(DrawOp::Line {
@@ -466,27 +470,39 @@ pub(super) fn draw_group(
             thickness: thin,
             color: ColorToken::Barline,
         });
-        match group.join {
+        reach = match group.join {
             GroupJoin::Brace => draw_brace(top, bottom, left, &fonts.music, ops),
-            GroupJoin::Bracket => draw_bracket(top, bottom, left, ops),
-            GroupJoin::None => {}
-        }
+            GroupJoin::Bracket => {
+                draw_bracket(top, bottom, left, ops);
+                left - BRACKET_GAP - BRACKET_THICKNESS
+            }
+            GroupJoin::None => left,
+        };
     }
-    let Some(name) = name else {
+    if !named {
         return;
-    };
-    // The name stands beside the group, centered on all its rows.
-    let middle = if group.join != GroupJoin::None {
-        (top + bottom) / 2.0
+    }
+    // The name stands before the group, reading upwards along all its rows, cut to their
+    // height.
+    let (middle, height) = if group.join != GroupJoin::None {
+        ((top + bottom) / 2.0, bottom - top)
     } else {
-        group.top + group.height / 2.0
+        (group.top + group.height / 2.0, group.height)
     };
-    ops.push(DrawOp::Text {
-        text: name.clone(),
-        at: Point::new(left - NAME_GAP, middle + NAME_SIZE * 0.35),
+    let name = part.margin_name(height);
+    if name.is_empty() {
+        return;
+    }
+    let gap = if reach < left {
+        NAME_JOIN_GAP
+    } else {
+        NAME_GAP
+    };
+    ops.push(DrawOp::VerticalText {
+        text: name,
+        at: Point::new(reach - gap, middle),
         size: NAME_SIZE,
         font: TextFont::Regular,
-        anchor: TextAnchor::End,
         color: ColorToken::Annotation,
     });
 }
@@ -516,7 +532,8 @@ fn draw_bracket(top: f32, bottom: f32, left: f32, ops: &mut Vec<DrawOp>) {
 
 /// The brace joining a track's staves at the system's start, stretched from `top` to
 /// `bottom`, left of the line at `left`.
-fn draw_brace(top: f32, bottom: f32, left: f32, font: &MusicFont, ops: &mut Vec<DrawOp>) {
+/// Draws the brace and returns how far left it reaches.
+fn draw_brace(top: f32, bottom: f32, left: f32, font: &MusicFont, ops: &mut Vec<DrawOp>) -> f32 {
     let glyph = Glyph::Brace;
     let bbox = font.bbox(glyph);
     let natural = (bbox.y_max - bbox.y_min).max(f32::MIN_POSITIVE);
@@ -525,10 +542,12 @@ fn draw_brace(top: f32, bottom: f32, left: f32, font: &MusicFont, ops: &mut Vec<
     // scale, so a tall group gets a wide brace, as engraved braces do.
     let scale = (height / natural).max(f32::MIN_POSITIVE);
     let advance = font.advance(glyph) * scale;
+    let x = left - advance - BRACE_GAP;
     ops.push(DrawOp::Glyph {
         glyph,
-        at: Point::new(left - advance - BRACE_GAP, bottom - bbox.y_min * scale),
+        at: Point::new(x, bottom - bbox.y_min * scale),
         scale,
         color: ColorToken::Barline,
     });
+    x + bbox.x_min * scale
 }

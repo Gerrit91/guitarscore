@@ -145,6 +145,29 @@ fn write_op(out: &mut String, op: &DrawOp, theme: &Theme) {
                 escape(text)
             )
         }
+        DrawOp::VerticalText {
+            text,
+            at,
+            size,
+            font,
+            color,
+        } => {
+            let weight = match font {
+                TextFont::Regular => "",
+                TextFont::Bold => " font-weight=\"bold\"",
+            };
+            writeln!(
+                out,
+                "<text x=\"{x}\" y=\"{y}\" transform=\"rotate(-90 {x} {y})\" \
+                 font-family=\"{TEXT_FAMILY}\" font-size=\"{}\"{weight} text-anchor=\"middle\" \
+                 fill=\"{}\">{}</text>",
+                num(*size),
+                theme.color(*color),
+                escape(text),
+                x = num(at.x),
+                y = num(at.y),
+            )
+        }
     };
 }
 

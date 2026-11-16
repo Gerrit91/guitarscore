@@ -7,7 +7,7 @@
 //! line and a brace and named once. The top staff of a system carries what belongs to the
 //! whole system: measure numbers, section names, tempo marks and alternative endings. Every
 //! staff keeps its own clef, barlines, repeat signs, dynamics, fermatas and beat effects.
-//! With several tracks, the tracks' short names stand in the left margin before each system,
+//! With several tracks, the tracks' short names stand upright before each system,
 //! one line joins all their staves, and the song's multitrack line breaks apply instead of a
 //! track's own.
 
@@ -44,8 +44,6 @@ const STAFF_GAP: f32 = 4.0;
 const NAME_GAP: f32 = 1.2;
 /// Font size of the track names before a system.
 pub(super) const NAME_SIZE: f32 = 1.2;
-/// Room kept between a track's name and the page edge.
-const NAME_MARGIN: f32 = 0.5;
 
 /// Lays out `tracks` of `song` (top to bottom, every staff of each) in shared systems; the
 /// result's [`Layout::places`] are those of `primary`'s first staff (the first track's if
@@ -167,18 +165,9 @@ pub(crate) fn layout_with(
                 .fold(0.0, f32::max)
         })
         .collect();
-    // The tracks' short names stand in the left margin before every system, cut to fit
-    // it, as Guitar Pro writes them (the header lists the full names).
-    let names: Vec<String> = if multi {
-        let room = options.margin_left - NAME_GAP - NAME_MARGIN;
-        parts
-            .iter()
-            .filter(|part| part.staff.get() == 0)
-            .map(|part| part.margin_name(room))
-            .collect()
-    } else {
-        Vec::new()
-    };
+    // The tracks' short names stand before every system, turned to read upwards along
+    // their staves (the header lists the full names).
+    let named = multi;
     // One track breaks where it does on its own. Several break where the song's
     // multitrack layout says, and start a page where any shown track has a page break.
     let score_breaks = if multi {
@@ -492,11 +481,6 @@ pub(crate) fn layout_with(
                     continue;
                 }
                 let group_top = group_top.take().unwrap_or(top);
-                let name = tracks
-                    .iter()
-                    .position(|&track| track == part.track)
-                    .and_then(|at| names.get(at))
-                    .filter(|name| !name.is_empty());
                 draw_group(
                     part,
                     Group {
@@ -512,7 +496,7 @@ pub(crate) fn layout_with(
                         },
                     },
                     plan.measures.clone(),
-                    name,
+                    named,
                     left,
                     fonts,
                     &mut ops,

@@ -352,3 +352,52 @@ fn a_system_where_every_track_rests_keeps_its_first_track() {
     let first = hidden.places_of(tracks[0]).unwrap();
     assert!((0..40).all(|bar| first.measure(MeasureIndex::new(bar)).is_some()));
 }
+
+/// With several tracks, each track's short name stands before every system, turned to read
+/// upwards along its staves, whole (it used to be cut to the margin's width: "el.gui…").
+#[test]
+fn short_names_read_upwards_before_each_tracks_staves() {
+    let song = common::open("basic/multi_staff.gp");
+    let layout = layout_all(&song, &LayoutOptions::default());
+    let names: Vec<(&str, Point)> = layout
+        .ops
+        .iter()
+        .filter_map(|op| match op {
+            DrawOp::VerticalText { text, at, .. } => Some((text.as_str(), *at)),
+            _ => None,
+        })
+        .collect();
+    let systems = layout.places.systems.len();
+    assert_eq!(names.len(), systems * song.track_count(), "{names:?}");
+    let short: Vec<&str> = names
+        .iter()
+        .take(song.track_count())
+        .map(|(n, _)| *n)
+        .collect();
+    assert_eq!(
+        short,
+        [
+            "el.guit.", "el.guit.", "el.guit.", "el.guit.", "el.bs.", "drm."
+        ]
+    );
+    // Each stands left of the system's first bar, level with its own track's staves.
+    for (track, places) in layout.tracks.iter().enumerate() {
+        let system = &places.places.systems[0];
+        let first_bar = places.places.measures[0].left;
+        let (_, at) = names[track];
+        assert!(at.x < first_bar, "{track}: {at:?}");
+        assert!(
+            at.y > system.top && at.y < system.tab_bottom() + 0.01,
+            "{track}: {at:?} not within {}..{}",
+            system.top,
+            system.tab_bottom()
+        );
+    }
+    assert!(
+        !layout
+            .ops
+            .iter()
+            .any(|op| matches!(op, DrawOp::Text { text, .. } if text.contains('…'))),
+        "no name is cut"
+    );
+}
