@@ -22,10 +22,10 @@ pub(super) fn ruler(
     actions: &mut Vec<GridAction>,
 ) {
     let mw = MEASURE_WIDTH * view.zoom;
-    let width = view.measure_count as f32 * mw;
-    let available = ui.available_width();
+    // As wide as the panel, not the song: a ruler wider than the window would widen the
+    // panel's contents, and the matrix below with them, past its scroll bar.
     let (rect, response) =
-        ui.allocate_exact_size(vec2(width.max(available), RULER_HEIGHT), Sense::click());
+        ui.allocate_exact_size(vec2(ui.available_width(), RULER_HEIGHT), Sense::click());
     let painter = ui.painter_at(rect);
     let visuals = ui.visuals().clone();
     painter.rect_filled(rect, 0.0, visuals.extreme_bg_color);
