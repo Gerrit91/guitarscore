@@ -160,6 +160,46 @@ fn closed_and_saved_documents_leave_nothing_to_recover() {
     assert_same_history(editor, recover(&session).unwrap().editor);
 }
 
+/// The search at the app's start runs while a file opened at the same start is creating its
+/// journal: a folder caught half made (no lock file yet, or one not locked yet) is that
+/// journal's, not a leftover, and stays as it is, unlocked, so the journal can still lock
+/// it. Only one left half made long ago (a crash while creating it) is removed.
+#[test]
+fn a_journal_being_created_is_left_alone() {
+    let root = temp_dir("starting");
+    let no_lock_yet = root.join("1-1-1");
+    std::fs::create_dir_all(&no_lock_yet).unwrap();
+    let not_locked_yet = root.join("1-1-2");
+    std::fs::create_dir_all(&not_locked_yet).unwrap();
+    std::fs::File::create(not_locked_yet.join("lock")).unwrap();
+
+    assert!(find_sessions(&root).is_empty());
+    assert!(
+        no_lock_yet.exists(),
+        "a folder without its lock file yet stays"
+    );
+    assert!(
+        not_locked_yet.exists(),
+        "a folder whose lock is not taken yet stays"
+    );
+    let lock = std::fs::File::options()
+        .write(true)
+        .open(not_locked_yet.join("lock"))
+        .unwrap();
+    lock.try_lock().expect("the search left the lock free");
+    drop(lock);
+
+    // Half made an hour ago: a crash while the journal was created; it goes.
+    let hour_ago = std::time::SystemTime::now() - Duration::from_secs(3600);
+    std::fs::File::open(&no_lock_yet)
+        .unwrap()
+        .set_modified(hour_ago)
+        .unwrap();
+    assert!(find_sessions(&root).is_empty());
+    assert!(!no_lock_yet.exists(), "an old half-made folder is removed");
+    assert!(not_locked_yet.exists());
+}
+
 #[test]
 fn a_damaged_journal_end_and_a_lost_base_are_survived() {
     let root = temp_dir("damaged");
