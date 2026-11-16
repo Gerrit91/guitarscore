@@ -100,6 +100,13 @@ fn main() -> ExitCode {
             );
             // Asks once whether to look for updates daily (nothing is sent before a yes).
             app.enable_automatic_update_check();
+            // A release build or AppImage on Linux offers (once) to add itself to the
+            // applications menu, and keeps an entry it added pointing at itself. A build
+            // from a source checkout leaves the menu alone.
+            #[cfg(target_os = "linux")]
+            if gscore_version::RELEASE || std::env::var_os("APPIMAGE").is_some() {
+                app.enable_desktop_entry();
+            }
             if let Some(problem) = settings_problem.or(loaded.problem) {
                 app.set_notice(problem);
             }

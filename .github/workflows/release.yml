@@ -117,6 +117,9 @@ jobs:
           cp soundfont/FluidR3_GM.sf2 "$stage/"
           strip "$stage/guitarscore" "$stage/gscore-cli"
           cp LICENSE README.md THIRD_PARTY.md "$stage/"
+          # For a menu entry by hand or a distribution package (the app also offers to
+          # add its own at the first start).
+          cp packaging/guitarscore.desktop packaging/guitarscore.svg packaging/guitarscore.png "$stage/"
           cp assets/fonts/bravura/OFL.txt "$stage/licenses/Bravura-OFL.txt"
           cp assets/fonts/noto-sans/OFL.txt "$stage/licenses/NotoSans-OFL.txt"
           cp soundfont/FluidR3-LICENSE.txt "$stage/licenses/FluidR3-LICENSE.txt"

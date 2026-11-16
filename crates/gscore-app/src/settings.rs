@@ -766,6 +766,9 @@ pub struct Settings {
     pub update_checked_at: Option<u64>,
     /// A release the user chose to skip (its tag); automatic checks do not offer it again.
     pub skipped_update: Option<String>,
+    /// Whether the app keeps its entry in the Linux applications menu; `None` until the
+    /// user was asked (at the first start of a Linux release build).
+    pub desktop_entry: Option<bool>,
 }
 
 impl Default for Settings {
@@ -827,6 +830,7 @@ impl Default for Settings {
             check_for_updates: None,
             update_checked_at: None,
             skipped_update: None,
+            desktop_entry: None,
         }
     }
 }

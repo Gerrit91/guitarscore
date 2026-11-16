@@ -656,6 +656,23 @@ impl GuitarScoreApp {
             "Reopen the tabs from last time at startup",
         );
         ui.label(RichText::new("Files that are no longer there are skipped.").weak());
+        #[cfg(not(target_arch = "wasm32"))]
+        if self.offers_desktop_entry() {
+            let mut in_menu = self.has_desktop_entry();
+            if ui
+                .checkbox(&mut in_menu, "Show GuitarScore in the applications menu")
+                .changed()
+            {
+                self.set_desktop_entry(in_menu);
+            }
+            ui.label(
+                RichText::new(
+                    "Adds the menu entry and the icon for you only, so GuitarScore can be \
+                     pinned to the dock. Kept pointing at this copy when it moves.",
+                )
+                .weak(),
+            );
+        }
 
         #[cfg(not(target_arch = "wasm32"))]
         {

@@ -17,6 +17,9 @@ pub(super) enum AlertIcon {
     /// An arrow down into a tray, in a ring: a new version (the desktop's update check).
     #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
     Update,
+    /// A grid of four app tiles, the last one filled: an app joins the applications menu.
+    #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
+    Launcher,
 }
 
 /// One answer: its text and whether it is the main one (accent color, Enter).
@@ -123,6 +126,29 @@ fn paint_icon(painter: &Painter, rect: Rect, icon: AlertIcon, accent: Color32) {
         AlertIcon::Warning => paint_warning(painter, rect),
         AlertIcon::Restore => paint_restore(painter, rect, accent),
         AlertIcon::Update => paint_update(painter, rect, accent),
+        AlertIcon::Launcher => paint_launcher(painter, rect, accent),
+    }
+}
+
+/// Four rounded tiles in a square, outlined, the lower right one filled.
+fn paint_launcher(painter: &Painter, rect: Rect, accent: Color32) {
+    let side = rect.width() * 0.34;
+    let gap = rect.width() * 0.1;
+    let origin = rect.center() - vec2(side + gap / 2.0, side + gap / 2.0);
+    for (column, row) in [(0.0, 0.0), (1.0, 0.0), (0.0, 1.0), (1.0, 1.0)] {
+        let min = origin + vec2(column, row) * (side + gap);
+        let tile = Rect::from_min_size(min, vec2(side, side));
+        if column + row > 1.5 {
+            painter.rect_filled(tile, 4.0, accent);
+        } else {
+            let inset = tile.shrink(1.75);
+            painter.rect_stroke(
+                inset,
+                3.0,
+                Stroke::new(3.5, accent),
+                egui::StrokeKind::Middle,
+            );
+        }
     }
 }
 
