@@ -81,6 +81,98 @@ fn bundled_soundfonts(exe: &Path) -> Vec<PathBuf> {
     found
 }
 
+/// The SoundFont to play with, given the one saved in the settings.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SavedSoundFont {
+    /// The SoundFont to use, if there is one.
+    pub path: Option<PathBuf>,
+    /// Why the saved one is not used, for the user (it is gone and nothing replaces it).
+    pub problem: Option<String>,
+}
+
+/// Where the SoundFont saved in the settings is now: see [`resolve_saved_soundfont_in`].
+pub fn resolve_saved_soundfont(saved: &Path) -> SavedSoundFont {
+    let exe = std::env::current_exe().ok();
+    resolve_saved_soundfont_in(saved, exe.as_deref(), find_soundfont)
+}
+
+/// [`resolve_saved_soundfont`] with the executable and the search given (for tests).
+///
+/// The settings keep a path, and a bundled SoundFont's path changes when the app folder is
+/// moved or replaced by an update (and at every start of an AppImage, which is mounted in
+/// a new place each time). So a saved SoundFont that is missing, or that is the bundled
+/// one of another copy of the app, quietly becomes the one bundled with this executable
+/// under the same name: that is what the user chose, not a problem. Only a missing
+/// SoundFont that nothing bundled replaces is reported; `find` then picks another one.
+pub fn resolve_saved_soundfont_in(
+    saved: &Path,
+    exe: Option<&Path>,
+    find: impl FnOnce() -> Option<PathBuf>,
+) -> SavedSoundFont {
+    let exists = saved.is_file();
+    let replacement = exe
+        .filter(|exe| !exists || is_bundled_with_an_app(saved, exe))
+        .and_then(|exe| same_bundled(saved, exe));
+    if let Some(path) = replacement {
+        return SavedSoundFont {
+            path: Some(path),
+            problem: None,
+        };
+    }
+    if exists {
+        return SavedSoundFont {
+            path: Some(saved.to_path_buf()),
+            problem: None,
+        };
+    }
+    let path = find();
+    let problem = match &path {
+        Some(found) => format!(
+            "The SoundFont {} was not found; playing with {} instead.",
+            saved.display(),
+            found.display()
+        ),
+        None => format!(
+            "The SoundFont {} was not found; choose one in Settings › Audio I/O.",
+            saved.display()
+        ),
+    };
+    SavedSoundFont {
+        path,
+        problem: Some(problem),
+    }
+}
+
+/// Whether `soundfont` lies where a copy of the app bundles its SoundFont: beside an
+/// executable named like `exe`, or in a `soundfonts/` folder beside one.
+fn is_bundled_with_an_app(soundfont: &Path, exe: &Path) -> bool {
+    let Some(exe_name) = exe.file_name() else {
+        return false;
+    };
+    let Some(dir) = soundfont.parent() else {
+        return false;
+    };
+    let app_dir = if dir.file_name().is_some_and(|name| name == "soundfonts") {
+        dir.parent().unwrap_or(dir)
+    } else {
+        dir
+    };
+    app_dir.join(exe_name).is_file()
+}
+
+/// The SoundFont bundled with `exe` that matches `saved`: the same file name, in the same
+/// place relative to the executable (beside it or in its `soundfonts/` folder).
+fn same_bundled(saved: &Path, exe: &Path) -> Option<PathBuf> {
+    let in_folder = |path: &Path| {
+        path.parent()
+            .and_then(Path::file_name)
+            .is_some_and(|name| name == "soundfonts")
+    };
+    bundled_soundfonts(exe).into_iter().find(|bundled| {
+        bundled.file_name() == saved.file_name() && in_folder(bundled) == in_folder(saved)
+    })
+}
+
 /// The first soundfont in [`bundled_soundfonts`], if any.
 fn first_bundled(exe: &Path) -> Option<PathBuf> {
     bundled_soundfonts(exe).into_iter().next()
@@ -236,5 +328,72 @@ mod tests {
         assert_eq!(found, vec![bin.join("FluidR3_GM.sf2")]);
         let _ = std::fs::remove_dir_all(bin);
         let _ = std::fs::remove_dir_all(root);
+    }
+
+    /// A copy of the app in `dir`: the executable and its bundled FluidR3 (and, in its
+    /// `soundfonts/` folder, `Extra.sf2`).
+    fn install(dir: &Path) -> PathBuf {
+        std::fs::create_dir_all(dir.join("soundfonts")).unwrap();
+        std::fs::write(dir.join("guitarscore"), b"x").unwrap();
+        std::fs::write(dir.join("FluidR3_GM.sf2"), b"x").unwrap();
+        std::fs::write(dir.join("soundfonts/Extra.sf2"), b"x").unwrap();
+        dir.join("guitarscore")
+    }
+
+    fn never_searched() -> Option<PathBuf> {
+        panic!("the search must not run")
+    }
+
+    #[test]
+    fn a_bundled_soundfont_left_behind_by_a_moved_or_updated_app_is_replaced_quietly() {
+        let base = temp_dir("saved-moved");
+        let exe = install(&base.join("new"));
+        let used = |saved: &Path| resolve_saved_soundfont_in(saved, Some(&exe), never_searched);
+
+        // The old folder is gone (moved, or deleted after an update; an AppImage's mount).
+        for (saved, now) in [
+            ("old/FluidR3_GM.sf2", "new/FluidR3_GM.sf2"),
+            ("old/soundfonts/Extra.sf2", "new/soundfonts/Extra.sf2"),
+        ] {
+            let found = used(&base.join(saved));
+            assert_eq!(found.path, Some(base.join(now)));
+            assert_eq!(found.problem, None);
+        }
+
+        // The old copy of the app is still there: the running one's SoundFont is used.
+        install(&base.join("old"));
+        let found = used(&base.join("old/FluidR3_GM.sf2"));
+        assert_eq!(found.path, Some(base.join("new/FluidR3_GM.sf2")));
+        assert_eq!(found.problem, None);
+
+        // The running app's own SoundFont stays as it is.
+        let own = base.join("new/FluidR3_GM.sf2");
+        assert_eq!(used(&own).path, Some(own));
+        let _ = std::fs::remove_dir_all(base);
+    }
+
+    #[test]
+    fn a_soundfont_the_user_chose_is_kept_and_reported_only_once_it_is_gone() {
+        let base = temp_dir("saved-own");
+        let exe = install(&base.join("app"));
+        let own = base.join("fonts/FluidR3_GM.sf2");
+        std::fs::create_dir_all(own.parent().unwrap()).unwrap();
+        std::fs::write(&own, b"x").unwrap();
+
+        // An existing one is used, even with the bundled one's name: it is not an app's.
+        let found = resolve_saved_soundfont_in(&own, Some(&exe), never_searched);
+        assert_eq!(found.path, Some(own.clone()));
+        assert_eq!(found.problem, None);
+
+        // A missing one that nothing bundled replaces: the search, and the user is told.
+        let gone = base.join("fonts/Gone.sf2");
+        let other = base.join("app/FluidR3_GM.sf2");
+        let found = resolve_saved_soundfont_in(&gone, Some(&exe), || Some(other.clone()));
+        assert_eq!(found.path, Some(other));
+        assert!(found.problem.unwrap().contains("Gone.sf2"));
+        let found = resolve_saved_soundfont_in(&gone, None, || None);
+        assert_eq!(found.path, None);
+        assert!(found.problem.unwrap().contains("Settings"));
+        let _ = std::fs::remove_dir_all(base);
     }
 }

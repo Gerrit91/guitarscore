@@ -50,7 +50,8 @@ pub use meters::{Level, Meters};
 pub use midi_out::{MidiOutPlayer, midi_output_ports};
 pub use sound_wire::{SoundMessage, decode_sound, encode_sound};
 pub use soundfont::{
-    SOUNDFONT_ENV, available_soundfonts, available_soundfonts_in, find_soundfont, find_soundfont_in,
+    SOUNDFONT_ENV, SavedSoundFont, available_soundfonts, available_soundfonts_in, find_soundfont,
+    find_soundfont_in, resolve_saved_soundfont, resolve_saved_soundfont_in,
 };
 pub use synth::{BLOCK, SoundBank, SynthEngine};
 #[cfg(not(target_arch = "wasm32"))]
