@@ -86,6 +86,7 @@ impl GuitarScoreApp {
                 ui.spacing_mut().item_spacing.x = 8.0;
                 self.file_and_edit(ui);
                 self.panel_toggles(ui);
+                self.score_view_button(ui);
             },
         );
         let left_end = left.response.rect.right();
@@ -124,7 +125,6 @@ impl GuitarScoreApp {
                 {
                     self.open_history();
                 }
-                self.zoom(ui);
             },
         );
         let right_start = right.response.rect.left();
@@ -304,33 +304,33 @@ impl GuitarScoreApp {
         });
     }
 
-    /// Zoom out, the zoom level (a click goes back to 100 %), zoom in. Called inside a
-    /// right-to-left layout, so the parts are added in reverse.
-    fn zoom(&mut self, ui: &mut egui::Ui) {
-        style::toolbar_group(ui, |ui| {
-            if self.action_icon(ui, Icon::ZoomIn, ActionId::ZoomIn, true) {
-                self.view.zoom_in();
-            }
-            let zoom = format!("{:.0} %", self.view.zoom() * 100.0);
-            let response = ui
-                .add(
-                    egui::Button::new(RichText::new(&zoom).size(12.0))
-                        .frame(false)
-                        .min_size(vec2(44.0, 22.0)),
-                )
-                .on_hover_text(format!(
-                    "Back to 100 %{}\n{ZOOM_GESTURE_TIP}",
-                    self.key_hint(ActionId::ZoomReset)
-                ));
-            ui.ctx()
-                .accesskit_node_builder(response.id, |node| node.set_label(zoom));
-            if response.clicked() {
-                self.view.set_zoom(1.0);
-            }
-            if self.action_icon(ui, Icon::ZoomOut, ActionId::ZoomOut, true) {
-                self.view.zoom_out();
-            }
-        });
+    /// Zoom out, the zoom level (a click goes back to 100 %), zoom in, in the status bar.
+    /// Called inside a right-to-left layout, so the parts are added in reverse.
+    pub(super) fn status_zoom(&mut self, ui: &mut egui::Ui) {
+        let tip = |action: ActionId| format!("{}{}", action.label(), self.key_hint(action));
+        let (zoom_in, zoom_out) = (tip(ActionId::ZoomIn), tip(ActionId::ZoomOut));
+        if icons::button(ui, Icon::ZoomIn, ActionId::ZoomIn.label(), &zoom_in).clicked() {
+            self.view.zoom_in();
+        }
+        let zoom = format!("{:.0} %", self.view.zoom() * 100.0);
+        let response = ui
+            .add(
+                egui::Button::new(RichText::new(&zoom).size(12.0))
+                    .frame(false)
+                    .min_size(vec2(40.0, 18.0)),
+            )
+            .on_hover_text(format!(
+                "Back to 100 %{}\n{ZOOM_GESTURE_TIP}",
+                self.key_hint(ActionId::ZoomReset)
+            ));
+        ui.ctx()
+            .accesskit_node_builder(response.id, |node| node.set_label(zoom));
+        if response.clicked() {
+            self.view.set_zoom(1.0);
+        }
+        if icons::button(ui, Icon::ZoomOut, ActionId::ZoomOut.label(), &zoom_out).clicked() {
+            self.view.zoom_out();
+        }
     }
 
     /// Show or hide the docked panels: the palette, the song grid and the track panel.

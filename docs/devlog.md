@@ -6063,3 +6063,17 @@ Tests: settings migration; command set and undone, too long refused; the dialog 
 Tests: runs and their counts, marks and double bars ending a run, a line break not, every
 track must rest, folded bars share the rest's place; glued bars in the line breaker; the
 choice's switches.
+
+## 2026-11-16 — The score view's eye in the toolbar and on every track
+
+- The toolbar has an eye right after the panel toggles; its menu ticks the view shown
+  (one track, all tracks, each score view), then "Hide empty staves" and "Multi-bar
+  rests" (ticked rows; the menu stays open for them), then "Edit score views…". The
+  tab bar's drop-down is gone.
+- The score's zoom moved from the toolbar to the status bar, left of the audio load,
+  which leaves the toolbar room.
+- Every track row of the song grid has an eye left of mute and solo, acting on the
+  current view: with all tracks it is Guitar Pro's eye (saved in GP5/GP7 files); in a
+  score view it adds or removes the track (one undo step); with one track it shows that
+  track.
+Tests: the menu's switches and views, the grid's eyes in all tracks and one track.

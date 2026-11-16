@@ -264,22 +264,7 @@ impl GuitarScoreApp {
                     track: TrackIndex::new(track),
                     visible: on,
                 },
-                Some((index, mut view)) => {
-                    let at = TrackIndex::new(track);
-                    if on {
-                        let staves = song.track(at).map(|t| t.staves()).unwrap_or_default();
-                        // Back in its song place among the view's tracks.
-                        let place = view
-                            .tracks
-                            .iter()
-                            .position(|entry| entry.track > at)
-                            .unwrap_or(view.tracks.len());
-                        view.tracks.insert(place, ViewTrack { track: at, staves });
-                    } else {
-                        view.tracks.retain(|entry| entry.track != at);
-                    }
-                    set_view(index, view)
-                }
+                Some((index, view)) => set_view(index, with_track(song, view, track, on)),
             },
             Edit::Staves(track, staves) => match current {
                 None => Command::SetTrackStaves {
@@ -328,6 +313,63 @@ impl GuitarScoreApp {
             }
         }
     }
+}
+
+impl GuitarScoreApp {
+    /// The song grid's eye on `track`: shows it in the score's current view or leaves it
+    /// out. With all tracks it is Guitar Pro's eye (saved in the file); in a score view it
+    /// adds or removes the track; with one track it shows that track.
+    pub(super) fn toggle_track_shown(&mut self, track: usize) {
+        let Some(tab) = self.tabs.get_mut(self.active) else {
+            return;
+        };
+        let song = tab.document.song();
+        let at = TrackIndex::new(track);
+        let command = match tab.score {
+            ScoreTracks::Cursor => {
+                let from = tab.document.editor().cursor();
+                let to = super::score_view::cursor_in_track(song, from, track, true);
+                tab.track = track;
+                tab.document.editor_mut().set_cursor(to);
+                return;
+            }
+            ScoreTracks::All => Command::SetTrackVisible {
+                track: at,
+                visible: !song.track(at).is_some_and(|view| view.is_visible()),
+            },
+            ScoreTracks::View(index) => {
+                let Some(view) = song.score_views().into_iter().nth(index) else {
+                    return;
+                };
+                let on = !view.tracks.iter().any(|entry| entry.track == at);
+                set_view(index, with_track(song, view, track, on))
+            }
+        };
+        if let Err(error) = self.run_command_from_window(command) {
+            self.notice = Some(format!("The track's eye could not change: {error}"));
+        }
+    }
+}
+
+/// `view` with `track` in it (`on`, in its song place among the view's tracks, with its
+/// own staves) or left out.
+fn with_track(song: &Song, mut view: ScoreView, track: usize, on: bool) -> ScoreView {
+    let at = TrackIndex::new(track);
+    if on {
+        if view.tracks.iter().any(|entry| entry.track == at) {
+            return view;
+        }
+        let staves = song.track(at).map(|t| t.staves()).unwrap_or_default();
+        let place = view
+            .tracks
+            .iter()
+            .position(|entry| entry.track > at)
+            .unwrap_or(view.tracks.len());
+        view.tracks.insert(place, ViewTrack { track: at, staves });
+    } else {
+        view.tracks.retain(|entry| entry.track != at);
+    }
+    view
 }
 
 /// The command that sets view `index` to `view`.

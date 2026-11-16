@@ -79,6 +79,8 @@ pub(super) enum GridAction {
     Select(MeasureSelection),
     /// Open the rename window for a track.
     Rename { track: usize },
+    /// Show the track in the score's current view, or leave it out (the row's eye).
+    ToggleShown { track: usize },
     /// Show a track in the track panel.
     ShowTrack { track: usize },
     /// Set the metronome's click volume (0 to 1).
@@ -150,10 +152,11 @@ impl GuitarScoreApp {
             return;
         };
         let sound = tab.sound();
+        let shown = tab.shown_score(false).tracks;
         let document = &mut tab.document;
         let grid = document.grid();
         let cursor = document.editor().cursor();
-        let rows = rows::track_rows(document);
+        let rows = rows::track_rows(document, &shown);
         let master = document.song().master_mix();
         let measure_count = document.song().measure_count();
         let playing = self.playback.current_measure().map(|m| m.saturating_sub(1));
@@ -427,6 +430,7 @@ impl GuitarScoreApp {
                     self.jump_playback_to(track, selection.start());
                 }
             }
+            GridAction::ToggleShown { track } => self.toggle_track_shown(track),
             GridAction::Rename { track } => {
                 let (name, short_name) = self
                     .tabs

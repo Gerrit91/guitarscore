@@ -723,3 +723,31 @@ fn the_view_choice_holds_the_views_and_the_score_switches() {
     click(&mut harness, "All tracks");
     assert_eq!(harness.state().score_tracks(), [0, 1, 2, 3, 4, 5]);
 }
+
+/// The song grid's eyes act on the score's view: with all tracks, Guitar Pro's eye (saved
+/// in the file); with one track, the track shown.
+#[test]
+fn the_grids_eyes_act_on_the_current_view() {
+    let mut harness = app_with_multi_staff();
+    view_menu(&mut harness, "All tracks");
+    click(&mut harness, "Show Drumkit in the score view");
+    let visible: Vec<bool> = harness
+        .state()
+        .document()
+        .unwrap()
+        .song()
+        .tracks()
+        .map(|track| track.is_visible())
+        .collect();
+    assert_eq!(visible, [true, true, true, true, true, false]);
+    assert_eq!(harness.state().score_tracks(), [0, 1, 2, 3, 4]);
+    park_pointer(&mut harness);
+    harness.snapshot("grid_eyes");
+    // Back on: the drums are shown again.
+    click(&mut harness, "Show Drumkit in the score view");
+    assert_eq!(harness.state().score_tracks(), [0, 1, 2, 3, 4, 5]);
+    // With one track, an eye shows that track.
+    view_menu(&mut harness, "One track");
+    click(&mut harness, "Show Electric Bass in the score view");
+    assert_eq!(harness.state().score_tracks(), [4]);
+}

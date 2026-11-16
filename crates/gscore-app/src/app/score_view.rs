@@ -122,10 +122,10 @@ impl ScoreTracks {
     }
 }
 
-/// The width of the tab bar's choice of score view.
-pub(super) const SCORE_VIEW_WIDTH: f32 = 150.0;
-/// Room before the view's name for the eye (and the list's indentation).
-const EYE_ROOM: f32 = 20.0;
+/// The width of the eye's menu.
+const MENU_WIDTH: f32 = 190.0;
+/// The room for a menu row's checkmark, before its text.
+const CHECK_ROOM: f32 = 22.0;
 
 impl super::GuitarScoreApp {
     /// Shows `choice` in the active tab. A view that leaves the cursor's track out takes
@@ -147,15 +147,15 @@ impl super::GuitarScoreApp {
         }
     }
 
-    /// Which tracks the score shows: one track, all tracks, or one of the song's score
-    /// views; and the dialog that builds the views.
-    pub(super) fn score_view_choice(&mut self, ui: &mut egui::Ui) {
+    /// The toolbar's eye: a menu of which tracks the score shows (one track, all tracks,
+    /// or one of the song's score views), what it leaves out (empty staves, runs of
+    /// rests), and the dialog that builds the views.
+    pub(super) fn score_view_button(&mut self, ui: &mut egui::Ui) {
         let Some(tab) = self.tabs.get(self.active) else {
             return;
         };
         let song = tab.document.song();
         let current = tab.score;
-        let label = current.label(song);
         let mut entries = vec![
             (ScoreTracks::Cursor, "One track".to_owned()),
             (ScoreTracks::All, "All tracks".to_owned()),
@@ -166,75 +166,51 @@ impl super::GuitarScoreApp {
                 .enumerate()
                 .map(|(index, view)| (ScoreTracks::View(index), view.name)),
         );
+        let tip = format!(
+            "Score view: {}. Which tracks the score shows, and what it leaves out",
+            current.label(song)
+        );
+        let response =
+            super::icons::toolbar_button(ui, super::icons::Icon::Eye, "Score view", &tip);
         let mut chosen = None;
         let mut edit = false;
         let view = &mut self.view;
-        // The button shows an eye before the view's name; the list's rows are indented to
-        // line up with the name.
-        let font = egui::TextStyle::Button.resolve(ui.style());
-        let mut job = egui::text::LayoutJob::simple_singleline(
-            label,
-            font,
-            ui.visuals().widgets.inactive.text_color(),
-        );
-        if let Some(section) = job.sections.first_mut() {
-            section.leading_space = EYE_ROOM;
-        }
-        let combo = egui::ComboBox::from_id_salt("score_view_choice")
-            .width(SCORE_VIEW_WIDTH)
-            .selected_text(job)
-            // The switches stay open while ticked; a view chosen closes the list.
+        egui::Popup::menu(&response)
+            // The switches stay open while ticked; a view chosen closes the menu.
             .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
-            .show_ui(ui, |ui| {
+            .show(|ui| {
+                ui.set_min_width(MENU_WIDTH);
                 for (choice, name) in &entries {
-                    let clicked = ui
-                        .horizontal(|ui| {
-                            ui.add_space(EYE_ROOM);
-                            ui.selectable_label(*choice == current, name).clicked()
-                        })
-                        .inner;
-                    if clicked {
+                    if check_row(ui, name, *choice == current).clicked() {
                         chosen = Some(*choice);
                         ui.close();
                     }
                 }
                 ui.separator();
-                ui.checkbox(&mut view.hide_empty_staves, "Hide empty staves")
+                if check_row(ui, "Hide empty staves", view.hide_empty_staves)
                     .on_hover_text(
                         "With all tracks: leave a track out of a line where it plays nothing \
                          (each score view has its own choice)",
-                    );
-                ui.checkbox(&mut view.multi_bar_rests, "Multi-bar rests")
+                    )
+                    .clicked()
+                {
+                    view.hide_empty_staves = !view.hide_empty_staves;
+                }
+                if check_row(ui, "Multi-bar rests", view.multi_bar_rests)
                     .on_hover_text(
                         "Write a run of bars where every shown track rests as one bar with \
                          the number of bars above it",
-                    );
+                    )
+                    .clicked()
+                {
+                    view.multi_bar_rests = !view.multi_bar_rests;
+                }
                 ui.separator();
-                if ui.button("Edit score views…").clicked() {
+                if check_row(ui, "Edit score views…", false).clicked() {
                     edit = true;
                     ui.close();
                 }
             });
-        let button = combo.response.rect;
-        let eye = egui::Rect::from_center_size(
-            egui::pos2(
-                button.left() + ui.spacing().button_padding.x + EYE_ROOM / 2.0 - 2.0,
-                button.center().y,
-            ),
-            egui::vec2(14.0, 14.0),
-        );
-        super::icons::paint(
-            ui.painter(),
-            eye,
-            ui.visuals().widgets.inactive.text_color(),
-            super::icons::Icon::Eye,
-        );
-        ui.ctx().accesskit_node_builder(combo.response.id, |node| {
-            node.set_label("Score view");
-        });
-        combo
-            .response
-            .on_hover_text("Which tracks the score shows: one, all, or a view of the score");
         if let Some(choice) = chosen {
             self.choose_score_tracks(choice);
         }
@@ -464,6 +440,44 @@ fn beat_onset(
         at = at.checked_add(candidate.duration().ok()?).ok()?;
     }
     Some(at)
+}
+
+/// A menu row with a checkmark column: ticked when `checked`, the text after it.
+fn check_row(ui: &mut egui::Ui, text: &str, checked: bool) -> egui::Response {
+    let height = ui.spacing().interact_size.y;
+    let (rect, response) = ui.allocate_exact_size(
+        egui::vec2(ui.available_width().max(MENU_WIDTH), height),
+        egui::Sense::click(),
+    );
+    response.widget_info(|| egui::WidgetInfo::selected(egui::Role::CheckBox, true, checked, text));
+    let visuals = ui.style().interact(&response);
+    if response.hovered() || response.has_focus() {
+        ui.painter().rect_filled(rect, 3.0, visuals.weak_bg_fill);
+    }
+    let ink = visuals.text_color();
+    if checked {
+        let mark = egui::Rect::from_center_size(
+            egui::pos2(rect.left() + CHECK_ROOM / 2.0, rect.center().y),
+            egui::vec2(10.0, 9.0),
+        );
+        let stroke = egui::Stroke::new(1.8, ink);
+        ui.painter().add(egui::Shape::line(
+            vec![
+                egui::pos2(mark.left(), mark.center().y),
+                egui::pos2(mark.left() + mark.width() * 0.4, mark.bottom()),
+                egui::pos2(mark.right(), mark.top()),
+            ],
+            stroke,
+        ));
+    }
+    ui.painter().text(
+        egui::pos2(rect.left() + CHECK_ROOM, rect.center().y),
+        egui::Align2::LEFT_CENTER,
+        text,
+        egui::TextStyle::Button.resolve(ui.style()),
+        ink,
+    );
+    response
 }
 
 #[cfg(test)]

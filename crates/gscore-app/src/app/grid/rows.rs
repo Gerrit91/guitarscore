@@ -30,13 +30,18 @@ pub(super) struct TrackRow {
     pub(super) chorus: u8,
     /// Whether it is a drum kit (its parts can open as strips).
     pub(super) drums: bool,
+    /// Whether the score's current view shows the track (its eye).
+    pub(super) shown: bool,
     /// The instrument's full name, for the row's tooltip.
     description: String,
     sound: Option<TrackSound>,
 }
 
-/// A snapshot of the track rows.
-pub(super) fn track_rows(document: &Document) -> Vec<TrackRow> {
+/// The size of a row's eye.
+const EYE_SIZE: f32 = 14.0;
+
+/// A snapshot of the track rows; `shown` are the tracks the score's view shows.
+pub(super) fn track_rows(document: &Document, shown: &[usize]) -> Vec<TrackRow> {
     // A soloed track silences every track that is not soloed.
     let any_soloed = document.song().tracks().any(|track| track.is_soloed());
     document
@@ -79,6 +84,7 @@ pub(super) fn track_rows(document: &Document) -> Vec<TrackRow> {
                 .song()
                 .track_sound(track.index())
                 .is_some_and(|sound| sound.percussion),
+            shown: shown.contains(&track.index().get()),
             description: track
                 .instrument_name()
                 .map_or_else(|| track.name().to_owned(), str::to_owned),
@@ -200,9 +206,17 @@ fn track_header(
         vec2(14.0, 14.0),
     );
     instrument::paint(&painter, icon, row.instrument, ink);
+    // The eye, left of mute and solo: whether the score's view shows the track.
+    let eye = Rect::from_center_size(
+        pos2(
+            mixer::controls_rect(rect).left() - EYE_SIZE,
+            rect.center().y,
+        ),
+        vec2(EYE_SIZE + 4.0, ROW_HEIGHT - 4.0),
+    );
     let name_rect = Rect::from_min_max(
         pos2(swatch.right() + 28.0, rect.top()),
-        pos2(mixer::controls_rect(rect).left() - 4.0, rect.bottom()),
+        pos2(eye.left() - 2.0, rect.bottom()),
     );
     painter.with_clip_rect(name_rect).text(
         pos2(name_rect.left(), rect.center().y),
@@ -211,6 +225,44 @@ fn track_header(
         FontId::proportional(12.0),
         ink,
     );
+
+    let eye_response = ui.interact(
+        eye,
+        ui.scope_id().with(("track_eye", index)),
+        Sense::click(),
+    );
+    eye_response.widget_info(|| {
+        egui::WidgetInfo::selected(
+            egui::Role::CheckBox,
+            true,
+            row.shown,
+            format!("Show {} in the score view", row.name),
+        )
+    });
+    if eye_response.hovered() {
+        painter.rect_filled(eye, 3.0, visuals.widgets.hovered.weak_bg_fill);
+    }
+    let eye_ink = if row.shown {
+        visuals.text_color()
+    } else {
+        visuals.weak_text_color().gamma_multiply(0.5)
+    };
+    super::super::icons::paint(
+        &painter,
+        Rect::from_center_size(eye.center(), vec2(EYE_SIZE, EYE_SIZE)),
+        eye_ink,
+        super::super::icons::Icon::Eye,
+    );
+    if eye_response
+        .on_hover_text(if row.shown {
+            "Shown in the score view: click to leave it out"
+        } else {
+            "Not in the score view: click to show it"
+        })
+        .clicked()
+    {
+        actions.push(GridAction::ToggleShown { track: index });
+    }
 
     // Mute and solo, on the right of the name: red and amber, filled while engaged.
     let mute = mixer::mute_rect(rect);
