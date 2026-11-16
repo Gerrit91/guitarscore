@@ -8,6 +8,10 @@ pub const VERSION: &str = env!("GSCORE_VERSION_STRING");
 /// The short git SHA this binary was built from (`unknown` outside a git checkout).
 pub const SHA: &str = env!("GSCORE_BUILD_SHA");
 
+/// Whether this is a release build (`GSCORE_VERSION` was set, as the release workflow
+/// does), not a build from a source checkout.
+pub const RELEASE: bool = matches!(env!("GSCORE_RELEASE_BUILD").as_bytes(), b"1");
+
 #[cfg(test)]
 mod choose;
 

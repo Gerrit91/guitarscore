@@ -23,6 +23,11 @@ fn main() {
     );
     println!("cargo:rustc-env=GSCORE_VERSION_STRING={version}");
     println!("cargo:rustc-env=GSCORE_BUILD_SHA={sha}");
+    let is_release = release.as_deref().is_some_and(|tag| !tag.trim().is_empty());
+    println!(
+        "cargo:rustc-env=GSCORE_RELEASE_BUILD={}",
+        u8::from(is_release)
+    );
     println!("cargo:rerun-if-env-changed=GSCORE_VERSION");
     // A new commit, a branch switch or a new tag must bake in the new SHA and describe
     // output: watch git's HEAD, the branch it points at, the tags folder and the packed

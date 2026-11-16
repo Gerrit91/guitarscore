@@ -17,6 +17,8 @@ mod circle_of_fifths;
 mod compressor_bus_window;
 mod delay_knobs;
 mod design;
+#[cfg(not(target_arch = "wasm32"))]
+mod desktop_menu;
 mod direction_picker;
 mod edit_dynamics;
 mod edit_effects;
@@ -213,6 +215,8 @@ pub struct GuitarScoreApp {
     /// The update check (desktop only: the browser always serves the latest build).
     #[cfg(not(target_arch = "wasm32"))]
     updates: updates::Updates,
+    #[cfg(not(target_arch = "wasm32"))]
+    desktop_menu: desktop_menu::DesktopMenu,
 }
 
 /// A side panel's width: the remembered one (or `default`), in 200..`room`, whatever a
@@ -357,6 +361,8 @@ impl GuitarScoreApp {
             browser_sound: None,
             #[cfg(not(target_arch = "wasm32"))]
             updates: updates::Updates::default(),
+            #[cfg(not(target_arch = "wasm32"))]
+            desktop_menu: desktop_menu::DesktopMenu::default(),
         };
         app.playback
             .store_metronome_volume(app.settings.metronome_volume);
@@ -980,6 +986,8 @@ impl eframe::App for GuitarScoreApp {
         self.show_tuplet_dialog(&ctx);
         #[cfg(not(target_arch = "wasm32"))]
         self.show_updates(&ctx);
+        #[cfg(not(target_arch = "wasm32"))]
+        self.show_desktop_menu_question(&ctx);
         // Every edit of this frame goes to the recovery journal (one per open document).
         let mut journal_error = None;
         for tab in &mut self.tabs {

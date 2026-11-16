@@ -57,6 +57,12 @@ impl GuitarScoreApp {
         self.updates.automatic = true;
     }
 
+    /// Whether the first-start question about updates is still to be answered in this run
+    /// (other first-start questions wait for it).
+    pub(super) fn update_question_pending(&self) -> bool {
+        self.updates.automatic && self.settings.check_for_updates.is_none() && !self.updates.asked
+    }
+
     /// Whether an update check is running.
     pub(super) fn checking_for_updates(&self) -> bool {
         self.updates.running.is_some()
