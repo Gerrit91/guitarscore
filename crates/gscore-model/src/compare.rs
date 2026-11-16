@@ -402,6 +402,7 @@ pub fn settings_differences(before: &Song, after: &Song) -> Vec<Difference> {
         diff.check(&at, "color", a.color(), b.color());
         diff.check(&at, "symbol", a.symbol(), b.symbol());
         diff.check(&at, "staves", a.staves(), b.staves());
+        diff.check(&at, "short name", a.short_name(), b.short_name());
         diff.check(&at, "shown in all tracks", a.is_visible(), b.is_visible());
         diff.check(&at, "mute", a.is_muted(), b.is_muted());
         diff.check(&at, "solo", a.is_soloed(), b.is_soloed());

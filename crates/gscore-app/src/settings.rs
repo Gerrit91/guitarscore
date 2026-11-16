@@ -664,7 +664,10 @@ pub struct Settings {
     /// read; `None` once this version has saved the file.
     #[serde(rename = "page_view", default, skip_serializing_if = "Option::is_none")]
     pub legacy_page_view: Option<bool>,
-    /// With several tracks shown, whether empty staves are left out of a line.
+    /// With several tracks shown, whether empty staves are left out of a line (on by
+    /// default). The key is new: the old `hide_empty_staves` held the old default (off) for
+    /// everyone who never chose, so it is not read.
+    #[serde(rename = "empty_staves_hidden")]
     pub hide_empty_staves: bool,
     /// Height the song grid was dragged to; `None`: it follows the number of tracks. (The
     /// key is new: the old `grid_height_chosen` held whatever the panel happened to be.)
@@ -774,7 +777,7 @@ impl Default for Settings {
             show_edit_panel: true,
             score_view: crate::state::ScoreView::PageVertical,
             legacy_page_view: None,
-            hide_empty_staves: false,
+            hide_empty_staves: true,
             grid_height_chosen: None,
             mixer_height_chosen: None,
             track_panel_width: None,
@@ -1331,6 +1334,17 @@ mod tests {
         let window = settings.window.expect("window");
         assert_eq!(window.position(), Some([10.0, 20.0]));
         assert!(window.maximized && !window.fullscreen);
+    }
+
+    #[test]
+    fn empty_staves_are_hidden_even_where_an_older_file_kept_them() {
+        // The old key held the old default for everyone; it is not read.
+        let old = r#"{"hide_empty_staves":false}"#;
+        let settings: Settings = serde_json::from_str(old).expect("deserialize");
+        assert!(settings.hide_empty_staves);
+        let chosen = r#"{"empty_staves_hidden":false}"#;
+        let settings: Settings = serde_json::from_str(chosen).expect("deserialize");
+        assert!(!settings.hide_empty_staves, "a choice made since is kept");
     }
 
     #[test]

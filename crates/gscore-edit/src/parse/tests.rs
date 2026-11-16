@@ -880,6 +880,14 @@ fn every_command_writes_a_line_that_parses_back_to_it() {
             hide_empty_staves: true,
         },
         Command::DeleteScoreView { view: 0 },
+        Command::SetTrackShortName {
+            track: TrackIndex::new(2),
+            short_name: "vln. 1".to_owned(),
+        },
+        Command::SetTrackShortName {
+            track: TrackIndex::new(0),
+            short_name: String::new(),
+        },
         Command::SetTrackVisible {
             track: TrackIndex::new(4),
             visible: true,

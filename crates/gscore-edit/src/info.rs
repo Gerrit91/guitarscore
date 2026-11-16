@@ -455,6 +455,22 @@ pub(crate) const RENAME_TRACK: CommandInfo = CommandInfo {
     params: &[TRACK, NAME],
 };
 
+const SHORT_NAME: ParamInfo = ParamInfo {
+    name: "short_name",
+    required: true,
+    default: None,
+    help: "The short name written before the track's staves (empty uses the name)",
+};
+
+pub(crate) const SET_TRACK_SHORT_NAME: CommandInfo = CommandInfo {
+    id: "set_track_short_name",
+    aliases: &[],
+    label: "Set a track's short name",
+    help: "Sets the short name written before the track's staves when several tracks are \
+           shown (\"el.guit.\"); empty uses the name.",
+    params: &[TRACK, SHORT_NAME],
+};
+
 pub(crate) const SET_TRACK_COLOR: CommandInfo = CommandInfo {
     id: "set_track_color",
     aliases: &[],
@@ -1162,6 +1178,7 @@ pub const COMMANDS: &[CommandInfo] = &[
     DUPLICATE_TRACK,
     MOVE_TRACK,
     RENAME_TRACK,
+    SET_TRACK_SHORT_NAME,
     SET_TRACK_COLOR,
     SET_TRACK_SYMBOL,
     SET_TRACK_SOUND,

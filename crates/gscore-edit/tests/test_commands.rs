@@ -1231,3 +1231,22 @@ fn score_views_are_added_replaced_and_deleted() {
     }
     assert_eq!(editor.song().score_views().len(), 2);
 }
+
+/// A track's short name is set and undone; one longer than the limit is refused.
+#[test]
+fn a_tracks_short_name_is_set_and_undone() {
+    let song = testing::song_with_notes_on_tracks(2, &[]).unwrap();
+    apply_then_undo(
+        &song,
+        &Command::SetTrackShortName {
+            track: TrackIndex::new(1),
+            short_name: "vln.".to_owned(),
+        },
+    );
+    let mut editor = Editor::new(song);
+    let long = Command::SetTrackShortName {
+        track: TrackIndex::new(0),
+        short_name: "x".repeat(gscore_model::MAX_SHORT_NAME_CHARS + 1),
+    };
+    assert!(editor.execute(long).is_err());
+}

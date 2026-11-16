@@ -29,7 +29,7 @@ pub use crate::validate::MAX_STRINGS;
 pub use design::{DESIGN_SCALE_RANGE, DESIGN_SPACING_RANGE, ScaleScope};
 pub use headers::MAX_SECTION_TITLE_CHARS;
 pub(crate) use page::system_break;
-pub use tracks::{MAX_TRACK_NAME_CHARS, MAX_TRACKS};
+pub use tracks::{MAX_SHORT_NAME_CHARS, MAX_TRACK_NAME_CHARS, MAX_TRACKS};
 
 use gscore_gp::{
     Beat as GpBeat, BeatStatus, Duration as GpDuration, Measure as GpMeasure,
@@ -167,6 +167,8 @@ enum ChangeKind {
     TrackMoved { from: TrackIndex, to: TrackIndex },
     /// A track's name changed.
     TrackRenamed { at: TrackIndex, previous: String },
+    /// A track's short name changed.
+    TrackShortName { at: TrackIndex, previous: String },
     /// A track's color changed.
     TrackColor { at: TrackIndex, previous: i32 },
     /// The instrument symbol drawn for a track changed.
@@ -447,7 +449,8 @@ impl Change {
                 .iter()
                 .map(|(_, notes)| notes.len().saturating_mul(size_of::<gscore_gp::Note>()))
                 .sum(),
-            ChangeKind::TrackRenamed { previous, .. } => previous.len(),
+            ChangeKind::TrackRenamed { previous, .. }
+            | ChangeKind::TrackShortName { previous, .. } => previous.len(),
             ChangeKind::TrackSymbol { previous, .. } => previous.as_ref().map_or(0, String::len),
             ChangeKind::TrackSoundState { previous, .. }
             | ChangeKind::SongSoundState { previous } => previous.as_ref().map_or(0, String::len),
@@ -766,6 +769,10 @@ impl Song {
                 let track = inner.tracks.remove(to.get());
                 inner.tracks.insert(from.get(), track);
                 tracks::renumber(inner)
+            }),
+            ChangeKind::TrackShortName { at, previous } => self.edit_track_settings(|inner| {
+                track_mut(inner, *at)?.short_name.clone_from(previous);
+                Ok(())
             }),
             ChangeKind::TrackRenamed { at, previous } => self.edit_track_settings(|inner| {
                 track_mut(inner, *at)?.name = previous.clone();

@@ -229,6 +229,10 @@ fn build(info: &'static CommandInfo, args: &mut Args) -> Result<Command, ParseEr
             track: TrackIndex::new(optional_position(args, "track")?.unwrap_or(0)),
             name: text_arg(args, "name")?,
         }),
+        "set_track_short_name" => Ok(Command::SetTrackShortName {
+            track: TrackIndex::new(optional_position(args, "track")?.unwrap_or(0)),
+            short_name: text_arg(args, "short_name")?,
+        }),
         "set_track_color" => Ok(Command::SetTrackColor {
             track: TrackIndex::new(optional_position(args, "track")?.unwrap_or(0)),
             color: color_arg(args)?,

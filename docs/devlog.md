@@ -6031,3 +6031,14 @@ Open: quick picks (only drums, only strings), an eye in the track grid, `gscore-
   (`rotate(-90)`) and PDF (text matrix).
 Tests: names of `multi_staff.gp` upright, whole, beside their own staves; goldens and
 one app snapshot regenerated.
+
+## 2026-11-16 — Empty staves hidden by default; short names editable
+
+- With all tracks shown, empty staves are now hidden unless switched off (View menu). The
+  setting has a new key (`empty_staves_hidden`): the old one held the old default for
+  everyone who never chose, so it is not read.
+- The rename dialog (track panel's pencil, the grid's Rename…) has a second field for the
+  short name written before the staves; name and short name changed together are one undo
+  step. Model `set_track_short_name` (at most 40 characters), command
+  `set_track_short_name`. GP6/GP7 keep it; saving to GP3-5 reports it as lost.
+Tests: settings migration; command set and undone, too long refused; the dialog sets it.

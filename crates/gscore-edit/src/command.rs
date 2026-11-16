@@ -23,7 +23,8 @@ use crate::info::{
 };
 use crate::info::{
     SET_BARS_PER_SYSTEM, SET_BEAT_SPACING, SET_MEASURE_SCALE, SET_PAGE_SETUP, SET_SCORE_LINE_BREAK,
-    SET_SCORE_VIEW, SET_SYSTEM_BREAK, SET_TRACK_VISIBLE, SET_TRANSPOSE_ACTIVE, SET_TRANSPOSITION,
+    SET_SCORE_VIEW, SET_SYSTEM_BREAK, SET_TRACK_SHORT_NAME, SET_TRACK_VISIBLE,
+    SET_TRANSPOSE_ACTIVE, SET_TRANSPOSITION,
 };
 
 /// One edit, with every parameter already checked for syntax and range.
@@ -102,6 +103,13 @@ pub enum Command {
         track: TrackIndex,
         /// The new name.
         name: String,
+    },
+    /// Set the short name written before the track's staves (empty uses the name).
+    SetTrackShortName {
+        /// The track.
+        track: TrackIndex,
+        /// The short name.
+        short_name: String,
     },
     /// Set the track's color.
     SetTrackColor {
@@ -578,6 +586,11 @@ impl Command {
             Command::MoveTrack { from, to } => {
                 format!("{id} from={} to={}", one(from.get()), one(to.get()))
             }
+            Command::SetTrackShortName { track, short_name } => format!(
+                "{id} track={} short_name={}",
+                one(track.get()),
+                crate::parse::encode_text(short_name)
+            ),
             Command::RenameTrack { track, name } => format!(
                 "{id} track={} name={}",
                 one(track.get()),
@@ -933,6 +946,7 @@ impl Command {
             Command::DuplicateTrack { .. } => &DUPLICATE_TRACK,
             Command::MoveTrack { .. } => &MOVE_TRACK,
             Command::RenameTrack { .. } => &RENAME_TRACK,
+            Command::SetTrackShortName { .. } => &SET_TRACK_SHORT_NAME,
             Command::SetTrackColor { .. } => &SET_TRACK_COLOR,
             Command::SetTrackSymbol { .. } => &SET_TRACK_SYMBOL,
             Command::SetTrackSound { .. } => &SET_TRACK_SOUND,
@@ -1158,6 +1172,7 @@ impl Command {
             | Command::DeleteScoreView { .. }
             | Command::SetTrackVisible { .. }
             | Command::RenameTrack { .. }
+            | Command::SetTrackShortName { .. }
             | Command::SetTrackColor { .. }
             | Command::SetTrackSymbol { .. }
             | Command::SetSongText { .. }
@@ -1322,6 +1337,10 @@ impl Command {
             }
             Command::MoveTrack { from, to } => {
                 from.get() < song.track_count() && to.get() < song.track_count() && from != to
+            }
+            Command::SetTrackShortName { track, short_name } => {
+                track.get() < song.track_count()
+                    && short_name.chars().count() <= gscore_model::MAX_SHORT_NAME_CHARS
             }
             Command::RenameTrack { track, name } => {
                 track.get() < song.track_count()
@@ -1555,6 +1574,9 @@ impl Command {
             Command::DuplicateTrack { track } => song.duplicate_track(*track),
             Command::MoveTrack { from, to } => song.move_track(*from, *to),
             Command::RenameTrack { track, name } => song.rename_track(*track, name),
+            Command::SetTrackShortName { track, short_name } => {
+                song.set_track_short_name(*track, short_name)
+            }
             Command::SetTrackColor { track, color } => song.set_track_color(*track, *color),
             Command::SetTrackSymbol { track, symbol } => {
                 song.set_track_symbol(*track, Some(*symbol))

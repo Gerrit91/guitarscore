@@ -135,6 +135,8 @@ pub(super) struct RenameTrack {
     pub track: usize,
     /// The text typed so far.
     pub name: String,
+    /// The short name typed so far (written before the track's staves).
+    pub short_name: String,
     /// Whether the text field has been focused yet.
     pub focused: bool,
     /// Where the window sits (remembered while it is open).
@@ -426,15 +428,18 @@ impl GuitarScoreApp {
                 }
             }
             GridAction::Rename { track } => {
-                let name = self
+                let (name, short_name) = self
                     .tabs
                     .get(self.active)
                     .and_then(|tab| tab.document.song().tracks().nth(track))
-                    .map_or_else(String::new, |row| row.name().to_owned());
+                    .map_or_else(Default::default, |row| {
+                        (row.name().to_owned(), row.short_name().to_owned())
+                    });
                 if let Some(tab) = self.tabs.get_mut(self.active) {
                     tab.renaming = Some(RenameTrack {
                         track,
                         name,
+                        short_name,
                         focused: false,
                         pos: None,
                     });
@@ -579,7 +584,7 @@ impl GuitarScoreApp {
         };
         let title = "Rename track";
         let width = 420.0;
-        let size = vec2(width + 32.0, 230.0);
+        let size = vec2(width + 32.0, 300.0);
         let pos = *rename
             .pos
             .get_or_insert_with(|| style::centered_window_pos(ctx, size));
@@ -617,6 +622,24 @@ impl GuitarScoreApp {
                             response.request_focus();
                             rename.focused = true;
                         }
+                        ui.add_space(10.0);
+                        ui.label(
+                            RichText::new(
+                                "The short name, written before the track's staves when \
+                                 several tracks are shown (empty: the name).",
+                            )
+                            .weak(),
+                        );
+                        ui.add_space(6.0);
+                        let short = ui.add(
+                            egui::TextEdit::singleline(&mut rename.short_name)
+                                .hint_text("Short name, such as el.guit.")
+                                .char_limit(gscore_model::MAX_SHORT_NAME_CHARS)
+                                .desired_width(width),
+                        );
+                        ui.ctx().accesskit_node_builder(short.id, |node| {
+                            node.set_label("Short name");
+                        });
                         ui.add_space(6.0);
                         ui.separator();
                         ui.add_space(4.0);
@@ -655,14 +678,30 @@ impl GuitarScoreApp {
             });
         match outcome {
             Outcome::Apply => {
-                let name = rename.name.trim().to_owned();
-                self.apply_command(
-                    Command::RenameTrack {
-                        track: TrackIndex::new(rename.track),
-                        name,
-                    },
-                    false,
-                );
+                let track = TrackIndex::new(rename.track);
+                let (name, short_name) = (rename.name.trim(), rename.short_name.trim());
+                let (old_name, old_short) = self
+                    .tabs
+                    .get(self.active)
+                    .and_then(|tab| tab.document.song().track(track))
+                    .map_or_else(Default::default, |view| {
+                        (view.name().to_owned(), view.short_name().to_owned())
+                    });
+                // What changed, as one undo step.
+                let mut commands = Vec::new();
+                if name != old_name {
+                    commands.push(Command::RenameTrack {
+                        track,
+                        name: name.to_owned(),
+                    });
+                }
+                if short_name != old_short {
+                    commands.push(Command::SetTrackShortName {
+                        track,
+                        short_name: short_name.to_owned(),
+                    });
+                }
+                self.apply_commands(commands);
             }
             Outcome::Cancel => {}
             Outcome::Open | Outcome::Remove | Outcome::Listen => {

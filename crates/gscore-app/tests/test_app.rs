@@ -1845,6 +1845,20 @@ fn the_track_panel_edits_the_shown_track() {
     harness.key_press(egui::Key::Enter);
     harness.run();
     assert_eq!(first_track(&harness).name(), "Renamed");
+    // The same window sets the short name written before the staves; the name stays.
+    harness.get_by_label("Rename track").click();
+    harness.run();
+    // It shows the file's own short name; typed over, it gets a new one.
+    harness.get_by_label("Short name").click();
+    harness.run();
+    harness.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::A);
+    harness.run();
+    harness.get_by_label("Short name").type_text("st.gtr.");
+    harness.run();
+    harness.key_press(egui::Key::Enter);
+    harness.run();
+    assert_eq!(first_track(&harness).short_name(), "st.gtr.");
+    assert_eq!(first_track(&harness).name(), "Renamed");
 
     // Neither editing a name nor a name too long for the header widens the panel (the
     // full-width tuning button keeps its right edge): the name is shortened instead.
