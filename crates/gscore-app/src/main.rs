@@ -105,8 +105,20 @@ fn main() -> ExitCode {
             }
             // The built-in synthesizer plays with the chosen (or found) SoundFont; if the
             // user chose MIDI, that port is used instead.
+            // A saved SoundFont that moved with the app (an update, a moved folder) is
+            // found again without a word; only one that is really gone is reported.
             if audio.0 {
-                if let Some(soundfont) = audio.1.or_else(gscore_audio::find_soundfont) {
+                let soundfont = match audio.1 {
+                    Some(saved) => {
+                        let resolved = gscore_audio::resolve_saved_soundfont(&saved);
+                        if let Some(problem) = resolved.problem {
+                            app.set_notice(problem);
+                        }
+                        resolved.path
+                    }
+                    None => gscore_audio::find_soundfont(),
+                };
+                if let Some(soundfont) = soundfont {
                     app.playback_mut().use_soundfont(soundfont);
                 }
             } else {
