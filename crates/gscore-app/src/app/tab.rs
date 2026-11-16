@@ -70,6 +70,9 @@ pub(super) struct Tab {
     pub(super) tone_basis: std::collections::BTreeMap<usize, String>,
     /// The cursor and revision the view last scrolled to, to scroll only on a change.
     pub(super) shown_cursor: Option<(Cursor, u64)>,
+    /// A bar was clicked in the song grid: the view turns to the cursor as playback turns
+    /// it (its line to the top), even when the cursor was already there.
+    pub(super) turn_to_cursor: bool,
     /// In the page view: the cursor's page and the page count (1-based), for the status bar.
     pub(super) page_info: Option<(usize, usize)>,
     /// The track being renamed, while the rename window is open.
@@ -145,6 +148,7 @@ impl Tab {
             play_origin: None,
             tone_basis: std::collections::BTreeMap::new(),
             shown_cursor: None,
+            turn_to_cursor: false,
             page_info: None,
             renaming: None,
             song_text: None,

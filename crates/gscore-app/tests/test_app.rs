@@ -4283,3 +4283,64 @@ fn the_kits_room_window_edits_the_room_and_the_default_brings_it_back() {
 fn curve_tolerance() -> egui_kittest::SnapshotOptions {
     egui_kittest::SnapshotOptions::new().threshold(2.0)
 }
+
+#[test]
+fn a_bar_clicked_in_the_song_grid_turns_the_score_to_its_line() {
+    let mut harness = app_with(Some(testdata("basic/staff.gp")));
+    let grid = harness.get_by_label("Song grid").rect();
+    let cell = |measure: usize| grid.left_top() + egui::vec2(24.0 * measure as f32 + 12.0, 12.0);
+    let page_top = |harness: &Harness<'static, GuitarScoreApp>| {
+        harness.get_by_label("Score page").rect().top()
+    };
+    let start = page_top(&harness);
+    let to_start = |harness: &mut Harness<'static, GuitarScoreApp>| {
+        let page = harness.get_by_label("Score page").rect();
+        // The wheel goes to what the pointer was over in the frame before.
+        harness.hover_at(egui::pos2(page.left() + 100.0, 300.0));
+        harness.run();
+        for _ in 0..20 {
+            harness.input_mut().events.push(egui::Event::MouseWheel {
+                unit: egui::MouseWheelUnit::Point,
+                delta: egui::vec2(0.0, 300.0),
+                phase: egui::TouchPhase::Move,
+                source: egui::MouseWheelSource::Unknown,
+                modifiers: egui::Modifiers::NONE,
+            });
+            // The wheel scrolls smoothly over a few frames.
+            harness.run_steps(8);
+        }
+        assert!(page_top(harness) >= start, "back at the start");
+    };
+
+    // The cursor moved there otherwise (the keyboard): the view scrolls just enough, so
+    // the bar's line ends up at the bottom.
+    let bar = 11;
+    let editor = harness.state_mut().document_mut().unwrap().editor_mut();
+    let cursor = gscore_edit::Cursor {
+        measure: gscore_model::MeasureIndex::new(bar),
+        ..editor.cursor()
+    };
+    editor.set_cursor(cursor);
+    harness.run();
+    let crept = page_top(&harness);
+    assert!(crept < start, "the view followed the cursor");
+
+    // A click on the bar in the grid puts its line at the top instead.
+    to_start(&mut harness);
+    left_click_at(&mut harness, cell(bar));
+    let turned = page_top(&harness);
+    assert!(
+        turned < crept - 100.0,
+        "the line is at the top, not at the bottom: {turned} vs {crept}"
+    );
+    // Another bar of that line, already in view: the view stays.
+    left_click_at(&mut harness, cell(bar + 1));
+    assert_eq!(page_top(&harness), turned);
+    left_click_at(&mut harness, cell(bar));
+    assert_eq!(page_top(&harness), turned);
+
+    // Scrolled away, a click on the cursor's own bar turns the view there again.
+    to_start(&mut harness);
+    left_click_at(&mut harness, cell(bar));
+    assert_eq!(page_top(&harness), turned);
+}
