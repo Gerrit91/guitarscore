@@ -35,13 +35,14 @@ shift+Left = select_left
 shift+Right = select_right
 shift+Up = select_line_up
 shift+Down = select_line_down
-Home = cursor_home
-End = cursor_end
+Home = cursor_measure_start
+End = cursor_measure_end
 shift+Home = select_home
 shift+End = select_end
-# Cmd+Left/Right are Home/End on macOS; ctrl is Cmd there.
-ctrl+Left = cursor_home
-ctrl+Right = cursor_end
+ctrl+Home = cursor_home
+ctrl+End = cursor_end
+ctrl+Left = previous_measure
+ctrl+Right = next_measure
 ctrl+shift+Left = select_home
 ctrl+shift+Right = select_end
 
@@ -64,6 +65,7 @@ Delete = delete
 ctrl+Insert = insert_measure
 ctrl+Delete = delete_measure
 
+ctrl+a = select_all
 ctrl+c = copy
 ctrl+x = cut
 ctrl+v = paste

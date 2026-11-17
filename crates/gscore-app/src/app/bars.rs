@@ -137,7 +137,12 @@ impl GuitarScoreApp {
                 }
                 ui.separator();
                 let has_document = self.document().is_some();
-                for action in [ActionId::Cut, ActionId::Copy, ActionId::Paste] {
+                for action in [
+                    ActionId::Cut,
+                    ActionId::Copy,
+                    ActionId::Paste,
+                    ActionId::SelectAll,
+                ] {
                     if self.action_button(ui, action, has_document) {
                         self.perform_action(gscore_edit::Action::Plain(action), ui.ctx());
                     }

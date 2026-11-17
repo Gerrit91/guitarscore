@@ -46,16 +46,21 @@ The owner suspects problems with the arrow keys around repeats and alternative e
 
 ## 4. Home and End
 
-- **Home** moves the cursor to the first beat of the track (bar 1), **End** to the last
-  beat of the last bar (or the start of the last bar if it is empty).
-- **Shift+Home / Shift+End** extend the selection from where it is anchored to the track's
-  start or end.
+Settled 2026-11-17:
+
+- **Home** moves the cursor to the first beat of the cursor's bar, **End** to its last
+  beat (both are the bar's start when it is empty). Actions `cursor_measure_start` and
+  `cursor_measure_end` (`crates/gscore-edit/src/cursor.rs`, `start_of_measure` /
+  `end_of_measure`).
+- **Ctrl+Home / Ctrl+End** go to the track's start or end (`cursor_home` /
+  `cursor_end`); **Ctrl+Left / Ctrl+Right** move a bar at a time, to the previous or next
+  bar's first beat (`previous_measure` / `next_measure`).
+- **Shift+Home / Shift+End** extend the selection from where it is anchored to the
+  track's start or end (unchanged; the song grid uses the same actions to take in every
+  bar from the cursor's to the song's first or last).
 - Key names exist (`crates/gscore-edit/src/keymap.rs` `NamedKey::Home`, `NamedKey::End`,
-  mapped in `crates/gscore-app/src/keys.rs`), but no action is bound to them as far as the
-  review saw: add the actions (cursor commands in `gscore-edit`, so the CLI and the
-  keymap can use them too), default bindings, and the shortcuts list
-  (`app/shortcuts.rs`). Check that they do not clash with an existing binding on macOS
-  (Cmd+Left/Right are the usual Home/End there; offer those too if free).
+  mapped in `crates/gscore-app/src/keys.rs`); the actions are bound in the default keymap
+  and listed in the shortcuts editor (`app/shortcuts.rs`, built from `ACTIONS`).
 
 ## 5. Selecting bars of one track in the song grid
 

@@ -6165,3 +6165,21 @@ Tests: dragging the edge widens the column and the settings keep it.
 - New kittest: clicking **Download** in the update window puts the release page on
   egui's output (`the_download_button_asks_for_the_release_page`); it would pass without
   the fix too, so the manifest check is what catches that.
+
+## 2026-11-17 — Ctrl+A selects every bar; Home/End take the bar, Ctrl+Home/End the tab
+
+- **Ctrl+A** (`select_all`) selects every bar of every track as an editor
+  `Selection::Measures { track: None }`; the app mirrors it in the grid's
+  `MeasureSelection`, so the grid squares, copy, cut, delete, the palette and Loop all
+  act on the whole song. One undo step restores everything Delete or Cut changed.
+- **Home / End** now go to the first/last beat of the cursor's bar
+  (`cursor_measure_start` / `cursor_measure_end`, `Cursor::start_of_measure` /
+  `end_of_measure`; an empty bar's both are its start). **Ctrl+Home / Ctrl+End** keep
+  the old track-wide moves (`cursor_home` / `cursor_end`); **Ctrl+Left / Ctrl+Right**
+  step to the previous/next bar's first beat (`previous_measure` / `next_measure`)
+  instead of the track's edges.
+- Shift+Home/End keep extending the selection to the track's ends, so the grid's
+  Shift+Home/End (every bar from the cursor's to the song's first/last) is unchanged.
+- Tests: edit — bar-edge moves including an empty bar, Ctrl+A over two tracks with
+  Delete and one-step undo, the default keymap's new bindings; app — Ctrl+A selects in
+  both the score and the grid.

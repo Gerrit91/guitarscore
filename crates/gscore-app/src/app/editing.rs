@@ -347,7 +347,18 @@ impl GuitarScoreApp {
                 }
                 ctx.request_repaint();
             }
-            Ok(Outcome::Moved) => ctx.request_repaint(),
+            Ok(Outcome::Moved) => {
+                // Ctrl+A selects every bar of the song in the grid too, which shows the
+                // score's bar selections over its squares.
+                if action == Action::Plain(ActionId::SelectAll) {
+                    tab.selection = Some(crate::state::MeasureSelection {
+                        anchor: 0,
+                        focus: tab.document.song().measure_count().saturating_sub(1),
+                        track: None,
+                    });
+                }
+                ctx.request_repaint();
+            }
             Ok(Outcome::Nothing) => {
                 // Up past the top string or down past the bottom one: on to the track
                 // shown above or below, when several are shown.

@@ -105,6 +105,27 @@ fn home_and_end_go_to_the_first_and_last_beat_of_the_track() {
 }
 
 #[test]
+fn home_and_end_go_to_the_start_and_end_of_the_bar() {
+    let mut e = editor(3);
+    go(&mut e, 1, 2);
+    assert_eq!(plain(&mut e, ActionId::CursorMeasureStart), Outcome::Moved);
+    assert_eq!((e.cursor().measure.get(), e.cursor().beat.get()), (1, 0));
+    assert_eq!(plain(&mut e, ActionId::CursorMeasureEnd), Outcome::Moved);
+    assert_eq!((e.cursor().measure.get(), e.cursor().beat.get()), (1, 3));
+    // Already at the end of the bar: nothing moves.
+    assert_eq!(plain(&mut e, ActionId::CursorMeasureEnd), Outcome::Nothing);
+
+    // An empty bar: both are its start.
+    empty_measure(&mut e, 2);
+    go(&mut e, 2, 0);
+    assert_eq!(plain(&mut e, ActionId::CursorMeasureEnd), Outcome::Nothing);
+    assert_eq!(
+        plain(&mut e, ActionId::CursorMeasureStart),
+        Outcome::Nothing
+    );
+}
+
+#[test]
 fn shift_home_and_shift_end_extend_the_selection_to_the_track_ends() {
     let mut e = editor(3);
     go(&mut e, 1, 2);

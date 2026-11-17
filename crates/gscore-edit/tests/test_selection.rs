@@ -148,6 +148,57 @@ fn select_beat_takes_the_whole_beat_and_delete_clears_its_notes() {
 }
 
 #[test]
+fn select_all_takes_every_bar_and_delete_clears_them_all() {
+    let mut e = TabEditor::new(
+        testing::song(&[GUITAR_6, GUITAR_6], 2).unwrap(),
+        TrackIndex::new(0),
+    );
+    for track in 0..2 {
+        for measure in 0..2 {
+            e.set_cursor(Cursor {
+                track: TrackIndex::new(track),
+                measure: MeasureIndex::new(measure),
+                beat: BeatIndex::new(0),
+                ..e.cursor()
+            });
+            e.perform(Action::Digit(3), 0).unwrap();
+        }
+    }
+    let notes = |editor: &TabEditor, selection: Selection| {
+        selection
+            .positions(editor.song())
+            .into_iter()
+            .filter_map(|at| editor.song().beat(at))
+            .map(|beat| beat.notes().len())
+            .sum::<usize>()
+    };
+    let before = e.song().clone();
+    assert_eq!(plain(&mut e, ActionId::SelectAll), Outcome::Moved);
+    let selection = e.selection().expect("every bar is selected");
+    assert_eq!(
+        selection,
+        Selection::Measures {
+            anchor: MeasureIndex::new(0),
+            focus: MeasureIndex::new(1),
+            track: None,
+        }
+    );
+    assert_eq!(
+        selection.positions(e.song()).len(),
+        2 * 2 * 4,
+        "every beat of both tracks in both bars"
+    );
+    assert_eq!(notes(&e, selection), 4);
+
+    let depth = e.undo_depth();
+    assert_eq!(plain(&mut e, ActionId::Delete), Outcome::Edited);
+    assert_eq!(notes(&e, selection), 0, "every track was cleared");
+    assert_eq!(e.undo_depth(), depth + 1, "one undo step");
+    plain(&mut e, ActionId::Undo);
+    assert!(differences(&before, e.song()).is_empty());
+}
+
+#[test]
 fn delete_without_a_selection_still_deletes_the_beat() {
     let mut e = editor(1);
     plain(&mut e, ActionId::DeleteBeat);
