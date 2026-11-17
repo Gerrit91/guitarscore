@@ -218,6 +218,14 @@ pub(crate) struct Context<'a> {
     pub(crate) slash: bool,
 }
 
+impl Context<'_> {
+    /// Whether the tab carries the rhythm (stems, beams, flags) under it: when no
+    /// notation or slash staff shows it, as Guitar Pro does.
+    pub(crate) fn tab_rhythm(&self) -> bool {
+        self.notation.is_none() && !self.slash
+    }
+}
+
 /// Lays out `track` of `song` on its own (its notation and tab staves, as the track shows
 /// them).
 pub fn layout_track(
