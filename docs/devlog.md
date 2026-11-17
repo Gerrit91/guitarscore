@@ -6215,3 +6215,7 @@ Tests: dragging the edge widens the column and the settings keep it.
   go under it through `below_tab_depth`.
 - Test: `tab_only_shows_the_rhythm_under_the_tab`. Golden `multi_staff.all.svg` and
   snapshot `multi_staff_all_tracks` regenerated: the bass there is tab only.
+- The tab's tuplet brackets (`draw_tab_tuplets`) are now one per run of columns with
+  the same tuplet, as the notation staff draws them, instead of one per beat: quarter
+  triplets cross beats, so six in a row were bracketed 2-1-2-1 (owner's report).
+  `tab_only_shows_tuplet_numbers` now checks one bracket per run.

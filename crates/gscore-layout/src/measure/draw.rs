@@ -577,8 +577,10 @@ impl MeasureLayout {
     }
 
     /// Tuplet brackets under a tab staff that has no notation staff to carry them, in the
-    /// row at `baseline`: one per beat's group, over the columns it spans, the number in a
-    /// gap in the middle and the hooks pointing up to the notes.
+    /// row at `baseline`: one per run of columns with the same tuplet (as the notation
+    /// staff groups them, whatever the beats: quarter triplets cross beats), over the
+    /// columns it spans, the number in a gap in the middle and the hooks pointing up to
+    /// the notes.
     pub(super) fn draw_tab_tuplets(
         &self,
         xs: &[f32],
@@ -600,14 +602,13 @@ impl MeasureLayout {
                 index = index.saturating_add(1);
                 continue;
             };
-            let beat = column.beat;
             let start = xs.get(index).copied().unwrap_or(right);
-            // The columns of this beat that share the tuplet.
+            // The columns after it that share the tuplet.
             let mut end = index;
             while self
                 .columns
                 .get(end.saturating_add(1))
-                .is_some_and(|next| next.beat == beat && next.tuplet == column.tuplet)
+                .is_some_and(|next| next.tuplet == column.tuplet)
             {
                 end = end.saturating_add(1);
             }

@@ -163,10 +163,14 @@ fn tab_only_shows_tuplet_numbers() {
             _ => None,
         })
         .collect();
+    // One bracket per run of the same tuplet, as the notation staff writes them: the
+    // three quarter triplets of bar 7 cross a beat and still get one. Each number is
+    // also a measure number.
     for tuplet in ["3", "5", "6", "7"] {
-        assert!(
-            texts.contains(&tuplet),
-            "missing tuplet {tuplet:?} in the tab: {texts:?}"
+        let count = texts.iter().filter(|&&text| text == tuplet).count();
+        assert_eq!(
+            count, 2,
+            "tuplet {tuplet:?} once in the tab (and its measure number): {texts:?}"
         );
     }
 }
