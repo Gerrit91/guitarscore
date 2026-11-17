@@ -229,6 +229,79 @@ fn the_ruler_ends_at_the_vertical_bar() {
     );
 }
 
+/// A section lasts until the next one starts, so with the grid scrolled right it may begin
+/// left of the view: the measures of it that are on screen still show its line in the
+/// master row, and its title begins at the view's edge instead of being missing.
+#[test]
+fn a_section_scrolled_off_the_left_edge_still_marks_the_master_row() {
+    let _gpu = common::lock_gpu();
+    let mut harness = wide_song(1);
+    // Magenta: nothing else in the grid is (the theme's backgrounds are dark grey, the
+    // selection yellowish and the playing measure amber).
+    let section_color = gscore_model::TrackColor::new(0x00FF_00FF);
+    {
+        let editor = harness.state_mut().document_mut().unwrap().editor_mut();
+        editor
+            .execute_command(Command::SetSection {
+                measure: MeasureIndex::new(10),
+                title: "Verse".to_owned(),
+                color: section_color,
+            })
+            .unwrap();
+    }
+    harness.run();
+    let start = song_grid(&harness).left();
+    let bar = horizontal_bar(&harness);
+    let from = egui::pos2(bar.left() + 8.0, bar.center().y);
+    let to = egui::pos2(bar.right() - 4.0, bar.center().y);
+    harness.hover_at(from);
+    harness.run();
+    harness.drag_at(from);
+    for step in 1..=8 {
+        harness.hover_at(from + (to - from) * (step as f32 / 8.0));
+        harness.step();
+    }
+    harness.drop_at(to);
+    harness.run();
+    let grid = song_grid(&harness);
+    // The first measure in view is well past the section's start.
+    let first = (start - grid.left()) / 24.0;
+    assert!(
+        first > 12.0,
+        "the grid shows measure {first}, not one past the section's start"
+    );
+    // The ruler begins where the matrix's visible part does (it follows its scroll).
+    let view = harness.get_by_label("Measure ruler").rect();
+    let left = view.left().max(grid.left());
+
+    park_pointer(&mut harness);
+    let image = harness.render().expect("rendered");
+    let ppp = harness.ctx.pixels_per_point();
+    let pixel = |at: egui::Pos2| *image.get_pixel((at.x * ppp) as u32, (at.y * ppp) as u32);
+    let sectionish = |pixel: image::Rgba<u8>| {
+        i32::from(pixel.0[0]) > 120 && i32::from(pixel.0[2]) > 120 && i32::from(pixel.0[1]) < 120
+    };
+    // The master row sits below the one track's row; its line runs along its bottom.
+    let master_top = grid.top() + 24.0;
+    for x in [60.0, 250.0, 450.0] {
+        let at = egui::pos2(left + x, master_top + 22.5);
+        assert!(
+            sectionish(pixel(at)),
+            "no section line at {at:?} ({:?})",
+            pixel(at)
+        );
+    }
+    // The title is drawn at the view's left edge, over the row's middle.
+    let title = (2..80)
+        .flat_map(|dx| (2..20).map(move |dy| egui::pos2(left + dx as f32, master_top + dy as f32)))
+        .filter(|&at| sectionish(pixel(at)))
+        .count();
+    assert!(
+        title >= 10,
+        "the section's title is missing ({title} pixels)"
+    );
+}
+
 /// The cursor's bar has its border also on a track's colored square (a bar with notes),
 /// and on a bar that starts at a strong bar line (every fourth): the squares and the lines
 /// are drawn before it.

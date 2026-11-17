@@ -6208,3 +6208,17 @@ Tests: dragging the edge widens the column and the settings keep it.
   as the anchor and makes the clicked bar the focus, so Shift+arrows go on from there.
   Without a selection, shift-click still selects from the cursor's bar.
 - Test: `a_shift_click_always_grows_the_measure_selection` (unit, `state.rs`).
+
+## 2026-11-17 — Half-visible sections in the grid's master row
+
+- A section lasts from its measure until the next one starts, but the master row only
+  drew sections whose *start* measure was on screen: scrolling right hid the whole
+  section, its colored line and its title, in the visible measures (found by the owner).
+  The row now walks the sections whose measures overlap the view, so one that began left
+  of the left edge keeps its line there and its title is drawn from the view's edge
+  (`max(start x, the clip's left)`), so it stays readable.
+- The visible left edge comes from the matrix's clip rect (`shown`), not from the
+  widget's rect, which reaches left of the panel when scrolled.
+- Test: `a_section_scrolled_off_the_left_edge_still_marks_the_master_row` (scrolls a
+  60-bar grid to its end, checks the section's line and title pixels in the master row).
+

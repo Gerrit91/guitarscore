@@ -189,12 +189,12 @@ pub(super) fn matrix(
     painter.rect_filled(rect, 0.0, visuals.extreme_bg_color);
 
     // Paint only the measures and rows the scroll area shows.
-    let clip = ui.clip_rect().intersect(rect);
-    let first_row = ((clip.top() - rect.top()) / ROW_HEIGHT).floor().max(0.0) as usize;
-    let last_row = (((clip.bottom() - rect.top()) / ROW_HEIGHT).ceil() as usize).min(rows.len());
-    let first_measure = ((clip.left() - rect.left()) / mw).floor().max(0.0) as usize;
+    let shown = ui.clip_rect().intersect(rect);
+    let first_row = ((shown.top() - rect.top()) / ROW_HEIGHT).floor().max(0.0) as usize;
+    let last_row = (((shown.bottom() - rect.top()) / ROW_HEIGHT).ceil() as usize).min(rows.len());
+    let first_measure = ((shown.left() - rect.left()) / mw).floor().max(0.0) as usize;
     let last_measure =
-        (((clip.right() - rect.left()) / mw).ceil() as usize).min(view.measure_count);
+        (((shown.right() - rect.left()) / mw).ceil() as usize).min(view.measure_count);
 
     // The playing measure, behind the squares.
     if let Some(playing) = view.playing
@@ -324,17 +324,27 @@ pub(super) fn matrix(
     // Section titles in the master row, below every track: there they have the whole
     // width of their section and no measure number or repeat sign to collide with.
     let master_top = rect.top() + rows.len() as f32 * ROW_HEIGHT;
-    for measure in first_measure..last_measure {
+    // A section lasts until the next one starts (or the song ends), so it also covers
+    // measures on screen when its own start has scrolled off the left edge: such a
+    // half-visible section keeps its line there and shows its title at the edge.
+    let starts: Vec<usize> = (0..view.measure_count)
+        .filter(|&measure| grid.sections.get(measure).is_some_and(Option::is_some))
+        .collect();
+    for (index, &measure) in starts.iter().enumerate() {
         let Some(Some(section)) = grid.sections.get(measure) else {
             continue;
         };
+        let next = starts
+            .get(index.saturating_add(1))
+            .copied()
+            .unwrap_or(view.measure_count);
+        // Nothing of it is on screen: every one of its measures is left or right of the
+        // view.
+        if next <= first_measure || measure >= last_measure {
+            continue;
+        }
         let x = rect.left() + measure as f32 * mw;
         let color = color32(section.color);
-        // Clip the title to the measures before the next section, so two markers never
-        // write over each other.
-        let next = (measure.saturating_add(1)..view.measure_count)
-            .find(|&index| grid.sections.get(index).is_some_and(Option::is_some))
-            .unwrap_or(view.measure_count);
         let room = next.saturating_sub(measure) as f32 * mw;
         // The title may run into the empty area after the last measure; it stops at the
         // next section's marker.
@@ -343,6 +353,9 @@ pub(super) fn matrix(
         } else {
             x + room
         };
+        // Where the title starts: at its measure, or at the view's left edge for a
+        // section whose start is scrolled out, so it stays readable.
+        let title_x = x.max(shown.left());
         painter.line_segment(
             [pos2(x, master_top), pos2(x, master_top + ROW_HEIGHT - 2.0)],
             Stroke::new(2.0, color),
@@ -354,13 +367,15 @@ pub(super) fn matrix(
             ],
             Stroke::new(1.5, color),
         );
-        if end_x - x >= mw {
+        if end_x - title_x >= mw {
+            // Clip the title to the measures before the next section, so two markers
+            // never write over each other.
             let clip = Rect::from_min_max(
-                pos2(x + 3.0, master_top),
+                pos2(title_x + 3.0, master_top),
                 pos2(end_x - 2.0, master_top + ROW_HEIGHT),
             );
             painter.with_clip_rect(clip).text(
-                pos2(x + 4.0, master_top + ROW_HEIGHT / 2.0),
+                pos2(title_x + 4.0, master_top + ROW_HEIGHT / 2.0),
                 Align2::LEFT_CENTER,
                 &section.title,
                 FontId::proportional(10.0),
