@@ -22,6 +22,8 @@ use gscore_model::{
     StrokeDirection, TrackIndex, VoiceIndex,
 };
 
+mod common;
+
 fn testdata(relative: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("../../testdata")
@@ -1044,6 +1046,7 @@ fn the_harmonic_tile_sets_an_artificial_harmonic_with_its_touch_point() {
 
 #[test]
 fn notes_go_into_the_third_and_fourth_voice() {
+    let _gpu = common::lock_gpu();
     let mut harness = app_with(&testdata("basic/note_lengths.gp"));
     for (label, voice) in [("Voice 3", 2), ("Voice 4", 3)] {
         harness.get_by_label(label).scroll_to_me();
