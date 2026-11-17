@@ -6248,3 +6248,17 @@ Tests: dragging the edge widens the column and the settings keep it.
 - Test: `a_section_scrolled_off_the_left_edge_still_marks_the_master_row` (scrolls a
   60-bar grid to its end, checks the section's line and title pixels in the master row).
 
+## 2026-11-18 — A flaky audio test skips when the output cannot be heard
+
+- `a_jump_while_playing_is_where_stop_goes_back_to` failed in CI (one of 107) at "did not
+  start": playback never reached Playing and the app never showed an error. The runner's
+  output was in neither of the states the test skips on (playing, or a device error): it
+  either never finished opening or opened and never ran its callbacks. The playback tests
+  in `test_app` now share `wait_until_playing`, which skips with the output's state
+  (opening, opened but not playing, or the error) instead of timing out; that was the
+  same 10 s timeout in eleven of them.
+- The synth thread's setup (`gscore-audio`'s `SynthPlayer::start_at`) is now contained
+  with `catch_unwind`, as its audio callback already was: a panic while the SoundFont is
+  read or the device opens becomes "the synthesizer failed unexpectedly" instead of a
+  player that stays on "loading" with nothing to report. Test:
+  `a_panic_in_the_synth_thread_becomes_an_error`.
