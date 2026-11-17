@@ -453,7 +453,9 @@ compiler itself is only a tool and is not shipped.
 
 - A few short reference passages (single notes, chords, strums, each technique), recorded
   by the owner or rendered from Strum and RSE for private comparison only (never
-  committed).
+  committed). How the owner records them (DI, the amp modeller, pickup and microphones on
+  the acoustic) and the tabs played along to: `docs/reference-recordings.md`
+  (2026-11-17).
 - Each step is judged by ear against them by the owner, plus spectrum and decay plots.
 - Tests: deterministic rendering (same input, same samples), golden checks on pitch
   (fundamental within a few cents), decay times, bend targets, silence after damping, no
