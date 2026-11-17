@@ -3,6 +3,11 @@
 //! settings files (the keymap), and the recovery journal with crash recovery (AGENTS.md
 //! "Never lose work").
 
+// The files and locks are dropped on purpose before a rename or a removal (Windows will
+// not rename or delete an open file). In the browser `std::fs::File` is a stub without a
+// destructor, so there clippy sees the drops as doing nothing.
+#![cfg_attr(target_arch = "wasm32", allow(clippy::drop_non_drop))]
+
 mod config;
 mod crash_report;
 mod export;
