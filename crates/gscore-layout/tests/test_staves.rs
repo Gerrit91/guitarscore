@@ -175,8 +175,8 @@ fn tab_only_shows_tuplet_numbers() {
     }
 }
 
-/// The stems written under a tab (vertical notation lines starting below a system's tab):
-/// (x, top, bottom).
+/// The stems of the rhythm under a tab (vertical notation lines ending below a system's
+/// tab): (x, top, bottom).
 fn rhythm_stems(layout: &Layout) -> Vec<(f32, f32, f32)> {
     layout
         .ops
@@ -193,7 +193,11 @@ fn rhythm_stems(layout: &Layout) -> Vec<(f32, f32, f32)> {
                     .places
                     .systems
                     .iter()
-                    .any(|system| top > system.tab_bottom() && top < system.tab_bottom() + 3.0)
+                    .any(|system| {
+                        bottom > system.tab_bottom() + 1.0
+                            && bottom < system.tab_bottom() + 6.0
+                            && top > system.tab_top
+                    })
                     .then_some((from.x, top, bottom))
             }
             _ => None,
@@ -215,19 +219,27 @@ fn tab_only_shows_the_rhythm_under_the_tab() {
         stems
             .iter()
             .copied()
-            .filter(|(x, top, _)| {
-                *x > place.left && *x < place.right && *top > bottom && *top < bottom + 3.0
+            .filter(|(x, _, end)| {
+                *x > place.left && *x < place.right && *end > bottom && *end < bottom + 6.0
             })
             .collect()
     };
     // Bar 1, a whole note: no stem.
     assert!(in_measure(0).is_empty(), "{:?}", in_measure(0));
-    // Bar 2, a half and two quarters: the half's stem is shorter and ends with the others.
+    // Bar 2, a half and two quarters: the half's stem is short, below the tab, and ends
+    // with the others; a quarter's reaches up to just under its fret number (the open
+    // fourth string, inside the tab), as Guitar Pro draws it.
     let bar2 = in_measure(1);
     assert_eq!(bar2.len(), 3, "{bar2:?}");
-    let length = |(_, top, bottom): (f32, f32, f32)| bottom - top;
-    assert!(length(bar2[0]) < length(bar2[1]) * 0.75);
+    let system = &tab.places.systems[tab.places.measures[1].system];
+    assert!(bar2[0].1 > system.tab_bottom());
     assert!((bar2[0].2 - bar2[1].2).abs() < 1e-4);
+    let fourth_line = system.tab_top + 3.0 * system.string_spacing;
+    assert!(
+        bar2[1].1 > fourth_line && bar2[1].1 < fourth_line + system.string_spacing,
+        "{:?} from line {fourth_line}",
+        bar2[1]
+    );
     // Beams (eighths and shorter), a flag (the lone dotted eighth) and dots.
     let below_a_tab = |y: f32| {
         tab.places

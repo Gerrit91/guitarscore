@@ -6219,3 +6219,7 @@ Tests: dragging the edge widens the column and the settings keep it.
   the same tuplet, as the notation staff draws them, instead of one per beat: quarter
   triplets cross beats, so six in a row were bracketed 2-1-2-1 (owner's report).
   `tab_only_shows_tuplet_numbers` now checks one bracket per run.
+- The stems now reach up to just under their beat's lowest fret number, across the
+  staff lines, as Guitar Pro draws them (`MeasureLayout::rhythm_plan` gives each stem
+  its start); a half note keeps its short stem below the tab (owner's report). The
+  test checks a quarter's stem starts under its fret number.

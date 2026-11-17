@@ -413,8 +413,8 @@ impl MeasureLayout {
             }
             // Without a notation or slash staff, the tab shows the first voice's rhythm.
             if self.rhythm_depth > 0.0 && tops.notation.is_none() && tops.slash.is_none() {
-                let placed = self.rhythm_plan(&xs);
-                notation::draw_tab_rhythm(&placed, top + ctx.staff.height(), ctx, ops);
+                let (placed, reach) = self.rhythm_plan(&xs, top, ctx);
+                notation::draw_tab_rhythm(&placed, &reach, top + ctx.staff.height(), ctx, ops);
             }
         }
         // Octave signs go over or under the staff that carries the notes.

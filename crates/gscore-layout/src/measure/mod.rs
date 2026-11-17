@@ -234,19 +234,41 @@ impl MeasureLayout {
         self.rhythm_depth
     }
 
-    /// The first voice's rhythm, at `xs` (the columns' x), for the tab to carry.
-    pub(super) fn rhythm_plan(&self, xs: &[f32]) -> Vec<BeamPlan<'_>> {
+    /// The first voice's rhythm, at `xs` (the columns' x), for the tab whose top line is
+    /// at `top` to carry; with each item, where its stem starts: just under the column's
+    /// lowest fret number, as Guitar Pro draws it.
+    pub(super) fn rhythm_plan(
+        &self,
+        xs: &[f32],
+        top: f32,
+        ctx: &Context<'_>,
+    ) -> (Vec<BeamPlan<'_>>, Vec<Option<f32>>) {
+        /// Gap between a fret number and the stem under it.
+        const UNDER_FRET: f32 = 0.3;
+        let cap = ctx.fonts.text.cap_height * ctx.options.fret_size;
         self.columns
             .iter()
             .zip(xs)
             .filter_map(|(column, &x)| {
-                Some(BeamPlan {
+                let plan = BeamPlan {
                     x,
                     item: column.slash.first()?.as_ref()?,
                     beat: column.beat,
-                })
+                };
+                // An empty tie continuation writes no number to reach.
+                let lowest = column
+                    .items
+                    .iter()
+                    .filter_map(|item| match item {
+                        Item::Fret(fret) if !fret.text.is_empty() => Some(fret.line),
+                        _ => None,
+                    })
+                    .max();
+                let reach =
+                    lowest.map(|line| top + ctx.staff.line_y(line) + cap / 2.0 + UNDER_FRET);
+                Some((plan, reach))
             })
-            .collect()
+            .unzip()
     }
 
     /// The same layout for the measure now at `index` (it moved when a measure before it

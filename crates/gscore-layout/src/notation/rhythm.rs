@@ -1,7 +1,8 @@
 //! The rhythm under a tab without a notation staff, as Guitar Pro writes it: a stem down
-//! from below the tab per beat, beams joining the eighths and shorter of one beat, flags
-//! on the others, and dots. Half notes take a shorter stem, whole notes none; rests are
-//! written in the tab itself.
+//! from just under the beat's lowest fret number (across the staff lines) to below the
+//! tab, beams joining the eighths and shorter of one beat, flags on the others, and dots.
+//! Half notes take a short stem below the tab, whole notes none; rests are written in the
+//! tab itself.
 
 use super::NotationItem;
 use super::beams::{beam_groups, draw_beams};
@@ -25,9 +26,12 @@ const DOT_OFFSET: (f32, f32) = (0.55, 0.9);
 const DOT_GAP: f32 = 0.45;
 
 /// The stems of `placed` under a tab whose bottom line is at `bottom`, and whether each
-/// item is beamed (an unbeamed eighth or shorter has a flag).
+/// item is beamed (an unbeamed eighth or shorter has a flag). `reach` is where each
+/// item's stem starts at the top (under its lowest fret number), if it reaches into the
+/// tab.
 fn stems(
     placed: &[BeamPlan<'_>],
+    reach: &[Option<f32>],
     bottom: f32,
     ctx: &Context<'_>,
 ) -> (Vec<Option<Stem>>, Vec<bool>, Vec<Vec<usize>>) {
@@ -39,7 +43,8 @@ fn stems(
     let stems = placed
         .iter()
         .zip(&beamed)
-        .map(|(p, &beamed)| match p.item {
+        .enumerate()
+        .map(|(i, (p, &beamed))| match p.item {
             NotationItem::Chord(chord) if chord.value >= 2 => {
                 let flag = Flag::new(chord.beams(), false).filter(|_| !beamed);
                 let length = flag.map_or(STEM_LENGTH, |flag| {
@@ -49,11 +54,16 @@ fn stems(
                 Some(Stem {
                     up: false,
                     x: p.x,
-                    // A half note's stem is half as long, ending with the others.
+                    // A half note's stem is half as long, below the tab and ending with
+                    // the others; the others reach up to their lowest fret number.
                     from: if chord.value == 2 {
                         from + STEM_LENGTH / 2.0
                     } else {
-                        from
+                        reach
+                            .get(i)
+                            .copied()
+                            .flatten()
+                            .map_or(from, |y| y.min(from))
                     },
                     to: from + length,
                 })
@@ -68,7 +78,7 @@ fn stems(
 /// under the tab (tuplets, P.M., let ring, dynamics) move down by. The same for every
 /// measure unless a long flag needs more, so the rows line up.
 pub(crate) fn rhythm_depth(placed: &[BeamPlan<'_>], ctx: &Context<'_>) -> f32 {
-    let (stems, _, _) = stems(placed, 0.0, ctx);
+    let (stems, _, _) = stems(placed, &[], 0.0, ctx);
     stems
         .iter()
         .flatten()
@@ -78,14 +88,16 @@ pub(crate) fn rhythm_depth(placed: &[BeamPlan<'_>], ctx: &Context<'_>) -> f32 {
 }
 
 /// Draws the rhythm of `placed` (one voice's items at their columns' x) under the tab
-/// staff whose bottom line is at `bottom`.
+/// staff whose bottom line is at `bottom`; `reach` is where each stem starts (just under
+/// its lowest fret number), if anywhere above the plain stem's top.
 pub(crate) fn draw_tab_rhythm(
     placed: &[BeamPlan<'_>],
+    reach: &[Option<f32>],
     bottom: f32,
     ctx: &Context<'_>,
     ops: &mut Vec<DrawOp>,
 ) {
-    let (stems, beamed, groups) = stems(placed, bottom, ctx);
+    let (stems, beamed, groups) = stems(placed, reach, bottom, ctx);
     let engraving = ctx.fonts.music.engraving();
     let half = engraving.stem_thickness / 2.0;
     for (i, stem) in stems.iter().enumerate() {
