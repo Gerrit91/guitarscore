@@ -1600,6 +1600,42 @@ fn a_save_that_fails_while_closing_the_window_asks_again_on_the_next_close() {
 }
 
 #[test]
+fn closing_the_window_remembers_the_tabs_whose_changes_were_saved_or_discarded() {
+    let (dir, file) = scratch_copy("note_lengths.gp", "close-remember");
+    let other = dir.join("steel_guitar_dadgad.gp");
+    std::fs::copy(testdata("basic/steel_guitar_dadgad.gp"), &other).unwrap();
+    let mut harness = app_with(&file);
+    type_char(&mut harness, "3", Modifiers::NONE);
+    let ctx = harness.ctx.clone();
+    harness.state_mut().open(other.clone(), &ctx);
+    settle(&mut harness);
+    type_char(&mut harness, "3", Modifiers::NONE);
+    assert_eq!(harness.state().tab_count(), 2);
+
+    // The first tab's changes are saved, the second one's discarded.
+    request_window_close(&mut harness);
+    harness.get_all_by_label("Save").last().unwrap().click();
+    settle(&mut harness);
+    assert!(
+        harness.state().has_dialog(),
+        "the second tab is asked about"
+    );
+    harness.get_by_label("Discard changes").click();
+    harness.run();
+    assert!(!harness.state().has_dialog());
+    assert!(
+        !harness.state().tab_document(0).unwrap().is_dirty(),
+        "saved"
+    );
+
+    // Both tabs are still remembered for the next start, the active one too.
+    let settings = harness.state().settings();
+    assert_eq!(settings.open_files, vec![file, other.clone()]);
+    assert_eq!(settings.active_file, Some(other));
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
 fn a_file_chosen_while_another_opens_waits_its_turn() {
     let (dir, file) = scratch_copy("note_lengths.gp", "queue");
     std::fs::copy(

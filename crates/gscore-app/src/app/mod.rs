@@ -137,6 +137,10 @@ pub struct GuitarScoreApp {
     /// A window close was deferred: each dirty tab is asked about in turn, then the window
     /// may close.
     closing_window: bool,
+    /// The dirty tabs already asked about during this window close (saved, or their
+    /// changes discarded). They stay open, so the window closes with every tab still
+    /// remembered for the next start.
+    close_handled: Vec<tab::TabId>,
     /// Unsaved changes were dealt with: the window may close.
     may_close: bool,
     /// The copies of unsaved songs handed to the page, for its crash screen.
@@ -325,6 +329,7 @@ impl GuitarScoreApp {
             saving_tab: None,
             next_tab_id: 0,
             closing_window: false,
+            close_handled: Vec::new(),
             #[cfg(target_arch = "wasm32")]
             rescue: web_rescue::Rescue::default(),
             may_close: false,
