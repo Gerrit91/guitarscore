@@ -2439,14 +2439,30 @@ fn after_a_grid_click_shift_arrows_select_whole_bars_there() {
     );
     shift(&mut harness, egui::Key::Home);
     assert_eq!(selected(&harness), (3, 0, Some(1)));
-    // Up or down: every track, as a drag off the row.
+    // Up or down: every track, as a drag off the row; back again: the one track.
     shift(&mut harness, egui::Key::ArrowUp);
     assert_eq!(selected(&harness), (3, 0, None));
     shift(&mut harness, egui::Key::ArrowRight);
     assert_eq!(selected(&harness), (3, 1, None), "still every track");
+    shift(&mut harness, egui::Key::ArrowDown);
+    assert_eq!(selected(&harness), (3, 1, Some(1)), "back on its row");
+    shift(&mut harness, egui::Key::ArrowDown);
+    assert_eq!(selected(&harness), (3, 1, None));
+    shift(&mut harness, egui::Key::ArrowUp);
+    assert_eq!(selected(&harness), (3, 1, Some(1)));
+    // Not past the ruler: one row above it, one Shift+Down comes back.
+    for _ in 0..5 {
+        shift(&mut harness, egui::Key::ArrowUp);
+    }
+    for _ in 0..2 {
+        shift(&mut harness, egui::Key::ArrowDown);
+    }
+    assert_eq!(selected(&harness), (3, 1, Some(1)), "two rows up, two down");
     left_click_at(&mut harness, cell(4, 0));
     shift(&mut harness, egui::Key::ArrowDown);
     assert_eq!(selected(&harness), (4, 4, None), "from the cursor's bar");
+    shift(&mut harness, egui::Key::ArrowUp);
+    assert_eq!(selected(&harness), (4, 4, Some(0)));
 
     // A drag's selection goes on the same way.
     harness.hover_at(cell(1, 0));
