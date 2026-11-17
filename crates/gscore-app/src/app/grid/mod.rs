@@ -557,10 +557,10 @@ impl GuitarScoreApp {
 
     /// After a click in the grid, Shift+Left/Right extends the grid's bar selection by a
     /// bar and Shift+Home/End to the song's first or last bar (from the cursor's bar, in
-    /// its track, when nothing is selected), as a drag in the grid would. Shift+Up/Down
-    /// move a row from the track the selection started in, as the pointer of a drag does:
-    /// off that row the selection takes in every track, back on it just that one. Returns
-    /// whether the grid took `action`.
+    /// its track, when nothing is selected), as a drag in the grid would. Shift+Up or
+    /// Shift+Down takes in every track, as a drag leaving the row does; the other one then
+    /// goes back to the track the selection started in. Pressing the same one again does
+    /// nothing more. Returns whether the grid took `action`.
     pub(super) fn grid_select_key(&mut self, action: gscore_edit::ActionId) -> bool {
         use gscore_edit::ActionId;
         let Some(tab) = self.tabs.get(self.active) else {
@@ -586,19 +586,15 @@ impl GuitarScoreApp {
         let current = tab
             .selection
             .unwrap_or_else(|| MeasureSelection::on(cursor.track.get(), cursor.measure.get()));
-        // The track the selection started in and how many rows the keys are away from it
-        // (from a pointer's selection of every track: its cursor's track, as if on it).
+        // The track the selection started in and which way the keys left it: -1 up, 1
+        // down, 0 still on it (from a pointer's selection of every track: its cursor's
+        // track, as if on it).
         let (track, rows) = tab
             .grid_rows
             .unwrap_or((current.track.unwrap_or(cursor.track.get()), 0));
-        let tracks = tab.document.song().track_count();
-        // Above the first track is the ruler and below the last the master row: like the
-        // pointer there, a row beyond them takes in every track too, but no further.
-        let lowest = -(track as isize) - 1;
-        let highest = tracks.saturating_sub(track) as isize;
         let rows = match action {
-            ActionId::SelectLineUp => (rows - 1).max(lowest),
-            ActionId::SelectLineDown => (rows + 1).min(highest),
+            ActionId::SelectLineUp => (rows - 1).max(-1),
+            ActionId::SelectLineDown => (rows + 1).min(1),
             _ => rows,
         };
         let selection = match action {

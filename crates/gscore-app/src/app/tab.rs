@@ -76,8 +76,8 @@ pub(super) struct Tab {
     /// The song grid was clicked last (not the page): Shift with the arrows, Home and End
     /// selects whole bars there instead of beats in the score.
     pub(super) grid_keys: bool,
-    /// Shift+Up/Down in the grid: the track the selection started in and how many rows
-    /// the keys moved from it (0: that one track, else every track). `None` once the
+    /// Shift+Up/Down in the grid: the track the selection started in and which way the
+    /// keys left it (-1 up, 1 down: every track; 0: that one track). `None` once the
     /// pointer changes the selection.
     pub(super) grid_rows: Option<(usize, isize)>,
     /// In the page view: the cursor's page and the page count (1-based), for the status bar.

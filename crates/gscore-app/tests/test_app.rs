@@ -2450,14 +2450,13 @@ fn after_a_grid_click_shift_arrows_select_whole_bars_there() {
     assert_eq!(selected(&harness), (3, 1, None));
     shift(&mut harness, egui::Key::ArrowUp);
     assert_eq!(selected(&harness), (3, 1, Some(1)));
-    // Not past the ruler: one row above it, one Shift+Down comes back.
+    // Pressed again and again, one press the other way still comes back.
     for _ in 0..5 {
         shift(&mut harness, egui::Key::ArrowUp);
     }
-    for _ in 0..2 {
-        shift(&mut harness, egui::Key::ArrowDown);
-    }
-    assert_eq!(selected(&harness), (3, 1, Some(1)), "two rows up, two down");
+    assert_eq!(selected(&harness), (3, 1, None));
+    shift(&mut harness, egui::Key::ArrowDown);
+    assert_eq!(selected(&harness), (3, 1, Some(1)), "one press back");
     left_click_at(&mut harness, cell(4, 0));
     shift(&mut harness, egui::Key::ArrowDown);
     assert_eq!(selected(&harness), (4, 4, None), "from the cursor's bar");
