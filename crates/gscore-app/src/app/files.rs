@@ -591,6 +591,10 @@ impl GuitarScoreApp {
         if !requested || self.may_close {
             return;
         }
+        // A fresh close asks about every dirty tab again.
+        if !self.closing_window {
+            self.close_handled.clear();
+        }
         if let Some(id) = self.first_dirty_tab() {
             ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
             // Already asking (or saving for it, or another question is up): just stay open.
@@ -605,11 +609,12 @@ impl GuitarScoreApp {
         }
     }
 
-    /// The first tab with unsaved changes, if any.
+    /// The first tab with unsaved changes not asked about during this window close yet,
+    /// if any.
     fn first_dirty_tab(&self) -> Option<TabId> {
         self.tabs
             .iter()
-            .find(|tab| tab.document.is_dirty())
+            .find(|tab| tab.document.is_dirty() && !self.close_handled.contains(&tab.id))
             .map(|tab| tab.id)
     }
 
@@ -670,11 +675,11 @@ impl GuitarScoreApp {
     /// Goes on with what waited for unsaved changes to be dealt with.
     pub(super) fn go_on(&mut self, then: Then, ctx: &egui::Context) {
         let Then::CloseTab(id) = then;
-        if let Some(index) = self.tab_index(id) {
-            self.remove_tab(index);
-        }
-        // Closing the window asks about each dirty tab in turn, then lets it close.
+        // Closing the window asks about each dirty tab in turn, then lets it close. The tabs
+        // stay open until then: the open files are remembered at exit, and one removed
+        // here would not be reopened at the next start.
         if self.closing_window {
+            self.close_handled.push(id);
             if let Some(next) = self.first_dirty_tab() {
                 self.dialog = Some(Dialog::Unsaved(Then::CloseTab(next)));
             } else {
@@ -682,6 +687,8 @@ impl GuitarScoreApp {
                 self.may_close = true;
                 ctx.send_viewport_cmd(egui::ViewportCommand::Close);
             }
+        } else if let Some(index) = self.tab_index(id) {
+            self.remove_tab(index);
         }
     }
 
