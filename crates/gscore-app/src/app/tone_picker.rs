@@ -512,7 +512,10 @@ pub(super) fn source_switch(
     const MIDI_OUT_TIP: &str = "A hardware synthesizer on a MIDI output port plays the track; its sound does not come \
          back through the mixer";
     // The short names are visible; the accessible names say what each source is.
-    let mut items = vec![
+    // The browser has no MIDI ports: no MIDI out there.
+    let midi_out =
+        cfg!(not(target_arch = "wasm32")).then_some(("MIDI out", "MIDI out", MIDI_OUT_TIP, true));
+    let items: Vec<_> = [
         ("MIDI", "MIDI synth", MIDI_TIP, true),
         (
             "PM",
@@ -520,9 +523,10 @@ pub(super) fn source_switch(
             if strings { PM_TIP } else { PM_DISABLED_TIP },
             strings,
         ),
-    ];
-    #[cfg(not(target_arch = "wasm32"))]
-    items.push(("MIDI out", "MIDI out", MIDI_OUT_TIP, true));
+    ]
+    .into_iter()
+    .chain(midi_out)
+    .collect();
     let chosen = match engine {
         TrackEngine::SoundFont => 0,
         TrackEngine::Modelled(_) => 1,

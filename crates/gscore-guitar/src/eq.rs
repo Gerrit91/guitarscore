@@ -458,8 +458,8 @@ mod tests {
                 response.total_db(hz)
             );
             // And each band's own curve is that filter alone.
-            for band in 0..BANDS {
-                let own = 20.0 * eq.bands[band].gain_at(RATE, hz).log10();
+            for (band, filter) in eq.bands.iter().enumerate() {
+                let own = 20.0 * filter.gain_at(RATE, hz).log10();
                 assert!(
                     (response.band_db(band, hz) - own).abs() < 0.01,
                     "band {band} at {hz} Hz"

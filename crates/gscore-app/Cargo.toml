@@ -1,7 +1,10 @@
 [package]
 name = "gscore-app"
 version.workspace = true
-edition = "2024"
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
 
 [lib]
 # `rlib` for the desktop binary, tests and examples; `cdylib` for the wasm module a
