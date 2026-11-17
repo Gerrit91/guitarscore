@@ -701,8 +701,8 @@ pub struct Settings {
     pub shortcut_overrides: Vec<ShortcutSetting>,
     /// Whether a fret typed into the score is played back at once.
     pub audition_notes: bool,
-    /// Whether stopping playback (or playing to the song's end without Loop) puts the
-    /// cursor (and selection) back where playback started.
+    /// Whether stopping playback puts the cursor (and selection) back where playback
+    /// started (the song's end always does).
     pub return_on_stop: bool,
     /// Whether the playing cursor glides from note to note instead of jumping.
     pub flowing_cursor: bool,
