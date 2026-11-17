@@ -1580,6 +1580,70 @@ fn stop_goes_back_to_where_playback_started_when_asked() {
 }
 
 #[test]
+fn the_song_end_goes_back_to_where_playback_started_when_asked() {
+    // Plays a sine-wave SoundFont on the default audio device; skipped where there is none.
+    let dir = temp_dir("return-at-end");
+    let path = dir.join("sine.sf2");
+    std::fs::write(&path, gscore_audio::testing::sine_soundfont("Sine")).unwrap();
+    let mut harness = wide_app_with(Some(testdata("basic/note_lengths.gp")));
+    harness.state_mut().playback_mut().use_soundfont(path);
+    harness.state_mut().set_return_on_stop(true);
+    harness.state_mut().playback_mut().set_loop_selection(false);
+    let measure = |app: &GuitarScoreApp| app.document().unwrap().editor().cursor().measure.get();
+    let last = harness.state().document().unwrap().song().measure_count() - 1;
+    assert!(last >= 1);
+
+    // The second-to-last bar: the cursor follows into the last one, and when the song
+    // ends it goes back. Twice: Space again plays from there (the player still stands
+    // at the end until the audio thread takes the Play) and goes back again.
+    cursor_to_measure(&mut harness, last - 1);
+    for run in 0..2 {
+        harness.key_press(egui::Key::Space);
+        harness.run();
+        let started = step_until(&mut harness, 10, |app| {
+            app.playback().state() == gscore_play::PlayState::Playing || app.notice().is_some()
+        });
+        assert!(started, "did not start");
+        if let Some(notice) = harness.state().notice() {
+            eprintln!("skipped: no usable audio device ({notice})");
+            return;
+        }
+        let mut followed = false;
+        let ended = (0..200).any(|_| {
+            std::thread::sleep(Duration::from_millis(50));
+            harness.step();
+            followed |= measure(harness.state()) == last;
+            harness.state().playback().state() == gscore_play::PlayState::Stopped
+        });
+        assert!(
+            followed,
+            "run {run}: the cursor follows playback into the last bar"
+        );
+        assert!(ended, "run {run}: the song did not end");
+        for _ in 0..5 {
+            std::thread::sleep(Duration::from_millis(20));
+            harness.step();
+            assert_eq!(measure(harness.state()), last - 1, "run {run}");
+        }
+    }
+
+    // Off: the song's end leaves the cursor on the last played bar.
+    harness.state_mut().set_return_on_stop(false);
+    cursor_to_measure(&mut harness, last);
+    harness.state_mut().play_pause();
+    assert!(step_until(&mut harness, 10, |app| app.playback().state()
+        == gscore_play::PlayState::Playing));
+    let ended = (0..200).any(|_| {
+        std::thread::sleep(Duration::from_millis(50));
+        harness.step();
+        harness.state().playback().state() == gscore_play::PlayState::Stopped
+    });
+    assert!(ended, "the song did not end");
+    harness.step();
+    assert_eq!(measure(harness.state()), last);
+}
+
+#[test]
 fn a_jump_while_playing_is_where_stop_goes_back_to() {
     // Plays a sine-wave SoundFont on the default audio device; skipped where there is none.
     let dir = temp_dir("return-after-jump");

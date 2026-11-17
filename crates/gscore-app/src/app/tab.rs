@@ -217,4 +217,7 @@ pub(super) struct PlayOrigin {
     pub(super) selection: Option<gscore_edit::Selection>,
     /// The grid's selection then.
     pub(super) measures: Option<MeasureSelection>,
+    /// Whether the player was seen playing since: until then a stop at the song's end is
+    /// the last run's (the audio thread has not taken the new Play yet).
+    pub(super) played: bool,
 }
