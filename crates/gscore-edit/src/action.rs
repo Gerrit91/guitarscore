@@ -27,6 +27,12 @@ pub enum ActionId {
     CursorHome,
     /// Move to the last beat of the track's last measure (its start when it is empty).
     CursorEnd,
+    /// Move to the first beat of the cursor's measure (its start when it is empty).
+    CursorMeasureStart,
+    /// Move to the last beat of the cursor's measure (its start when it is empty).
+    CursorMeasureEnd,
+    /// Select every bar of the song, in every track.
+    SelectAll,
     /// Extend the beat selection to the first beat of the track.
     SelectHome,
     /// Extend the beat selection to the last beat of the track.
@@ -379,6 +385,17 @@ pub const ACTIONS: &[ActionInfo] = &[
     info(ActionId::NextMeasure, "next_measure", "Next measure"),
     info(ActionId::CursorHome, "cursor_home", "Start of track"),
     info(ActionId::CursorEnd, "cursor_end", "End of track"),
+    info(
+        ActionId::CursorMeasureStart,
+        "cursor_measure_start",
+        "Start of bar",
+    ),
+    info(
+        ActionId::CursorMeasureEnd,
+        "cursor_measure_end",
+        "End of bar",
+    ),
+    info(ActionId::SelectAll, "select_all", "Select all bars"),
     info(ActionId::SelectHome, "select_home", "Select to start"),
     info(ActionId::SelectEnd, "select_end", "Select to end"),
     info(ActionId::EnterFret, "enter_fret", "Enter fret"),
@@ -757,6 +774,6 @@ mod tests {
             );
         }
         assert_eq!(ActionId::from_id("no_such_action"), None);
-        assert_eq!(ACTIONS.len(), 123, "one entry per ActionId variant");
+        assert_eq!(ACTIONS.len(), 126, "one entry per ActionId variant");
     }
 }

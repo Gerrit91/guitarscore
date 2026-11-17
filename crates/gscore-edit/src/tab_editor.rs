@@ -273,6 +273,8 @@ impl TabEditor {
                 | ActionId::NextMeasure
                 | ActionId::CursorHome
                 | ActionId::CursorEnd
+                | ActionId::CursorMeasureStart
+                | ActionId::CursorMeasureEnd
         );
         let deselected = cursor_move && self.selection.take().is_some();
         let moved = |moved: bool| {
@@ -291,6 +293,16 @@ impl TabEditor {
             ActionId::NextMeasure => Ok(moved(self.cursor.to_measure(song, true))),
             ActionId::CursorHome => Ok(moved(self.cursor.start_of_track(song))),
             ActionId::CursorEnd => Ok(moved(self.cursor.end_of_track(song))),
+            ActionId::CursorMeasureStart => Ok(moved(self.cursor.start_of_measure(song))),
+            ActionId::CursorMeasureEnd => Ok(moved(self.cursor.end_of_measure(song))),
+            ActionId::SelectAll => {
+                self.selection = Some(Selection::Measures {
+                    anchor: MeasureIndex::new(0),
+                    focus: MeasureIndex::new(song.measure_count().saturating_sub(1)),
+                    track: None,
+                });
+                Ok(Outcome::Moved)
+            }
             ActionId::SelectLeft => Ok(self.extend_selection(false)),
             ActionId::SelectRight => Ok(self.extend_selection(true)),
             ActionId::SelectHome => Ok(self.extend_selection_to(true)),

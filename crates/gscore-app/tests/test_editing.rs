@@ -342,6 +342,23 @@ fn shift_arrows_select_beats_and_end_a_grid_selection() {
 }
 
 #[test]
+fn ctrl_a_selects_every_bar_in_the_score_and_the_grid() {
+    let mut harness = app_with(&testdata("basic/note_lengths.gp"));
+    put_cursor(&mut harness, 1, 0, 1);
+    harness.run();
+    harness.key_press_modifiers(Modifiers::COMMAND, Key::A);
+    harness.run();
+    let measures = harness.state().document().unwrap().song().measure_count();
+    let selection = harness.state().selection().expect("the grid shows it");
+    assert_eq!((selection.start(), selection.end()), (0, measures - 1));
+    assert_eq!(selection.track, None, "every track");
+    assert!(matches!(
+        harness.state().document().unwrap().editor().selection(),
+        Some(gscore_edit::Selection::Measures { track: None, .. })
+    ));
+}
+
+#[test]
 fn shift_up_and_down_extend_the_selection_over_the_lines() {
     let mut harness = app_with(&testdata("basic/note_lengths.gp"));
     put_cursor(&mut harness, 0, 1, 1);

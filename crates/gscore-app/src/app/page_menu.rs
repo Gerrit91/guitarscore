@@ -176,7 +176,12 @@ pub(super) fn show(
         snapshot: target.snapshot,
         choices,
     };
-    for action in [ActionId::Cut, ActionId::Copy, ActionId::Paste] {
+    for action in [
+        ActionId::Cut,
+        ActionId::Copy,
+        ActionId::Paste,
+        ActionId::SelectAll,
+    ] {
         menu.action(ui, action, None, true);
     }
     ui.separator();

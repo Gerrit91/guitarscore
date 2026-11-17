@@ -208,6 +208,9 @@ This is the heart of the project. List the actions you do constantly in Guitar P
 | Command id | What it does | Default key | Notes |
 |---|---|---|---|
 | `cursor_left` / `cursor_right` | move cursor to previous/next beat | Arrow Left / Arrow Right | |
+| `cursor_measure_start` / `cursor_measure_end` | first/last beat of the bar (its start when empty) | Home / End | |
+| `cursor_home` / `cursor_end` | start/end of the tab (track) | Ctrl+Home / Ctrl+End | |
+| `select_all` | select every bar of every track | Ctrl+A | copy, cut and delete then act on the whole song |
 | `cursor_up_string` / `cursor_down_string` | move cursor between strings | Arrow Up / Arrow Down | |
 | `enter_fret` | type a fret number on the current string  | [0-9] | For multi-digit numbers there is a small time window ~0.5s in which a second digit can be provided |
 | `set_duration` | set note/beat duration | + / - | Plus makes the note shorter, minus makes it longer |
@@ -217,7 +220,7 @@ This is the heart of the project. List the actions you do constantly in Guitar P
 | `undo` / `redo` | there history should not be limited and ideally persisted | ctrl+z / ctrl+y | |
 | `play_pause` / `stop` | Starts / stops the playback | space | |
 | `clear_note` | remove the note on the cursor's string | | unbound |
-| `previous_measure` / `next_measure` | cursor to the first beat of the previous/next bar | | unbound |
+| `previous_measure` / `next_measure` | cursor to the first beat of the previous/next bar | Ctrl+Left / Ctrl+Right | |
 | `save` | save the file | ctrl+s | |
 | `edit_beat_text` | text written above the current beat | t | the dialog's text field takes the keyboard at once (Guitar Pro's shortcut) |
 

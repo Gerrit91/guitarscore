@@ -48,6 +48,30 @@ fn the_built_in_keymap_parses_and_has_the_owners_keys() {
     );
     assert_eq!(bound("ctrl+z"), Some(Action::Plain(ActionId::Undo)));
     assert_eq!(bound("ctrl+y"), Some(Action::Plain(ActionId::Redo)));
+    // Home and End go to the bar's edges; with Ctrl, to the track's.
+    assert_eq!(
+        bound("Home"),
+        Some(Action::Plain(ActionId::CursorMeasureStart))
+    );
+    assert_eq!(
+        bound("End"),
+        Some(Action::Plain(ActionId::CursorMeasureEnd))
+    );
+    assert_eq!(
+        bound("ctrl+Home"),
+        Some(Action::Plain(ActionId::CursorHome))
+    );
+    assert_eq!(bound("ctrl+End"), Some(Action::Plain(ActionId::CursorEnd)));
+    // Ctrl+Left/Right step a bar at a time, not to the track's edges.
+    assert_eq!(
+        bound("ctrl+Left"),
+        Some(Action::Plain(ActionId::PreviousMeasure))
+    );
+    assert_eq!(
+        bound("ctrl+Right"),
+        Some(Action::Plain(ActionId::NextMeasure))
+    );
+    assert_eq!(bound("ctrl+a"), Some(Action::Plain(ActionId::SelectAll)));
     assert_eq!(bound("Space"), Some(Action::Plain(ActionId::PlayPause)));
     assert_eq!(
         bound("F11"),

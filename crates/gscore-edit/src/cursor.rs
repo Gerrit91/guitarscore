@@ -212,6 +212,29 @@ impl Cursor {
         self.jump_to(measure, beat)
     }
 
+    /// To the first timed beat of the cursor's measure, or its start when it is empty.
+    /// Returns whether it moved.
+    pub fn start_of_measure(&mut self, song: &Song) -> bool {
+        let measure = self.measure;
+        let beats = self.beats_in(song, measure);
+        let beat = (0..beats)
+            .find(|&beat| !self.is_grace(song, measure, beat))
+            .unwrap_or(0);
+        self.jump_to(measure, beat)
+    }
+
+    /// To the last timed beat of the cursor's measure, or its start when it is empty.
+    /// Returns whether it moved.
+    pub fn end_of_measure(&mut self, song: &Song) -> bool {
+        let measure = self.measure;
+        let beats = self.beats_in(song, measure);
+        let beat = (0..beats)
+            .rev()
+            .find(|&beat| !self.is_grace(song, measure, beat))
+            .unwrap_or(0);
+        self.jump_to(measure, beat)
+    }
+
     /// Sets measure and beat, reporting whether that changed the cursor.
     fn jump_to(&mut self, measure: MeasureIndex, beat: usize) -> bool {
         let moved = self.measure != measure || self.beat.get() != beat;
