@@ -52,6 +52,50 @@ const RESTRICTED_MODULES: &[(&str, &[&str])] = &[
     ("gscore_model::interop", &["gscore-model", "gscore-io"]),
 ];
 
+/// eframe integrations the desktop app needs. `gscore-app` builds eframe with default
+/// features off, and a missing integration fails only at runtime, silently: without
+/// `links` every link (Help › Check for updates' Download, About) does nothing, without
+/// `clipboard` the text fields' copy and paste stay inside the app. Checked in the
+/// manifest, because cargo features are invisible to a test.
+const REQUIRED_EFRAME_FEATURES: &[&str] = &[
+    "accesskit",
+    "clipboard",
+    "default_fonts",
+    "links",
+    "wayland",
+    "x11",
+];
+
+/// `gscore-app`'s eframe dependency must turn on [`REQUIRED_EFRAME_FEATURES`].
+pub(crate) fn check_gui_integrations(root: &Path) -> Vec<String> {
+    let manifest = crate_dir(root, "gscore-app").join("Cargo.toml");
+    let text = match std::fs::read_to_string(&manifest) {
+        Ok(text) => text,
+        Err(e) => return vec![format!("cannot read {}: {e}", manifest.display())],
+    };
+    let missing = missing_eframe_features(&text);
+    if missing.is_empty() {
+        return Vec::new();
+    }
+    vec![format!(
+        "{}: the eframe dependency must enable {missing:?} (its `features` list, on one \
+         line; a missing integration only fails at runtime)",
+        manifest.display()
+    )]
+}
+
+/// Which required eframe features the manifest's `eframe = { .. }` line does not name.
+fn missing_eframe_features(manifest: &str) -> Vec<&'static str> {
+    let line = manifest
+        .lines()
+        .find(|line| line.trim_start().starts_with("eframe ="));
+    REQUIRED_EFRAME_FEATURES
+        .iter()
+        .filter(|feature| !line.is_some_and(|line| line.contains(&format!("\"{feature}\""))))
+        .copied()
+        .collect()
+}
+
 /// No crate outside the allow list may mention a restricted module (sources and tests).
 pub(crate) fn check_restricted_modules(root: &Path, members: &[String]) -> Vec<String> {
     let mut errors = Vec::new();
@@ -223,6 +267,26 @@ mod tests {
         assert_eq!(
             forbidden_uses(src),
             [(1, "std::fs"), (3, "Instant"), (5, "SystemTime")]
+        );
+    }
+
+    #[test]
+    fn notices_a_missing_eframe_integration() {
+        let without_links = "eframe = { version = \"0.37\", default-features = false, \
+                             features = [\"accesskit\", \"wayland\", \"x11\", \
+                             \"default_fonts\"] }\n";
+        assert_eq!(
+            missing_eframe_features(without_links),
+            ["clipboard", "links"]
+        );
+        let complete = "eframe = { version = \"0.37\", default-features = false, \
+                        features = [\"accesskit\", \"clipboard\", \"default_fonts\", \
+                        \"links\", \"wayland\", \"x11\"] }\n";
+        assert!(missing_eframe_features(complete).is_empty());
+        // A commented-out line does not count as the dependency.
+        assert_eq!(
+            missing_eframe_features("# eframe = { features = [\"links\"] }").len(),
+            REQUIRED_EFRAME_FEATURES.len()
         );
     }
 }

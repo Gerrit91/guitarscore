@@ -395,6 +395,42 @@ mod tests {
     }
 
     #[test]
+    fn the_download_button_asks_for_the_release_page() {
+        use egui_kittest::kittest::Queryable as _;
+
+        let mut harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1000.0, 700.0))
+            .wgpu()
+            .build_eframe(|cc| {
+                let mut app = GuitarScoreApp::new(&cc.egui_ctx, None);
+                app.updates.found = Some(Release {
+                    tag: "v0.3.0".to_owned(),
+                    title: "GuitarScore 0.3.0".to_owned(),
+                    url: PAGE.to_owned(),
+                    notes: "Notes".to_owned(),
+                });
+                app
+            });
+        harness.run();
+        harness.get_by_label("Download").click();
+        // One frame handles the click and asks egui to open the URL. The integration opens
+        // it only when eframe's `links` feature is on (`cargo xtask layers` checks that).
+        harness.step();
+        let opened: Vec<&str> = harness
+            .output()
+            .platform_output
+            .commands
+            .iter()
+            .filter_map(|command| match command {
+                egui::OutputCommand::OpenUrl(open) => Some(open.url.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(opened, [PAGE]);
+        assert!(harness.state().updates.found.is_none(), "the window closes");
+    }
+
+    #[test]
     fn a_yes_to_the_question_checks_at_once() {
         let ctx = egui::Context::default();
         let mut app = app_answering(answer("v99.0.0"));

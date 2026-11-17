@@ -5,8 +5,9 @@
 //! 2. a crate depends only on workspace crates in strictly lower layers;
 //! 3. restricted crates (GUI, audio devices, `gscore-gp`) are used only where allowed;
 //! 4. every crate opts into `[workspace.lints]`, the core crates avoid std APIs that do not
-//!    work on wasm, and restricted modules (`gscore_model::interop`) are used only where
-//!    allowed (see [`crate::source_scan`]);
+//!    work on wasm, `gscore-app` keeps the eframe integrations it needs (`links`), and
+//!    restricted modules (`gscore_model::interop`) are used only where allowed (see
+//!    [`crate::source_scan`]);
 //! 5. the core crates build for `wasm32-unknown-unknown` (see [`crate::wasm`]).
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -77,6 +78,7 @@ pub(crate) fn run(root: &Path, skip_wasm: bool) -> TaskResult {
 
     let mut errors = check_graph(&members, &deps);
     errors.extend(source_scan::check_manifests(root, &members));
+    errors.extend(source_scan::check_gui_integrations(root));
     errors.extend(source_scan::check_wasm_std_usage(root, WASM_CRATES));
     // Tools (xtask) mention restricted modules in their own test data; skip them.
     let app_members: Vec<String> = members

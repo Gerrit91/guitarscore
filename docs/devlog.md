@@ -6142,3 +6142,26 @@ Tests: dragging the edge widens the column and the settings keep it.
 - The right-click menu and the box's left-click menu get ids of their own; sharing one
   made egui report a clash.
 - Test: copy an EQ block, right-click the next empty place, paste it, and find it there.
+
+## 2026-11-17 — Links work again: eframe's `links` feature was off
+
+- Reported from Windows: the update window's **Download** did nothing. The app asked
+  egui to open the release page, and eframe's native backend dropped the request: since
+  M0 `gscore-app` builds eframe with `default-features = false`, and `links` (the
+  `webbrowser` crate) was never turned back on. egui-winit only writes "Cannot open url -
+  feature \"links\" not enabled" to the log, so every link was dead: Download, About's
+  repository and third-party-license links. Every desktop platform (Windows, Linux,
+  macOS) takes that same path.
+- `links` added to the eframe features in `crates/gscore-app/Cargo.toml` (pulls
+  `webbrowser` 1.2.7, MIT OR Apache-2.0, and through `url` the ICU stack: 28 new
+  `Cargo.lock` entries). Native only: eframe's `egui-winit` is not built for wasm, so the
+  browser build is unchanged.
+- `clipboard` (the same omission, found while fixing this) is on too: text fields copy
+  and paste with other programs again (`arboard` + `smithay-clipboard` on Linux; egui's
+  in-app fallback only worked within GuitarScore).
+- `cargo xtask layers` now checks the manifest for the eframe features the desktop app
+  needs (`source_scan::check_gui_integrations`): a missing one fails silently at runtime
+  and no test can see cargo features. Test: `notices_a_missing_eframe_integration`.
+- New kittest: clicking **Download** in the update window puts the release page on
+  egui's output (`the_download_button_asks_for_the_release_page`); it would pass without
+  the fix too, so the manifest check is what catches that.

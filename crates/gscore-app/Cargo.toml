@@ -33,9 +33,12 @@ gscore-play = { path = "../gscore-play" }
 gscore-audio = { path = "../gscore-audio" }
 gscore-guitar = { path = "../gscore-guitar" }
 # GUI. Default features off; the window renderer is a feature of this crate (wgpu for the
-# desktop, glow/WebGL for the browser). Window backends for Linux (Wayland, X11) and
-# accessibility are named.
-eframe = { version = "0.37", default-features = false, features = ["accesskit", "wayland", "x11", "default_fonts"] }
+# desktop, glow/WebGL for the browser). Window backends for Linux (Wayland, X11),
+# accessibility, `links` (opening a URL in the browser: Help › Check for updates, About's
+# links) and `clipboard` (the text fields' copy and paste with other programs) are named.
+# A missing one fails silently at runtime (a link opens nothing, a paste stays inside the
+# app), so `cargo xtask layers` checks this list.
+eframe = { version = "0.37", default-features = false, features = ["accesskit", "wayland", "x11", "default_fonts", "links", "clipboard"] }
 egui = "0.37"
 serde = { version = "1.0.228", features = ["derive"] }
 # Our own state in a song's notes (the mixer sends, the tones a song plays).
