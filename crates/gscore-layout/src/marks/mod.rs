@@ -578,27 +578,33 @@ fn dynamic_baseline(
         }
         None => {
             let lanes = layout.under_staff_lanes(true) as f32;
-            tops.tab + ctx.staff.height() + TAB_FIRST_LANE + lanes * TAB_LANE_GAP + TAB_DYNAMIC_DROP
+            tops.tab
+                + ctx.staff.height()
+                + layout.rhythm_depth()
+                + TAB_FIRST_LANE
+                + lanes * TAB_LANE_GAP
+                + TAB_DYNAMIC_DROP
         }
     }
 }
 
 /// How far under a tab staff's bottom line its own ink reaches: the low fret numbers, the
-/// P.M. and let ring rows, and dynamics when no notation staff carries them.
+/// rhythm, the P.M. and let ring rows, and dynamics when no notation staff carries them.
 pub(crate) fn below_tab_depth(layout: &MeasureLayout, marks: &MeasureMarks, notation: bool) -> f32 {
     /// Half a fret number hangs below the bottom line.
     const FRET_HALF: f32 = 0.7;
     // A tab without notation writes its tuplets in the first row.
     let lanes = layout.under_staff_lanes(!notation);
+    let rhythm = layout.rhythm_depth();
     let rows = if lanes == 0 {
-        FRET_HALF
+        FRET_HALF.max(rhythm)
     } else {
-        TAB_FIRST_LANE + (lanes as f32 - 1.0) * TAB_LANE_GAP + 0.4
+        rhythm + TAB_FIRST_LANE + (lanes as f32 - 1.0) * TAB_LANE_GAP + 0.4
     };
     if notation || marks.dynamics.is_empty() {
         rows
     } else {
-        TAB_FIRST_LANE + lanes as f32 * TAB_LANE_GAP + TAB_DYNAMIC_DROP + 0.5
+        rhythm + TAB_FIRST_LANE + lanes as f32 * TAB_LANE_GAP + TAB_DYNAMIC_DROP + 0.5
     }
 }
 

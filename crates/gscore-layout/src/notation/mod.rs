@@ -18,6 +18,7 @@ mod draw;
 mod drums;
 mod marks;
 mod pitch;
+mod rhythm;
 mod tuplets;
 
 use std::collections::HashMap;
@@ -34,6 +35,7 @@ pub(crate) use draw::{
 };
 pub(crate) use marks::draw_arrow;
 pub(crate) use pitch::{Alter, Clef};
+pub(crate) use rhythm::{draw_tab_rhythm, rhythm_depth};
 
 use crate::Context;
 use crate::error::LayoutError;

@@ -171,6 +171,109 @@ fn tab_only_shows_tuplet_numbers() {
     }
 }
 
+/// The stems written under a tab (vertical notation lines starting below a system's tab):
+/// (x, top, bottom).
+fn rhythm_stems(layout: &Layout) -> Vec<(f32, f32, f32)> {
+    layout
+        .ops
+        .iter()
+        .filter_map(|op| match op {
+            DrawOp::Line {
+                from,
+                to,
+                color: ColorToken::Notation,
+                ..
+            } if (from.x - to.x).abs() < 1e-6 => {
+                let (top, bottom) = (from.y.min(to.y), from.y.max(to.y));
+                layout
+                    .places
+                    .systems
+                    .iter()
+                    .any(|system| top > system.tab_bottom() && top < system.tab_bottom() + 3.0)
+                    .then_some((from.x, top, bottom))
+            }
+            _ => None,
+        })
+        .collect()
+}
+
+/// A tab without notation writes the rhythm under it, as Guitar Pro does: a stem per
+/// beat (shorter for a half note, none for a whole note), beams, flags and dots; the
+/// tuplet numbers move below it. With notation, the tab carries none.
+#[test]
+fn tab_only_shows_the_rhythm_under_the_tab() {
+    let song = common::open("basic/note_lengths.gp");
+    let tab = common::layout_tab_only(&song, 0);
+    let stems = rhythm_stems(&tab);
+    let in_measure = |index: usize| -> Vec<(f32, f32, f32)> {
+        let place = &tab.places.measures[index];
+        let bottom = tab.places.systems[place.system].tab_bottom();
+        stems
+            .iter()
+            .copied()
+            .filter(|(x, top, _)| {
+                *x > place.left && *x < place.right && *top > bottom && *top < bottom + 3.0
+            })
+            .collect()
+    };
+    // Bar 1, a whole note: no stem.
+    assert!(in_measure(0).is_empty(), "{:?}", in_measure(0));
+    // Bar 2, a half and two quarters: the half's stem is shorter and ends with the others.
+    let bar2 = in_measure(1);
+    assert_eq!(bar2.len(), 3, "{bar2:?}");
+    let length = |(_, top, bottom): (f32, f32, f32)| bottom - top;
+    assert!(length(bar2[0]) < length(bar2[1]) * 0.75);
+    assert!((bar2[0].2 - bar2[1].2).abs() < 1e-4);
+    // Beams (eighths and shorter), a flag (the lone dotted eighth) and dots.
+    let below_a_tab = |y: f32| {
+        tab.places
+            .systems
+            .iter()
+            .any(|system| y > system.tab_bottom() && y < system.tab_bottom() + 6.0)
+    };
+    let beams = tab
+        .ops
+        .iter()
+        .filter(|op| matches!(op, DrawOp::Rect { rect, color: ColorToken::Notation } if below_a_tab(rect.origin.y)))
+        .count();
+    assert!(beams > 10, "{beams} beams");
+    let glyph_below = |wanted: fn(&Glyph) -> bool| {
+        tab.ops.iter().any(|op| {
+            matches!(op, DrawOp::Glyph { glyph, at, .. } if wanted(glyph) && below_a_tab(at.y))
+        })
+    };
+    assert!(glyph_below(|glyph| matches!(glyph, Glyph::Flag(_))));
+    assert!(glyph_below(|glyph| *glyph == Glyph::AugmentationDot));
+    // The tuplet numbers are below the stems of their system.
+    let tuplet = tab
+        .ops
+        .iter()
+        .find_map(|op| match op {
+            // Bold: not the measure number 5.
+            DrawOp::Text {
+                text,
+                at,
+                font: gscore_layout::TextFont::Bold,
+                ..
+            } if text == "5" => Some(at.y),
+            _ => None,
+        })
+        .unwrap();
+    let stems_of_its_system = stems
+        .iter()
+        .filter(|(_, top, _)| (*top - tuplet).abs() < 8.0)
+        .map(|(_, _, bottom)| *bottom)
+        .fold(f32::MIN, f32::max);
+    assert!(
+        stems_of_its_system > f32::MIN && tuplet > stems_of_its_system,
+        "{tuplet} {stems_of_its_system}"
+    );
+
+    // With notation, the notation staff carries the rhythm and the tab none.
+    let both = common::layout(&song, 0);
+    assert!(rhythm_stems(&both).is_empty());
+}
+
 /// A single staff shown as several rows (standard notation and TAB) is joined by a bracket
 /// at the system's start (a thick bar with a curved wing at each end); one row gets none.
 #[test]

@@ -25,7 +25,7 @@ use crate::Context;
 use crate::draw::{ColorToken, DrawOp, Point};
 use crate::error::LayoutError;
 use crate::glyph::Glyph;
-use crate::notation::{self, KeySigLayout, Notation, NotationItem};
+use crate::notation::{self, BeamPlan, KeySigLayout, Notation, NotationItem};
 use crate::ornaments::{self, ColumnMarks, Fret};
 
 use columns::{as_f64, beat_length, beat_starts, column_items};
@@ -116,6 +116,9 @@ pub(crate) struct MeasureLayout {
     tail_spacing: f32,
     /// Its part in a multi-bar rest, if any (set by the score; see [`RestRun`]).
     rest_run: RestRun,
+    /// How far the rhythm under the tab reaches below its bottom line, when the tab
+    /// carries it (no notation or slash staff does); 0 otherwise.
+    rhythm_depth: f32,
 }
 
 /// A time signature as glyph rows, scaled to the staff.
@@ -143,7 +146,8 @@ struct Column {
     marks: ColumnMarks,
     /// What the notation staff shows here, per voice (first and second, ...).
     notation: Vec<Option<NotationItem>>,
-    /// What the slash-notation staff shows here, per voice, if the track has one.
+    /// What the slash-notation staff shows here, per voice, if the track has one; for a
+    /// tab without notation, the rhythm under the tab.
     slash: Vec<Option<NotationItem>>,
     /// How far the second and further voices move right to clear the first voice's
     /// noteheads when they share a staff position.
@@ -222,6 +226,27 @@ impl MeasureLayout {
     /// The measure it lays out.
     pub(crate) fn index(&self) -> MeasureIndex {
         self.index
+    }
+
+    /// How far the rhythm under the tab reaches below its bottom line (0 when the tab
+    /// carries none): the rows under the tab start below it.
+    pub(crate) fn rhythm_depth(&self) -> f32 {
+        self.rhythm_depth
+    }
+
+    /// The first voice's rhythm, at `xs` (the columns' x), for the tab to carry.
+    pub(super) fn rhythm_plan(&self, xs: &[f32]) -> Vec<BeamPlan<'_>> {
+        self.columns
+            .iter()
+            .zip(xs)
+            .filter_map(|(column, &x)| {
+                Some(BeamPlan {
+                    x,
+                    item: column.slash.first()?.as_ref()?,
+                    beat: column.beat,
+                })
+            })
+            .collect()
     }
 
     /// The same layout for the measure now at `index` (it moved when a measure before it
@@ -309,7 +334,8 @@ impl MeasureLayout {
             if let Some(notation) = &ctx.notation {
                 data.notation = notation::column_items(beats, notation, key)?;
             }
-            if ctx.slash {
+            // The slash staff's rhythm, or the tab's own when nothing else shows it.
+            if ctx.slash || ctx.tab_rhythm() {
                 data.slash = notation::slash_column_items(beats)?;
             }
             let voice_count = measure.voices().len();
@@ -518,7 +544,7 @@ impl MeasureLayout {
         let lead = extents
             .first()
             .map_or(MIN_LEAD, |(_, left, _)| (left + edge_padding).max(MIN_LEAD));
-        let columns = columns
+        let columns: Vec<Column> = columns
             .into_iter()
             .enumerate()
             .map(|(i, (data, space, dynamic, tempo))| {
@@ -556,6 +582,22 @@ impl MeasureLayout {
                 }
             })
             .collect();
+        // The tab carries the rhythm when no notation or slash staff does.
+        let rhythm_depth = if ctx.tab_rhythm() {
+            let plan: Vec<BeamPlan<'_>> = columns
+                .iter()
+                .filter_map(|column| {
+                    Some(BeamPlan {
+                        x: 0.0,
+                        item: column.slash.first()?.as_ref()?,
+                        beat: column.beat,
+                    })
+                })
+                .collect();
+            notation::rhythm_depth(&plan, ctx)
+        } else {
+            0.0
+        };
 
         let pitched = ctx
             .notation
@@ -582,6 +624,7 @@ impl MeasureLayout {
             scale,
             tail_spacing: 0.0,
             rest_run: RestRun::None,
+            rhythm_depth,
         })
     }
 

@@ -411,6 +411,11 @@ impl MeasureLayout {
                     }
                 }
             }
+            // Without a notation or slash staff, the tab shows the first voice's rhythm.
+            if self.rhythm_depth > 0.0 && tops.notation.is_none() && tops.slash.is_none() {
+                let placed = self.rhythm_plan(&xs);
+                notation::draw_tab_rhythm(&placed, top + ctx.staff.height(), ctx, ops);
+            }
         }
         // Octave signs go over or under the staff that carries the notes.
         let octave_top = tops.notation.unwrap_or(top);
@@ -556,8 +561,16 @@ impl MeasureLayout {
         }
         self.draw_column_ornaments(&xs, right, &vec![top; xs.len()], ctx, ops);
         self.draw_legato(&xs, top, ops);
-        // Without a notation staff, the tab carries the tuplets itself, right under it.
-        self.draw_under_staff(&xs, right, top, tops.notation.is_none(), ctx, ops);
+        // Without a notation staff, the tab carries the tuplets itself, right under it
+        // (under its rhythm).
+        self.draw_under_staff(
+            &xs,
+            right,
+            top + self.rhythm_depth(),
+            tops.notation.is_none(),
+            ctx,
+            ops,
+        );
         if let super::RestRun::Leads { .. } = self.rest_run() {
             self.draw_rest_run(self.rest_run(), x, stretch, tops, ctx, ops);
         }

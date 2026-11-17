@@ -6197,3 +6197,21 @@ Tests: dragging the edge widens the column and the settings keep it.
   the same bar did not go back).
 - Test: `the_song_end_goes_back_to_where_playback_started` (two runs in a row, the
   setting on, then off).
+
+## 2026-11-17 — A tab without notation shows the rhythm under it
+
+- A track shown as tab only (no notation, no slash staff) now writes the first voice's
+  rhythm under the tab, as Guitar Pro does: a stem per beat hanging below the tab
+  (shorter for a half note, none for a whole note), beams joining the eighths and
+  shorter of one beat (partial beams as in notation), flags on the others and dots.
+  Rests stay in the tab itself. User request: note lengths could not be read from a
+  tab-only view.
+- `notation::rhythm` draws it from the slash staff's items (`slash_column_items`, now
+  also built when `Context::tab_rhythm`) with the notation's `beam_groups`/`draw_beams`
+  and flag glyphs; a flagged stem grows to fit its flag. `MeasureLayout::rhythm_depth`
+  (per measure, at least the plain stem's) moves the rows under the tab down below it:
+  the tuplet brackets (already written there for a tab without notation), P.M., let ring
+  and dynamics; the system's height takes it in (`Part::staves_height`), and the lyrics
+  go under it through `below_tab_depth`.
+- Test: `tab_only_shows_the_rhythm_under_the_tab`. Golden `multi_staff.all.svg` and
+  snapshot `multi_staff_all_tracks` regenerated: the bass there is tab only.
