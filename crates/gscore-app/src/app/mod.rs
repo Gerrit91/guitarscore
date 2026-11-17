@@ -812,6 +812,8 @@ impl eframe::App for GuitarScoreApp {
         // Keep a loop of the selected measures going; a new selection turns it on.
         self.auto_loop();
         self.poll_loop();
+        // The song played to its end: back to where it started, if asked for.
+        self.poll_song_end();
         // A beat chosen while the SoundFont loaded plays once it is ready.
         match self.playback.poll_preview() {
             Ok(true) => ctx.request_repaint_after(std::time::Duration::from_millis(50)),

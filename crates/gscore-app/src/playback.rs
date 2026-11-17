@@ -1802,6 +1802,16 @@ impl Playback {
             .map_or(PlayState::Stopped, |a| a.player().state())
     }
 
+    /// Whether playback stopped by itself at the song's end (not by Stop, which goes back
+    /// to the start, and not during a count-in).
+    pub fn at_song_end(&self) -> bool {
+        if self.state() != PlayState::Stopped || self.count_in_pending() {
+            return false;
+        }
+        self.sequence()
+            .is_some_and(|sequence| sequence.end > 0 && self.position() >= sequence.end)
+    }
+
     /// The position in the song, in ticks: during the count-in, where the song will start.
     pub fn position(&self) -> u64 {
         self.song_position(self.output_position())

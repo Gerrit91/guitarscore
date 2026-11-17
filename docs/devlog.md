@@ -6183,3 +6183,17 @@ Tests: dragging the edge widens the column and the settings keep it.
 - Tests: edit — bar-edge moves including an empty bar, Ctrl+A over two tracks with
   Delete and one-step undo, the default keymap's new bindings; app — Ctrl+A selects in
   both the score and the grid.
+
+## 2026-11-17 — The song's end goes back to where playback started
+
+- Playing to the song's end (Loop off) now always puts the cursor and the selection back
+  where playback started, as Guitar Pro does; Settings' "Go back to where playback
+  started when it stops" is only about Stop (and Space while playing).
+  `Playback::at_song_end` tells the transport's own stop at the end from a Stop (which
+  rewinds to 0); the app's `poll_song_end` then takes the tab's `play_origin`, once.
+  `PlayOrigin::played` makes it wait until the new run was seen playing: right after
+  Play the player still reports the last run's stop at the end until the audio thread
+  takes the command, which used up the origin (found by the owner: a second Space from
+  the same bar did not go back).
+- Test: `the_song_end_goes_back_to_where_playback_started` (two runs in a row, the
+  setting on, then off).

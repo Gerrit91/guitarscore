@@ -627,7 +627,7 @@ impl GuitarScoreApp {
         .on_hover_text(
             "Stop (and Space while playing) puts the cursor and the selection back where \
              they were when playback started; off, the cursor stays on the last played \
-             beat and Space pauses",
+             beat and Space pauses. The song's end always goes back there",
         );
         ui.checkbox(
             &mut self.settings.flowing_cursor,

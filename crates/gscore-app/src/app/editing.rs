@@ -610,7 +610,31 @@ impl GuitarScoreApp {
         if let Err(error) = self.playback.stop() {
             self.notice = Some(error);
         }
-        let back = self.settings.return_on_stop;
+        self.return_to_play_origin(self.settings.return_on_stop);
+    }
+
+    /// Playing reached the song's end (without Loop, which plays it again): the cursor
+    /// goes back where playback started, always (as in Guitar Pro; the setting is Stop's).
+    pub(super) fn poll_song_end(&mut self) {
+        let playing = self.playback.state() == PlayState::Playing;
+        let ended = !self.playback.loop_selection() && self.playback.at_song_end();
+        let Some(origin) = self
+            .tabs
+            .get_mut(self.active)
+            .and_then(|tab| tab.play_origin.as_mut())
+        else {
+            return;
+        };
+        if playing {
+            origin.played = true;
+        } else if ended && origin.played {
+            self.return_to_play_origin(true);
+        }
+    }
+
+    /// Forgets where playback started, putting the cursor and selection back there when
+    /// `back`.
+    fn return_to_play_origin(&mut self, back: bool) {
         if let Some(tab) = self.tabs.get_mut(self.active) {
             tab.palette_anchor = None;
             if let Some(origin) = tab.play_origin.take()
@@ -635,10 +659,12 @@ impl GuitarScoreApp {
         if !playing || tab.play_origin.is_none() {
             return;
         }
+        let played = tab.play_origin.is_some_and(|origin| origin.played);
         tab.play_origin = Some(super::tab::PlayOrigin {
             cursor: tab.document.editor().cursor(),
             selection: tab.document.editor().selection(),
             measures: tab.selection,
+            played,
         });
     }
 
@@ -1026,6 +1052,7 @@ impl GuitarScoreApp {
                 },
                 selection: tab.document.editor().selection(),
                 measures: tab.selection,
+                played: false,
             });
         }
     }
