@@ -1,7 +1,7 @@
-//! The song grid's header above the track column (add a track, move the shown one up or
-//! down, mute all, solo all) and its master row below the tracks (the volume and pan of all
-//! tracks together). The mute/solo buttons and the master controls line up with the track
-//! rows' own.
+//! The song grid's header above the track column (add a track, delete the shown one, move
+//! it up or down, mute all, solo all) and its master row below the tracks (the volume and
+//! pan of all tracks together). The mute/solo buttons and the master controls line up with
+//! the track rows' own.
 
 use egui::{Align2, FontId, Rect, RichText, Sense, pos2, vec2};
 use gscore_edit::Command;
@@ -53,6 +53,25 @@ pub(super) fn header(
         }
     });
     bar.scope_builder(egui::UiBuilder::new().max_rect(button_at(2.0)), |ui| {
+        ui.add_enabled_ui(rows.len() > 1, |ui| {
+            if icons::button(
+                ui,
+                Icon::Delete,
+                "Delete the shown track",
+                "Delete the shown track",
+            )
+            .clicked()
+            {
+                actions.push(GridAction::Command {
+                    command: Command::DeleteTrack {
+                        track: TrackIndex::new(shown),
+                    },
+                    merge: false,
+                });
+            }
+        });
+    });
+    bar.scope_builder(egui::UiBuilder::new().max_rect(button_at(3.0)), |ui| {
         ui.add_enabled_ui(shown > 0 && shown < rows.len(), |ui| {
             if icons::button(ui, Icon::MoveUp, "Move track up", "Move the shown track up").clicked()
             {
@@ -67,7 +86,7 @@ pub(super) fn header(
             }
         });
     });
-    bar.scope_builder(egui::UiBuilder::new().max_rect(button_at(3.0)), |ui| {
+    bar.scope_builder(egui::UiBuilder::new().max_rect(button_at(4.0)), |ui| {
         ui.add_enabled_ui(after < rows.len(), |ui| {
             if icons::button(
                 ui,
@@ -87,35 +106,11 @@ pub(super) fn header(
             }
         });
     });
-    // The right end of the header in the grid view: the way to delete the shown track,
-    // then the grid's zoom (the score's magnifier buttons and its 100 % reset). The mixer
-    // view has neither: deleting is in its context menu, and its columns are the faders.
+    // The right end of the header in the grid view: the grid's zoom (the score's magnifier
+    // buttons and its 100 % reset). The mixer view's columns are the faders instead.
     if !view.mixer {
         let zoom_width = 106.0;
         let zoom_left = rect.right() - 8.0 - zoom_width;
-        let delete = Rect::from_min_size(
-            pos2(zoom_left - 6.0 - 26.0, rect.center().y - 11.0),
-            vec2(26.0, 22.0),
-        );
-        bar.scope_builder(egui::UiBuilder::new().max_rect(delete), |ui| {
-            ui.add_enabled_ui(rows.len() > 1, |ui| {
-                if icons::button(
-                    ui,
-                    Icon::Delete,
-                    "Delete the shown track",
-                    "Delete the shown track",
-                )
-                .clicked()
-                {
-                    actions.push(GridAction::Command {
-                        command: Command::DeleteTrack {
-                            track: TrackIndex::new(shown),
-                        },
-                        merge: false,
-                    });
-                }
-            });
-        });
         // Only the measure columns change width; the squares stretch or shrink.
         let group = Rect::from_min_size(
             pos2(zoom_left, rect.center().y - 11.0),

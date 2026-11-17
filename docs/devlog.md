@@ -6104,3 +6104,32 @@ Tests: dragging the edge widens the column and the settings keep it.
   runs are planned.
 - Tests: the thick bar's visible gap is the same before a plain, a final and a double
   barline; an end repeat is the only barline stroke at the run's end.
+
+## 2026-11-17 — A centered empty workspace with a wider, scrollable recent list
+
+- The empty workspace's content is centered vertically when it fits: the height measured
+  the frame before positions the block, so the first frame waits at the top and asks for
+  the frame that centers it. A short window keeps the 12-point top gap.
+- The recent songs table spans the room up to the preview (two equal columns, song and
+  folder; a longer name or folder is cut, the full path is in the row's hover text).
+- The recent songs list scrolls in its own pane with a solid scroll bar when it is longer
+  than about the preview page; a short list has none and the page stays put while it
+  scrolls.
+- The preview's placeholder text is centered line by line, not just as a block (a centered
+  galley's origin is its middle, so it is painted from the page's center).
+- The app remembers 20 recent files (was 10); File › Open Recent lists them all.
+- Tests: a taller window moves the block's top by half the extra room, and a long list
+  scrolls under the wheel while the page above it stays. Snapshots regenerated:
+  `empty_workspace`, the new `empty_workspace_placeholder`, and the empty workspace
+  behind three dialogs (`update_question`, `desktop_menu_question`, `update_available`).
+
+## 2026-11-17 — The trash can sits beside "+" in the grid and mixer bars
+
+- The song grid's header has the trash can (delete the shown track) right after "+", in
+  the grid and the mixer view alike; it used to sit at the header's right end and only in
+  the grid view (the mixer offered it in a track strip's context menu). The move up/down
+  arrows follow it, and it is still disabled when only one track is left.
+- Deleting is safe: one command, one undo step; the new test deletes from the mixer and
+  Ctrl+Z restores the track. The row and strip context menus keep their own Delete.
+- Snapshots: the grid and mixer headers (grid zooms, grid eyes/selection/mute, mixer
+  views and buses) show the new button row.

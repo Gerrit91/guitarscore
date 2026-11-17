@@ -11,6 +11,17 @@ use crate::canvas::{self, Arrangement, POINTS_PER_SPACE};
 
 /// Width of the preview of the first page, in points.
 const PREVIEW_WIDTH: f32 = 230.0;
+/// The widest the empty workspace's content gets; a wider window centers it instead.
+const CONTENT_WIDTH: f32 = 920.0;
+/// How tall the recent songs list gets before it scrolls: about the height of the preview
+/// page beside it, so the two columns end together.
+const LIST_HEIGHT: f32 = 280.0;
+/// Rows that fit the list without scrolling (a rough count: a row is some 27 points).
+const LIST_ROWS: usize = 9;
+/// Room kept above the content when the view is too short to center it.
+const TOP_GAP: f32 = 12.0;
+/// Room between the recent songs table's two columns.
+const TABLE_GAP: f32 = 18.0;
 
 /// The empty workspace's state between frames.
 #[derive(Debug, Default)]
@@ -25,6 +36,9 @@ pub(super) struct RecentFiles {
     preview: Option<(PathBuf, Arc<ScoreLayout>)>,
     /// Why a song's preview could not be made.
     error: Option<(PathBuf, String)>,
+    /// The height the content took last frame, to center it vertically; 0 before the first
+    /// measurement.
+    content_height: f32,
 }
 
 /// What the empty workspace asked the app to do this frame.
@@ -99,60 +113,27 @@ pub(super) fn show(
     egui::ScrollArea::vertical()
         .auto_shrink([false, false])
         .show(ui, |ui| {
-            let width = ui.available_width().min(920.0);
+            let width = ui.available_width().min(CONTENT_WIDTH);
             let margin = ((ui.available_width() - width) / 2.0).max(0.0);
-            ui.horizontal(|ui| {
+            // The content's height is known from the frame before, so the block can sit in
+            // the middle of the view. The first frame (0) waits at the top and asks for the
+            // frame that centers it.
+            let top = if state.content_height > 0.0 {
+                ((ui.available_height() - state.content_height) / 2.0).max(TOP_GAP)
+            } else {
+                TOP_GAP
+            };
+            ui.add_space(top);
+            ui.horizontal_top(|ui| {
                 ui.add_space(margin);
                 ui.vertical(|ui| {
                     ui.set_width(width);
-                    ui.add_space((ui.available_height() * 0.06).max(12.0));
-                    ui.heading("Open a song");
-                    ui.add_space(4.0);
-                    ui.label(
-                        RichText::new(
-                            "Start a new score, open a Guitar Pro file, or pick one of your \
-                             recent songs. You can also drop a file here.",
-                        )
-                        .weak(),
-                    );
-                    ui.add_space(14.0);
-                    ui.horizontal(|ui| {
-                        if ui
-                            .add(
-                                egui::Button::new(RichText::new("New song…").strong())
-                                    .min_size(egui::vec2(130.0, 32.0)),
-                            )
-                            .on_hover_text("Start an empty score")
-                            .clicked()
-                        {
-                            actions.new_song = true;
-                        }
-                        if ui
-                            .add(egui::Button::new("Open song…").min_size(egui::vec2(130.0, 32.0)))
-                            .on_hover_text("Open a Guitar Pro file from disk")
-                            .clicked()
-                        {
-                            actions.ask_open = true;
-                        }
-                    });
-                    ui.add_space(20.0);
-                    ui.separator();
-                    ui.add_space(8.0);
-                    ui.horizontal_top(|ui| {
-                        let preview_width = PREVIEW_WIDTH + 16.0;
-                        ui.vertical(|ui| {
-                            ui.set_width((width - preview_width).max(280.0));
-                            recent_table(ui, state, recent, &mut actions);
-                        });
-                        ui.add_space(16.0);
-                        ui.vertical(|ui| {
-                            if preview(ui, state, actions.open.is_some())
-                                && let Some(path) = state.selected.clone()
-                            {
-                                actions.open = Some(path);
-                            }
-                        });
-                    });
+                    content(ui, width, state, recent, &mut actions);
+                    let height = ui.min_rect().height();
+                    if (height - state.content_height).abs() > 0.5 {
+                        state.content_height = height;
+                        ui.ctx().request_repaint();
+                    }
                 });
             });
         });
@@ -173,6 +154,64 @@ pub(super) fn show(
         actions.preview = Some(selected.to_path_buf());
     }
     actions
+}
+
+/// The empty workspace's content: the way to start, then the recent songs and the preview
+/// side by side.
+fn content(
+    ui: &mut egui::Ui,
+    width: f32,
+    state: &mut RecentFiles,
+    recent: &[PathBuf],
+    actions: &mut RecentActions,
+) {
+    ui.heading("Open a song");
+    ui.add_space(4.0);
+    ui.label(
+        RichText::new(
+            "Start a new score, open a Guitar Pro file, or pick one of your recent songs. \
+             You can also drop a file here.",
+        )
+        .weak(),
+    );
+    ui.add_space(14.0);
+    ui.horizontal(|ui| {
+        if ui
+            .add(
+                egui::Button::new(RichText::new("New song…").strong())
+                    .min_size(egui::vec2(130.0, 32.0)),
+            )
+            .on_hover_text("Start an empty score")
+            .clicked()
+        {
+            actions.new_song = true;
+        }
+        if ui
+            .add(egui::Button::new("Open song…").min_size(egui::vec2(130.0, 32.0)))
+            .on_hover_text("Open a Guitar Pro file from disk")
+            .clicked()
+        {
+            actions.ask_open = true;
+        }
+    });
+    ui.add_space(20.0);
+    ui.separator();
+    ui.add_space(8.0);
+    ui.horizontal_top(|ui| {
+        let preview_width = PREVIEW_WIDTH + 16.0;
+        ui.vertical(|ui| {
+            ui.set_width((width - preview_width).max(280.0));
+            recent_table(ui, state, recent, actions);
+        });
+        ui.add_space(16.0);
+        ui.vertical(|ui| {
+            if preview(ui, state, actions.open.is_some())
+                && let Some(path) = state.selected.clone()
+            {
+                actions.open = Some(path);
+            }
+        });
+    });
 }
 
 /// The recent songs, the search field and the way to open the chosen one.
@@ -217,39 +256,21 @@ fn recent_table(
             .weak(),
     );
     ui.add_space(2.0);
-    egui::Grid::new("recent_songs_table")
-        .num_columns(2)
-        .striped(true)
-        .min_col_width(180.0)
-        .spacing([18.0, 3.0])
-        .show(ui, |ui| {
-            ui.label(RichText::new("Song").strong());
-            ui.label(RichText::new("Folder").strong());
-            ui.end_row();
-            for path in &matching {
-                let name = path.file_name().map_or_else(
-                    || path.display().to_string(),
-                    |name| name.to_string_lossy().into_owned(),
-                );
-                let folder = path
-                    .parent()
-                    .and_then(Path::file_name)
-                    .map(|name| name.to_string_lossy().into_owned())
-                    .unwrap_or_default();
-                let chosen = state.selected.as_deref() == Some(path.as_path());
-                let row = ui
-                    .add(egui::Button::selectable(chosen, name))
-                    .on_hover_text(path.display().to_string());
-                if row.clicked() {
-                    state.selected = Some((*path).clone());
-                }
-                if row.double_clicked() {
-                    actions.open = Some((*path).clone());
-                }
-                ui.label(RichText::new(folder).weak());
-                ui.end_row();
-            }
-        });
+    // The list has its own scroll bar when it is longer than the preview page beside it, so
+    // a long list does not push the page around. Only a list too long for its room gets a
+    // scroll area: a short one never shows a bar.
+    if matching.len() > LIST_ROWS {
+        // A solid bar (as on the song grid) so it is there to grab, not a floating one
+        // that fades away.
+        ui.style_mut().spacing.scroll = egui::style::ScrollStyle::solid();
+        egui::ScrollArea::vertical()
+            .id_salt("recent_songs_list")
+            .max_height(LIST_HEIGHT)
+            .auto_shrink([false, false])
+            .show(ui, |ui| song_table(ui, state, &matching, actions));
+    } else {
+        song_table(ui, state, &matching, actions);
+    }
     ui.add_space(8.0);
     ui.horizontal(|ui| {
         let selected = state.selected.clone();
@@ -265,6 +286,56 @@ fn recent_table(
         }
         ui.label(RichText::new("or double-click a row").small().weak());
     });
+}
+
+/// The recent songs table: song and folder, filling the room up to the preview.
+fn song_table(
+    ui: &mut egui::Ui,
+    state: &mut RecentFiles,
+    matching: &[&PathBuf],
+    actions: &mut RecentActions,
+) {
+    // The two columns split the table's width evenly; a longer name or folder is cut (its
+    // full text is in the row's hover text).
+    let column = ((ui.available_width() - TABLE_GAP) / 2.0).max(120.0);
+    egui::Grid::new("recent_songs_table")
+        .num_columns(2)
+        .striped(true)
+        .min_col_width(column)
+        .max_col_width(column)
+        .spacing([TABLE_GAP, 3.0])
+        .show(ui, |ui| {
+            ui.label(RichText::new("Song").strong());
+            ui.label(RichText::new("Folder").strong());
+            ui.end_row();
+            for path in matching {
+                let name = path.file_name().map_or_else(
+                    || path.display().to_string(),
+                    |name| name.to_string_lossy().into_owned(),
+                );
+                let folder = path
+                    .parent()
+                    .and_then(Path::file_name)
+                    .map(|name| name.to_string_lossy().into_owned())
+                    .unwrap_or_default();
+                let chosen = state.selected.as_deref() == Some(path.as_path());
+                let row = ui
+                    .add(egui::Button::selectable(chosen, name).truncate())
+                    .on_hover_text(path.display().to_string());
+                if row.clicked() {
+                    state.selected = Some((*path).clone());
+                }
+                if row.double_clicked() {
+                    actions.open = Some((*path).clone());
+                }
+                ui.add(
+                    egui::Label::new(RichText::new(folder).weak())
+                        .truncate()
+                        .halign(egui::Align::LEFT),
+                );
+                ui.end_row();
+            }
+        });
 }
 
 /// The chosen song's first page, as it prints, or what waits for it. True when the preview
@@ -330,7 +401,8 @@ fn preview(ui: &mut egui::Ui, state: &RecentFiles, opening: bool) -> bool {
     false
 }
 
-/// An empty page-shaped box with `text` in it, wrapped to the page's width.
+/// An empty page-shaped box with `text` in it, wrapped to the page's width and centered
+/// on it.
 fn placeholder(ui: &mut egui::Ui, text: &str) {
     let (rect, _) = ui.allocate_exact_size(
         egui::vec2(PREVIEW_WIDTH, PREVIEW_WIDTH * 297.0 / 210.0),
@@ -338,15 +410,17 @@ fn placeholder(ui: &mut egui::Ui, text: &str) {
     );
     ui.painter()
         .rect_filled(rect, 2.0, ui.visuals().faint_bg_color);
-    let galley = ui.painter().layout(
+    let mut job = egui::text::LayoutJob::simple(
         text.to_owned(),
         egui::FontId::proportional(12.0),
         ui.visuals().weak_text_color(),
         rect.width() - 24.0,
     );
-    ui.painter().galley(
-        rect.center() - galley.size() / 2.0,
-        galley,
-        ui.visuals().weak_text_color(),
-    );
+    // Each wrapped line is centered, not just the block of text. A centered layout puts the
+    // galley's origin at its middle, not its left edge.
+    job.halign = egui::Align::Center;
+    let galley = ui.painter().layout_job(job);
+    let at = egui::pos2(rect.center().x, rect.center().y - galley.size().y / 2.0);
+    ui.painter()
+        .galley(at, galley, ui.visuals().weak_text_color());
 }

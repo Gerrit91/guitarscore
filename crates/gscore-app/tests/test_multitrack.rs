@@ -580,6 +580,28 @@ fn the_grid_header_deletes_the_shown_track_and_zooms_the_song() {
     );
 }
 
+#[test]
+fn the_mixer_header_deletes_the_shown_track_and_undo_brings_it_back() {
+    let mut harness = app_with_multi_staff();
+    let before = harness.state().document().unwrap().song().track_count();
+    harness.get_by_label("Mixer view").click();
+    harness.run();
+    // The same header, with the same trash can beside the "+", in the mixer view.
+    harness.get_by_label("Delete the shown track").click();
+    harness.run();
+    assert_eq!(
+        harness.state().document().unwrap().song().track_count(),
+        before.saturating_sub(1)
+    );
+    // The history makes deleting safe: undo puts the track back.
+    harness.key_press_modifiers(egui::Modifiers::COMMAND, Key::Z);
+    harness.run();
+    assert_eq!(
+        harness.state().document().unwrap().song().track_count(),
+        before
+    );
+}
+
 /// Snapshot options for a mixer: many thin meters and needles, whose edge pixels the GitHub
 /// runner's software GPU anti-aliases a little differently (11 to 13 pixels past the 0.6
 /// threshold, none past 1.5, measured on the master, drum-parts, plain, mute/solo and bus

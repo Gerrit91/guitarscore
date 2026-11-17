@@ -11,8 +11,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::state::{ViewState, ZOOM_RANGE};
 
-/// How many recent files the File menu remembers.
-pub const MAX_RECENT_FILES: usize = 10;
+/// How many recent files the app remembers (File › Open Recent and the empty workspace).
+pub const MAX_RECENT_FILES: usize = 20;
 /// Most tabs remembered to reopen at the next start.
 pub const MAX_OPEN_FILES: usize = 64;
 /// Most changed actions accepted from the settings file, and keys per action.
@@ -1192,7 +1192,10 @@ mod tests {
             settings.add_recent(PathBuf::from(format!("song{index}.gp")));
         }
         assert_eq!(settings.recent_files.len(), MAX_RECENT_FILES);
-        assert_eq!(settings.recent_files[0], PathBuf::from("song14.gp"));
+        assert_eq!(
+            settings.recent_files[0],
+            PathBuf::from(format!("song{}.gp", MAX_RECENT_FILES.saturating_add(4)))
+        );
         let oldest = settings.recent_files[0].clone();
         settings.add_recent(oldest.clone());
         assert_eq!(settings.recent_files[0], oldest);

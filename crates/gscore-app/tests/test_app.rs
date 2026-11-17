@@ -20,7 +20,7 @@ use std::time::{Duration, Instant};
 
 use egui_kittest::Harness;
 use egui_kittest::kittest::{NodeT as _, Queryable};
-use gscore_app::{GuitarScoreApp, Keymap, Output, Settings, ThemeChoice};
+use gscore_app::{GuitarScoreApp, Keymap, MAX_RECENT_FILES, Output, Settings, ThemeChoice};
 
 mod common;
 
@@ -2000,6 +2000,87 @@ fn the_empty_workspace_suggests_recent_files() {
     assert_eq!(
         harness.state().document().unwrap().display_title(),
         "Note Lengths"
+    );
+}
+
+/// The empty workspace in a window `height` tall, with `recent` songs remembered.
+fn empty_workspace_at(height: f32, recent: Vec<PathBuf>) -> Harness<'static, GuitarScoreApp> {
+    let settings = Settings {
+        reopen_last_file: false,
+        recent_files: recent,
+        ..Settings::default()
+    };
+    let mut harness = Harness::builder()
+        .with_size(egui::vec2(1100.0, height))
+        .build_eframe(|cc| {
+            GuitarScoreApp::with_settings(
+                &cc.egui_ctx,
+                None,
+                Keymap::default(),
+                None,
+                settings.clone(),
+                None,
+            )
+        });
+    harness.run();
+    harness
+}
+
+#[test]
+fn the_empty_workspace_without_a_recent_song_matches_its_snapshot() {
+    let _gpu = common::lock_gpu();
+    let mut harness = empty_workspace_at(800.0, Vec::new());
+    // No song to preview: the page's placeholder is centered in it.
+    harness.snapshot("empty_workspace_placeholder");
+}
+
+#[test]
+fn the_empty_workspace_centers_its_content_vertically() {
+    let recent = || vec![testdata("basic/note_lengths.gp")];
+    let short = empty_workspace_at(800.0, recent());
+    let tall = empty_workspace_at(1000.0, recent());
+    let short_top = short.get_by_label("Open a song").rect().top();
+    let tall_top = tall.get_by_label("Open a song").rect().top();
+    // The extra room of the taller window is split above and below the block.
+    assert!(
+        (tall_top - short_top - 100.0).abs() < 2.0,
+        "{short_top} -> {tall_top}"
+    );
+    // It does not sit at the top of the view.
+    assert!(short_top > 100.0, "{short_top}");
+}
+
+#[test]
+fn a_long_recent_list_scrolls_in_its_own_pane() {
+    let recent = (0..MAX_RECENT_FILES)
+        .map(|index| testdata("basic/note_lengths.gp").with_file_name(format!("song{index}.gp")))
+        .collect();
+    let mut harness = empty_workspace_at(800.0, recent);
+    // The rows past the list's room are out of sight; the wheel over the list moves them.
+    let first = harness.get_by_label("song0.gp").rect();
+    let later = format!("song{}.gp", MAX_RECENT_FILES.saturating_sub(1));
+    let before = harness.get_by_label(&later).rect().top();
+    let heading = harness.get_by_label("Open a song").rect();
+    // Point at the list but not at a row: a row's hover text would open a tooltip that
+    // keeps repainting.
+    harness.hover_at(egui::pos2(first.right() + 100.0, first.center().y));
+    harness.run();
+    harness.input_mut().events.push(egui::Event::MouseWheel {
+        unit: egui::MouseWheelUnit::Point,
+        delta: egui::vec2(0.0, -200.0),
+        phase: egui::TouchPhase::Move,
+        source: egui::MouseWheelSource::Unknown,
+        modifiers: egui::Modifiers::NONE,
+    });
+    harness.run();
+    let after = harness.get_by_label(&later).rect().top();
+    assert!(after < before - 50.0, "{before} -> {after}");
+    // The page itself stayed where it was: only the list scrolled.
+    let moved = harness.get_by_label("Open a song").rect();
+    assert!(
+        (moved.top() - heading.top()).abs() < 2.0,
+        "the page moved with the list: {:?} -> {moved:?}",
+        heading
     );
 }
 
