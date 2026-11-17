@@ -279,3 +279,38 @@ fn the_cursor_bar_border_shows_on_a_bar_with_notes() {
         }
     }
 }
+
+/// Inside a grid selection the cursor's bar (its first) has no border of its own: only the
+/// selection's outline marks the bars.
+#[test]
+fn a_grid_selection_hides_the_cursor_bar_border() {
+    let _gpu = common::lock_gpu();
+    let mut harness = wide_song(1);
+    let grid = song_grid(&harness);
+    let cell = |measure: usize| {
+        egui::Rect::from_min_size(
+            grid.left_top() + egui::vec2(24.0 * measure as f32, 0.0),
+            egui::vec2(24.0, 24.0),
+        )
+    };
+    harness.hover_at(cell(1).center());
+    harness.drag_at(cell(1).center());
+    harness.run();
+    harness.hover_at(cell(3).center());
+    harness.run();
+    harness.drop_at(cell(3).center());
+    harness.run();
+    let selection = harness.state().selection().unwrap();
+    assert_eq!((selection.start(), selection.end()), (1, 3));
+    park_pointer(&mut harness);
+    let image = harness.render().expect("rendered");
+    let ppp = harness.ctx.pixels_per_point();
+    let pixel = |at: egui::Pos2| *image.get_pixel((at.x * ppp) as u32, (at.y * ppp) as u32);
+    // The first bar's right edge, inside the selection: like its middle.
+    let first = cell(1);
+    assert_eq!(
+        pixel(egui::pos2(first.right() - 0.75, first.center().y)),
+        pixel(first.center()),
+        "the first selected bar has a border of its own"
+    );
+}

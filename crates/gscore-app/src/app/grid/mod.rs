@@ -403,9 +403,16 @@ impl GuitarScoreApp {
                     tab.document.editor_mut().break_merge();
                 }
             }
-            GridAction::MoveCursor { track, measure } => self.move_cursor_to(track, measure),
-            GridAction::Place { track, measure } => self.place_cursor_at(track, measure),
+            GridAction::MoveCursor { track, measure } => {
+                self.move_cursor_to(track, measure);
+                self.grid_takes_keys();
+            }
+            GridAction::Place { track, measure } => {
+                self.place_cursor_at(track, measure);
+                self.grid_takes_keys();
+            }
             GridAction::Select(selection) => {
+                self.grid_takes_keys();
                 if let Some(tab) = self.tabs.get_mut(self.active) {
                     tab.selection = Some(selection);
                     tab.document.editor_mut().set_selection(Some(
@@ -537,6 +544,50 @@ impl GuitarScoreApp {
         if !same_measure {
             self.jump_playback_to(track, measure);
         }
+    }
+
+    /// The grid was clicked: Shift with the arrows selects bars there from now on.
+    fn grid_takes_keys(&mut self) {
+        if let Some(tab) = self.tabs.get_mut(self.active) {
+            tab.grid_keys = true;
+        }
+    }
+
+    /// After a click in the grid, Shift+Left/Right extends the grid's bar selection by a
+    /// bar and Shift+Home/End to the song's first or last bar (from the cursor's bar, in
+    /// its track, when nothing is selected), as a drag in the grid would. Returns whether
+    /// the grid took `action`.
+    pub(super) fn grid_select_key(&mut self, action: gscore_edit::ActionId) -> bool {
+        use gscore_edit::ActionId;
+        let Some(tab) = self.tabs.get(self.active) else {
+            return false;
+        };
+        if !tab.grid_keys
+            || !matches!(
+                action,
+                ActionId::SelectLeft
+                    | ActionId::SelectRight
+                    | ActionId::SelectHome
+                    | ActionId::SelectEnd
+            )
+        {
+            return false;
+        }
+        let Some(last) = tab.document.song().measure_count().checked_sub(1) else {
+            return true;
+        };
+        let cursor = tab.document.editor().cursor();
+        let current = tab
+            .selection
+            .unwrap_or_else(|| MeasureSelection::on(cursor.track.get(), cursor.measure.get()));
+        let focus = match action {
+            ActionId::SelectLeft => current.focus.saturating_sub(1),
+            ActionId::SelectRight => current.focus.saturating_add(1).min(last),
+            ActionId::SelectHome => 0,
+            _ => last,
+        };
+        self.apply_grid_action(GridAction::Select(current.to(focus)));
+        true
     }
 
     /// A plain click on a bar: no selection, no loop from it, the cursor on the bar's first
