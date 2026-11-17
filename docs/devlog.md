@@ -6197,3 +6197,14 @@ Tests: dragging the edge widens the column and the settings keep it.
   the same bar did not go back).
 - Test: `the_song_end_goes_back_to_where_playback_started` (two runs in a row, the
   setting on, then off).
+
+## 2026-11-17 — Shift-click in the grid always grows the bar selection
+
+- Shift-clicking a bar in the song grid (a track's cells or the bar ruler) now grows an
+  existing selection to take in that bar: before it, the start moves; after it, the end;
+  inside it, nothing changes. Before, it went from the first pressed bar (the anchor), so
+  bar 5, shift bar 10, shift bar 2 gave 2-5 instead of 2-10; the anchor is invisible, so
+  that was surprising (owner's request). `MeasureSelection::extend_to` keeps the far end
+  as the anchor and makes the clicked bar the focus, so Shift+arrows go on from there.
+  Without a selection, shift-click still selects from the cursor's bar.
+- Test: `a_shift_click_always_grows_the_measure_selection` (unit, `state.rs`).
