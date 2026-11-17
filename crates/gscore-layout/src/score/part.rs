@@ -316,7 +316,18 @@ impl<'a> Part<'a> {
         let staves = self.lowest_staff_bottom(measures.clone());
         let lines = self.lyric_lines(measures.clone());
         if lines == 0 || self.lyrics_between_staves() {
-            staves
+            // The rhythm under a tab without notation takes room before what follows.
+            let rhythm = if self.show_tab {
+                self.measures
+                    .get(measures)
+                    .unwrap_or_default()
+                    .iter()
+                    .map(|layout| layout.rhythm_depth())
+                    .fold(0.0, f32::max)
+            } else {
+                0.0
+            };
+            staves + rhythm
         } else {
             staves + self.ink_below_lowest(measures) + LYRIC_GAP + LYRIC_LINE * lines as f32
         }

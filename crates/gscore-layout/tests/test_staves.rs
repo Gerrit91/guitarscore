@@ -163,12 +163,131 @@ fn tab_only_shows_tuplet_numbers() {
             _ => None,
         })
         .collect();
+    // One bracket per run of the same tuplet, as the notation staff writes them: the
+    // three quarter triplets of bar 7 cross a beat and still get one. Each number is
+    // also a measure number.
     for tuplet in ["3", "5", "6", "7"] {
-        assert!(
-            texts.contains(&tuplet),
-            "missing tuplet {tuplet:?} in the tab: {texts:?}"
+        let count = texts.iter().filter(|&&text| text == tuplet).count();
+        assert_eq!(
+            count, 2,
+            "tuplet {tuplet:?} once in the tab (and its measure number): {texts:?}"
         );
     }
+}
+
+/// The stems of the rhythm under a tab (vertical notation lines ending below a system's
+/// tab): (x, top, bottom).
+fn rhythm_stems(layout: &Layout) -> Vec<(f32, f32, f32)> {
+    layout
+        .ops
+        .iter()
+        .filter_map(|op| match op {
+            DrawOp::Line {
+                from,
+                to,
+                color: ColorToken::Notation,
+                ..
+            } if (from.x - to.x).abs() < 1e-6 => {
+                let (top, bottom) = (from.y.min(to.y), from.y.max(to.y));
+                layout
+                    .places
+                    .systems
+                    .iter()
+                    .any(|system| {
+                        bottom > system.tab_bottom() + 1.0
+                            && bottom < system.tab_bottom() + 6.0
+                            && top > system.tab_top
+                    })
+                    .then_some((from.x, top, bottom))
+            }
+            _ => None,
+        })
+        .collect()
+}
+
+/// A tab without notation writes the rhythm under it, as Guitar Pro does: a stem per
+/// beat (shorter for a half note, none for a whole note), beams, flags and dots; the
+/// tuplet numbers move below it. With notation, the tab carries none.
+#[test]
+fn tab_only_shows_the_rhythm_under_the_tab() {
+    let song = common::open("basic/note_lengths.gp");
+    let tab = common::layout_tab_only(&song, 0);
+    let stems = rhythm_stems(&tab);
+    let in_measure = |index: usize| -> Vec<(f32, f32, f32)> {
+        let place = &tab.places.measures[index];
+        let bottom = tab.places.systems[place.system].tab_bottom();
+        stems
+            .iter()
+            .copied()
+            .filter(|(x, _, end)| {
+                *x > place.left && *x < place.right && *end > bottom && *end < bottom + 6.0
+            })
+            .collect()
+    };
+    // Bar 1, a whole note: no stem.
+    assert!(in_measure(0).is_empty(), "{:?}", in_measure(0));
+    // Bar 2, a half and two quarters: the half's stem is short, below the tab, and ends
+    // with the others; a quarter's reaches up to just under its fret number (the open
+    // fourth string, inside the tab), as Guitar Pro draws it.
+    let bar2 = in_measure(1);
+    assert_eq!(bar2.len(), 3, "{bar2:?}");
+    let system = &tab.places.systems[tab.places.measures[1].system];
+    assert!(bar2[0].1 > system.tab_bottom());
+    assert!((bar2[0].2 - bar2[1].2).abs() < 1e-4);
+    let fourth_line = system.tab_top + 3.0 * system.string_spacing;
+    assert!(
+        bar2[1].1 > fourth_line && bar2[1].1 < fourth_line + system.string_spacing,
+        "{:?} from line {fourth_line}",
+        bar2[1]
+    );
+    // Beams (eighths and shorter), a flag (the lone dotted eighth) and dots.
+    let below_a_tab = |y: f32| {
+        tab.places
+            .systems
+            .iter()
+            .any(|system| y > system.tab_bottom() && y < system.tab_bottom() + 6.0)
+    };
+    let beams = tab
+        .ops
+        .iter()
+        .filter(|op| matches!(op, DrawOp::Rect { rect, color: ColorToken::Notation } if below_a_tab(rect.origin.y)))
+        .count();
+    assert!(beams > 10, "{beams} beams");
+    let glyph_below = |wanted: fn(&Glyph) -> bool| {
+        tab.ops.iter().any(|op| {
+            matches!(op, DrawOp::Glyph { glyph, at, .. } if wanted(glyph) && below_a_tab(at.y))
+        })
+    };
+    assert!(glyph_below(|glyph| matches!(glyph, Glyph::Flag(_))));
+    assert!(glyph_below(|glyph| *glyph == Glyph::AugmentationDot));
+    // The tuplet numbers are below the stems of their system.
+    let tuplet = tab
+        .ops
+        .iter()
+        .find_map(|op| match op {
+            // Bold: not the measure number 5.
+            DrawOp::Text {
+                text,
+                at,
+                font: gscore_layout::TextFont::Bold,
+                ..
+            } if text == "5" => Some(at.y),
+            _ => None,
+        })
+        .unwrap();
+    let stems_of_its_system = stems
+        .iter()
+        .filter(|(_, top, _)| (*top - tuplet).abs() < 8.0)
+        .map(|(_, _, bottom)| *bottom)
+        .fold(f32::MIN, f32::max);
+    assert!(
+        stems_of_its_system > f32::MIN && tuplet > stems_of_its_system,
+        "{tuplet} {stems_of_its_system}"
+    );
+
+    // With notation, the notation staff carries the rhythm and the tab none.
+    let both = common::layout(&song, 0);
+    assert!(rhythm_stems(&both).is_empty());
 }
 
 /// A single staff shown as several rows (standard notation and TAB) is joined by a bracket

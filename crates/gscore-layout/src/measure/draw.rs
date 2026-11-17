@@ -411,6 +411,11 @@ impl MeasureLayout {
                     }
                 }
             }
+            // Without a notation or slash staff, the tab shows the first voice's rhythm.
+            if self.rhythm_depth > 0.0 && tops.notation.is_none() && tops.slash.is_none() {
+                let (placed, reach) = self.rhythm_plan(&xs, top, ctx);
+                notation::draw_tab_rhythm(&placed, &reach, top + ctx.staff.height(), ctx, ops);
+            }
         }
         // Octave signs go over or under the staff that carries the notes.
         let octave_top = tops.notation.unwrap_or(top);
@@ -556,16 +561,26 @@ impl MeasureLayout {
         }
         self.draw_column_ornaments(&xs, right, &vec![top; xs.len()], ctx, ops);
         self.draw_legato(&xs, top, ops);
-        // Without a notation staff, the tab carries the tuplets itself, right under it.
-        self.draw_under_staff(&xs, right, top, tops.notation.is_none(), ctx, ops);
+        // Without a notation staff, the tab carries the tuplets itself, right under it
+        // (under its rhythm).
+        self.draw_under_staff(
+            &xs,
+            right,
+            top + self.rhythm_depth(),
+            tops.notation.is_none(),
+            ctx,
+            ops,
+        );
         if let super::RestRun::Leads { .. } = self.rest_run() {
             self.draw_rest_run(self.rest_run(), x, stretch, tops, ctx, ops);
         }
     }
 
     /// Tuplet brackets under a tab staff that has no notation staff to carry them, in the
-    /// row at `baseline`: one per beat's group, over the columns it spans, the number in a
-    /// gap in the middle and the hooks pointing up to the notes.
+    /// row at `baseline`: one per run of columns with the same tuplet (as the notation
+    /// staff groups them, whatever the beats: quarter triplets cross beats), over the
+    /// columns it spans, the number in a gap in the middle and the hooks pointing up to
+    /// the notes.
     pub(super) fn draw_tab_tuplets(
         &self,
         xs: &[f32],
@@ -587,14 +602,13 @@ impl MeasureLayout {
                 index = index.saturating_add(1);
                 continue;
             };
-            let beat = column.beat;
             let start = xs.get(index).copied().unwrap_or(right);
-            // The columns of this beat that share the tuplet.
+            // The columns after it that share the tuplet.
             let mut end = index;
             while self
                 .columns
                 .get(end.saturating_add(1))
-                .is_some_and(|next| next.beat == beat && next.tuplet == column.tuplet)
+                .is_some_and(|next| next.tuplet == column.tuplet)
             {
                 end = end.saturating_add(1);
             }
