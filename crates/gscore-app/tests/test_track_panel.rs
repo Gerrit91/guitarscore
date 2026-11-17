@@ -1783,6 +1783,8 @@ fn drag_box(
 
 #[test]
 fn a_block_is_dragged_to_another_place_and_the_chain_follows() {
+    // `drag_box` takes a snapshot.
+    let _gpu = common::lock_gpu();
     use gscore_app::chain_settings::BlockChoice;
     use gscore_play::StringKind;
 

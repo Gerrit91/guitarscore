@@ -650,6 +650,7 @@ fn click(harness: &mut Harness<'static, GuitarScoreApp>, label: &str) {
 
 #[test]
 fn a_score_view_is_built_in_its_dialog_and_shown() {
+    let _gpu = common::lock_gpu();
     let mut harness = app_with_multi_staff();
     view_menu(&mut harness, "All tracks");
     view_menu(&mut harness, "Score views…");
@@ -710,6 +711,7 @@ fn a_score_view_is_built_in_its_dialog_and_shown() {
 /// score leaves out (empty staves, runs of rests), then the views dialog.
 #[test]
 fn the_view_choice_holds_the_views_and_the_score_switches() {
+    let _gpu = common::lock_gpu();
     let mut harness = app_with_multi_staff();
     click(&mut harness, "Score view");
     park_pointer(&mut harness);
@@ -728,6 +730,7 @@ fn the_view_choice_holds_the_views_and_the_score_switches() {
 /// in the file); with one track, the track shown.
 #[test]
 fn the_grids_eyes_act_on_the_current_view() {
+    let _gpu = common::lock_gpu();
     let mut harness = app_with_multi_staff();
     view_menu(&mut harness, "All tracks");
     click(&mut harness, "Show Drumkit in the score view");
@@ -756,6 +759,7 @@ fn the_grids_eyes_act_on_the_current_view() {
 /// width is kept in the settings.
 #[test]
 fn the_track_column_is_dragged_wider_at_its_edge() {
+    let _gpu = common::lock_gpu();
     let mut harness = app_with_multi_staff();
     let before = harness.state().view().grid_track_column();
     assert!((before - 460.0).abs() < 0.5, "{before}");
