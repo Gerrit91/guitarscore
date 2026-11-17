@@ -140,6 +140,26 @@ impl MeasureSelection {
         }
     }
 
+    /// The same selection, grown to take in `measure` (a shift-click): a measure before
+    /// it extends its start, one after it its end, one inside it changes nothing. The
+    /// pressed bar is never the pivot, which the user cannot see; the far end stays.
+    #[must_use]
+    pub fn extend_to(self, measure: usize) -> Self {
+        let (start, end) = (self.start(), self.end());
+        let (anchor, focus) = if measure < start {
+            (end, measure)
+        } else if measure > end {
+            (start, measure)
+        } else {
+            return self;
+        };
+        MeasureSelection {
+            anchor,
+            focus,
+            ..self
+        }
+    }
+
     /// The first selected measure (0-based).
     pub fn start(self) -> usize {
         self.anchor.min(self.focus)
@@ -306,6 +326,27 @@ impl ViewState {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_shift_click_always_grows_the_measure_selection() {
+        // Bar 5, shift-click bar 10: 5 to 10.
+        let selection = MeasureSelection::new(4).extend_to(9);
+        assert_eq!((selection.start(), selection.end()), (4, 9));
+        // Then shift-click bar 2: 2 to 10 (not 2 to 5 from the pressed bar).
+        let selection = selection.extend_to(1);
+        assert_eq!((selection.start(), selection.end()), (1, 9));
+        // The click is the focus, so Shift+arrows go on from there.
+        assert_eq!(selection.focus, 1);
+        // Shift-click past the end again: 2 to 12.
+        let selection = selection.extend_to(11);
+        assert_eq!((selection.start(), selection.end()), (1, 11));
+        assert_eq!(selection.focus, 11);
+        // Inside the selection: nothing changes.
+        assert_eq!(selection.extend_to(5), selection);
+        // The track stays.
+        let one = MeasureSelection::on(2, 3).extend_to(0);
+        assert_eq!((one.start(), one.end(), one.track), (0, 3, Some(2)));
+    }
 
     #[test]
     fn zoom_stays_in_range_and_ignores_nonsense() {

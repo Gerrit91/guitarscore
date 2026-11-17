@@ -6198,6 +6198,17 @@ Tests: dragging the edge widens the column and the settings keep it.
 - Test: `the_song_end_goes_back_to_where_playback_started` (two runs in a row, the
   setting on, then off).
 
+## 2026-11-17 — Shift-click in the grid always grows the bar selection
+
+- Shift-clicking a bar in the song grid (a track's cells or the bar ruler) now grows an
+  existing selection to take in that bar: before it, the start moves; after it, the end;
+  inside it, nothing changes. Before, it went from the first pressed bar (the anchor), so
+  bar 5, shift bar 10, shift bar 2 gave 2-5 instead of 2-10; the anchor is invisible, so
+  that was surprising (owner's request). `MeasureSelection::extend_to` keeps the far end
+  as the anchor and makes the clicked bar the focus, so Shift+arrows go on from there.
+  Without a selection, shift-click still selects from the cursor's bar.
+- Test: `a_shift_click_always_grows_the_measure_selection` (unit, `state.rs`).
+
 ## 2026-11-17 — A tab without notation shows the rhythm under it
 
 - A track shown as tab only (no notation, no slash staff) now writes the first voice's
@@ -6223,3 +6234,18 @@ Tests: dragging the edge widens the column and the settings keep it.
   staff lines, as Guitar Pro draws them (`MeasureLayout::rhythm_plan` gives each stem
   its start); a half note keeps its short stem below the tab (owner's report). The
   test checks a quarter's stem starts under its fret number.
+
+## 2026-11-18 — A flaky audio test skips when the output cannot be heard
+
+- `a_jump_while_playing_is_where_stop_goes_back_to` failed in CI (one of 107) at "did not
+  start": playback never reached Playing and the app never showed an error. The runner's
+  output was in neither of the states the test skips on (playing, or a device error): it
+  either never finished opening or opened and never ran its callbacks. The playback tests
+  in `test_app` now share `wait_until_playing`, which skips with the output's state
+  (opening, opened but not playing, or the error) instead of timing out; that was the
+  same 10 s timeout in eleven of them.
+- The synth thread's setup (`gscore-audio`'s `SynthPlayer::start_at`) is now contained
+  with `catch_unwind`, as its audio callback already was: a panic while the SoundFont is
+  read or the device opens becomes "the synthesizer failed unexpectedly" instead of a
+  player that stays on "loading" with nothing to report. Test:
+  `a_panic_in_the_synth_thread_becomes_an_error`.

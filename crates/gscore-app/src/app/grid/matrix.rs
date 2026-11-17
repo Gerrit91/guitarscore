@@ -137,7 +137,7 @@ pub(super) fn ruler(
         }
     }
     // A click puts the cursor on the bar (in the cursor's track); shift-click selects
-    // whole bars across every track, from the cursor's bar or the selection's start.
+    // whole bars across every track, growing the selection (or from the cursor's bar).
     if response.clicked()
         && let Some(pointer) = response.interact_pointer_pos()
     {
@@ -149,7 +149,7 @@ pub(super) fn ruler(
                     let mut selection = view
                         .selection
                         .unwrap_or_else(|| MeasureSelection::new(view.cursor_measure))
-                        .to(measure);
+                        .extend_to(measure);
                     selection.track = None;
                     actions.push(GridAction::Select(selection));
                 } else {
@@ -502,10 +502,10 @@ fn handle_matrix_clicks(
         && let Some(measure) = at
     {
         if ui.input(|input| input.modifiers.shift) {
-            // Shift-click selects from the selection's start, or else from the cursor's
-            // bar, to this one.
+            // Shift-click grows the selection to take in this bar (whichever end is
+            // nearer it), or else selects from the cursor's bar to this one.
             let selection = match (view.selection, cell) {
-                (Some(selection), _) => selection.to(measure),
+                (Some(selection), _) => selection.extend_to(measure),
                 (None, Some((track, _))) => {
                     MeasureSelection::on(track, view.cursor_measure).to(measure)
                 }

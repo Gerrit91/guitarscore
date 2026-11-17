@@ -167,18 +167,20 @@ impl SynthPlayer {
         let thread = std::thread::Builder::new()
             .name("gscore-synth".to_owned())
             .spawn(move || {
-                run(
-                    &path,
-                    sample_rate,
-                    receiver,
-                    &Housekeeping {
-                        quit: quit_receiver,
-                        chains: chain_requests,
-                        bus: bus_requests,
-                        commands: chain_commands,
-                    },
-                    &thread_shared,
-                );
+                contain(&thread_shared, || {
+                    run(
+                        &path,
+                        sample_rate,
+                        receiver,
+                        &Housekeeping {
+                            quit: quit_receiver,
+                            chains: chain_requests,
+                            bus: bus_requests,
+                            commands: chain_commands,
+                        },
+                        &thread_shared,
+                    );
+                });
             })
             .map_err(|e| PlayError::Device(format!("cannot start the synthesizer: {e}")))?;
         Ok(SynthPlayer {
@@ -617,6 +619,25 @@ impl Drop for SynthPlayer {
     }
 }
 
+/// Runs the synth thread's work, turning a panic into an error for the user.
+///
+/// The thread opens the device and reads the SoundFont, both outside our control; a
+/// panic there must not leave the player "loading" forever with nothing to report
+/// (AGENTS.md: the audio engine has the same containment as the rest of the app).
+fn contain(shared: &Arc<Shared>, work: impl FnOnce()) {
+    if catch_unwind(AssertUnwindSafe(work)).is_err() {
+        // This is the setup thread, not the audio callback: waiting for the lock is fine
+        // (and `lock` also recovers a mutex poisoned by the panic).
+        *lock(&shared.error) = Some("the synthesizer failed unexpectedly".to_owned());
+        shared.failed.store(true, Ordering::Release);
+        shared
+            .state
+            .store(encode(PlayState::Stopped), Ordering::Release);
+        // Last, as in `run`: whoever sees loading end must also see why.
+        shared.loading.store(false, Ordering::Release);
+    }
+}
+
 /// The synth thread: loads, opens the device, then keeps the stream alive and frees what
 /// the callback hands back until the player is dropped.
 fn run(
@@ -914,5 +935,35 @@ fn transport_state(command: &Command) -> Option<PlayState> {
         Command::Pause => Some(PlayState::Paused),
         Command::Stop | Command::Load(_) => Some(PlayState::Stopped),
         _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A panic while the device opened or the SoundFont loaded used to leave the player
+    /// loading forever, so the app showed no error and never played.
+    #[test]
+    fn a_panic_in_the_synth_thread_becomes_an_error() {
+        let shared = Arc::new(Shared::default());
+        shared.loading.store(true, Ordering::Release);
+        contain(&shared, || panic!("the audio backend fell over"));
+        assert!(!shared.loading.load(Ordering::Acquire));
+        assert!(shared.failed.load(Ordering::Acquire));
+        assert_eq!(
+            lock(&shared.error).as_deref(),
+            Some("the synthesizer failed unexpectedly")
+        );
+    }
+
+    #[test]
+    fn a_finished_synth_thread_leaves_the_state_to_run() {
+        let shared = Arc::new(Shared::default());
+        shared.loading.store(true, Ordering::Release);
+        contain(&shared, || {});
+        assert!(shared.loading.load(Ordering::Acquire));
+        assert!(!shared.failed.load(Ordering::Acquire));
+        assert_eq!(*lock(&shared.error), None);
     }
 }
