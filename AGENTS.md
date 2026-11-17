@@ -230,7 +230,7 @@ Each stage plugs in behind the `Player` trait:
    also in the browser as an AudioWorklet. Done (M9, browser 2026-11-04). It stays for
    drums, other instruments and as the fallback.
 3. ~~Sampled libraries (SFZ) or plugin hosting~~: set aside (owner, 2026-11-03) in favour
-   of stage 4.
+   of stage 4. Plugin hosting is written down as M24 (2026-11-17).
 4. **Physically modelled guitars and basses:** a pure-Rust string model (digital
    waveguide) that plays every technique, with pickup, amp, cabinet and body stages.
    Design note: `docs/guitar-modelling.md`; milestone M22, the current one.
@@ -307,6 +307,80 @@ commands. Details of every step are in `docs/devlog.md`; known shortfalls in
     budget for a 16-track song in `cargo xtask bench`.
   - **Done when:** the owner judges electric, acoustic and bass playback comparable to
     RSE for composing, on reference passages covering every technique.
+
+### Next
+
+- **M23: Step entry and MIDI input** (owner, 2026-11-17, proposed as the next big thing
+  once M22 is done; plugin hosting stays set aside: no wasm, `unsafe`, native plugin
+  crashes, X11-only plugin editors on Linux). Headless first: the mode, the fingering
+  and the input sources are built and tested through `gscore-edit` and the CLI, the app
+  drives them. Order:
+  - Step 1, step entry for the keyboard and the note tools (no MIDI yet): a step-entry
+    mode in which entering a note or chord moves the cursor on by the entry duration,
+    adding beats and bars as `cursor_right` does today, each step one undo step. Inputs:
+    typed frets (a two-digit fret must still work: advance when the digit window ends
+    or on the next note, not on the first digit), clicks on the fretboard and keyboard
+    note tools, and note names by pitch (letters A-G, with keys for sharp/flat and
+    octave up/down, like MuseScore's note input) whose string and fret the fingering
+    picks. Rests by key; chords by holding a modifier, or by adding notes to the beat
+    before it advances. The letter keys are only bound in the mode (they clash with
+    shortcuts such as `t` otherwise). Duration keys work as they do now.
+  - Step 2, the fingering (pitch → string and fret), in `gscore-edit`, shared by every
+    input: playable on the track's strings, tuning and capo; close to the hand position
+    of the previous notes; a chord's notes on different strings within a playable span;
+    open strings preferred only where they fit. A key moves the entered note to the next
+    string with the same pitch. Today's `place_for` (note tools: lowest fret on a free
+    string) is its starting point and moves out of the app.
+  - Step 3, MIDI input: an input port and channel filter in Settings › Audio I/O
+    (`midir`, already a dependency; native first, Web MIDI in the browser where the
+    browser has it), ports plugged in and out while the app runs, every message treated
+    as hostile input. Note-on enters in step-entry mode (a chord: the notes that start
+    within a short window), note-off is ignored. MIDI guitars in mono mode (one channel
+    per string: Fishman TriplePlay, Roland GK, Jamstik) give string and fret directly,
+    the fingering is skipped; the channel-to-string map is a setting.
+  - Step 4, monitoring: incoming notes heard at once through the track's own sound
+    (modelled strings, SoundFont), as live notes into `SynthEngine` beside the sequence;
+    the latency is the output buffer's.
+  - Later, not part of M23: real-time recording against the metronome with
+    quantization (ties, rests, tuplets and swing from loose timing).
+  - Tests: step entry over every input on empty, full and odd bars (tuplets, free time,
+    the last bar); the fingering on unusual tunings, 7-8 strings, basses, capos and
+    unplayable pitches (an error the user can act on, never a panic); MIDI parsing
+    fuzzed with arbitrary bytes; `panic_hunt` covers the new commands.
+  - **Done when:** the owner can enter a riff and its chords at the cursor from the
+    keyboard, the note tools and a MIDI keyboard without moving the cursor by hand, and
+    the fingering rarely needs a correction.
+
+- **M24: Plugin hosting** (owner, 2026-11-17: written down so the idea is not lost, not
+  scheduled; comes after M23 at the earliest). Plugins as the sound source of a track
+  (an instrument fed the track's notes, beside SoundFont, modelled strings and MIDI out)
+  and as blocks of a sound chain (track, drum part, bus, master). Desktop only.
+  - Formats: CLAP first (C ABI, MIT), VST3 later (check the SDK's license then). Not
+    VST2 (its SDK cannot be licensed).
+  - Owner approval needed first: hosting calls native code through FFI, which
+    `unsafe_code = "forbid"` rules out (section 2, rule 3: design note, isolated crate,
+    owner's approval). New dependencies (a host crate such as `clack`) per section 10.
+  - Never crash: a plugin that faults must not take the app down, so plugins run in a
+    separate host process (shared-memory audio, a watchdog, a plugin that died is
+    bypassed with a message and can be restarted). Scanning runs in the background, in
+    that process too, and plugins that crash while scanned go on a blocklist.
+  - No plugin editor windows (owner, 2026-11-17: no XWayland). Plugin editors on Linux
+    are X11-only (VST3 has no Wayland type; CLAP's Wayland is floating-only and rare).
+    The plugin's parameters are drawn in egui in the Sound chain window instead, styled
+    like the built-in blocks, with search and favourites for plugins with many
+    parameters. Known limit: what only a plugin's own editor offers (loading a model, an
+    impulse response or a sample library) is not reachable unless its presets or saved
+    state cover it.
+  - Engine: `gscore-guitar` stays pure and wasm-clean (the plugin block comes in from
+    `gscore-audio` on native builds); the plugin's latency is compensated so buses and
+    sends stay in time; tempo and transport go to the plugin; WAV export and
+    `gscore-cli wav` render offline; changes of sample rate and block size handled.
+  - Saving: the plugin's state is an opaque blob kept with the tone or the song state,
+    not in the GP file. A song opened where the plugin is missing falls back
+    (SoundFont, or the block bypassed) with a message the user can act on, as a missing
+    SoundFont does.
+  - Rough order: a CLAP effect block, then a CLAP instrument, then the separate host
+    process before it leaves "experimental", then VST3.
 
 ### Still open from earlier milestones
 
