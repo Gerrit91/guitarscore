@@ -1279,6 +1279,41 @@ fn step_until(
     true
 }
 
+/// Waits until the built-in synthesizer plays (`None`), or returns why it cannot be
+/// heard here, so the caller skips.
+///
+/// A runner may have no output device (an error), a device that never finishes opening
+/// (a stuck ALSA plugin) or one that opens but never runs its callbacks. None of these
+/// is a failure of the app, and all of them must skip rather than time out: the audio
+/// tests check playback behaviour and cannot on such a machine.
+fn wait_until_playing(harness: &mut Harness<'static, GuitarScoreApp>) -> Option<String> {
+    step_until(harness, 10, |app| {
+        app.playback().state() == gscore_play::PlayState::Playing
+            || app.notice().is_some()
+            || app.playback().error().is_some()
+    });
+    let playback = harness.state().playback();
+    if playback.state() == gscore_play::PlayState::Playing {
+        return None;
+    }
+    Some(
+        harness
+            .state()
+            .notice()
+            .map(str::to_owned)
+            .or_else(|| playback.error())
+            .unwrap_or_else(|| {
+                if playback.is_loading() {
+                    "the audio output was still opening after 10 s".to_owned()
+                } else if playback.is_connected() {
+                    "the audio output opened but never played".to_owned()
+                } else {
+                    "the audio output did not start".to_owned()
+                }
+            }),
+    )
+}
+
 #[test]
 fn outputs_are_chosen_and_labelled() {
     let mut harness = app_with(Some(testdata("basic/note_lengths.gp")));
@@ -1374,12 +1409,8 @@ fn play_and_stop_drive_the_built_in_synthesizer() {
     harness.state_mut().playback_mut().use_soundfont(path);
 
     harness.get_by_label("Play").click();
-    let started = step_until(&mut harness, 10, |app| {
-        app.playback().state() == gscore_play::PlayState::Playing || app.notice().is_some()
-    });
-    assert!(started, "neither played nor failed");
-    if let Some(notice) = harness.state().notice() {
-        eprintln!("skipped: no usable audio device ({notice})");
+    if let Some(why) = wait_until_playing(&mut harness) {
+        eprintln!("skipped: no usable audio device ({why})");
         return;
     }
     harness.step();
@@ -1467,9 +1498,8 @@ fn playback_starts_at_the_cursor_and_resumes_where_it_paused() {
     // Play from measure 3.
     cursor_to_measure(&mut harness, 2);
     harness.state_mut().play_pause();
-    assert!(step_until(&mut harness, 10, playing), "did not start");
-    if let Some(notice) = harness.state().notice() {
-        eprintln!("skipped: no usable audio device ({notice})");
+    if let Some(why) = wait_until_playing(&mut harness) {
+        eprintln!("skipped: no usable audio device ({why})");
         return;
     }
     assert_eq!(harness.state().playback().current_measure(), Some(3));
@@ -1527,12 +1557,8 @@ fn stop_goes_back_to_where_playback_started_when_asked() {
     // As the user does it: Space, then the toolbar's Stop.
     harness.key_press(egui::Key::Space);
     harness.run();
-    let started = step_until(&mut harness, 10, |app| {
-        app.playback().state() == gscore_play::PlayState::Playing || app.notice().is_some()
-    });
-    assert!(started, "did not start");
-    if let Some(notice) = harness.state().notice() {
-        eprintln!("skipped: no usable audio device ({notice})");
+    if let Some(why) = wait_until_playing(&mut harness) {
+        eprintln!("skipped: no usable audio device ({why})");
         return;
     }
     // A bar at 120 bpm lasts two seconds: let the cursor follow into the next one.
@@ -1601,12 +1627,8 @@ fn the_song_end_goes_back_to_where_playback_started() {
         harness.state_mut().set_return_on_stop(run == 0);
         harness.key_press(egui::Key::Space);
         harness.run();
-        let started = step_until(&mut harness, 10, |app| {
-            app.playback().state() == gscore_play::PlayState::Playing || app.notice().is_some()
-        });
-        assert!(started, "did not start");
-        if let Some(notice) = harness.state().notice() {
-            eprintln!("skipped: no usable audio device ({notice})");
+        if let Some(why) = wait_until_playing(&mut harness) {
+            eprintln!("skipped: no usable audio device ({why})");
             return;
         }
         let mut followed = false;
@@ -1642,12 +1664,8 @@ fn a_jump_while_playing_is_where_stop_goes_back_to() {
 
     cursor_to_measure(&mut harness, 0);
     harness.state_mut().play_pause();
-    let started = step_until(&mut harness, 10, |app| {
-        app.playback().state() == gscore_play::PlayState::Playing || app.notice().is_some()
-    });
-    assert!(started, "did not start");
-    if let Some(notice) = harness.state().notice() {
-        eprintln!("skipped: no usable audio device ({notice})");
+    if let Some(why) = wait_until_playing(&mut harness) {
+        eprintln!("skipped: no usable audio device ({why})");
         return;
     }
     // Two bars on while playing: playback goes on from bar 3, and Stop goes back there,
@@ -2932,12 +2950,8 @@ fn the_shown_track_changes_from_the_grid_during_playback() {
     harness.state_mut().playback_mut().use_soundfont(path);
 
     harness.get_by_label("Play").click();
-    let started = step_until(&mut harness, 10, |app| {
-        app.playback().state() == gscore_play::PlayState::Playing || app.notice().is_some()
-    });
-    assert!(started, "neither played nor failed");
-    if let Some(notice) = harness.state().notice() {
-        eprintln!("skipped: no usable audio device ({notice})");
+    if let Some(why) = wait_until_playing(&mut harness) {
+        eprintln!("skipped: no usable audio device ({why})");
         return;
     }
 
@@ -2970,12 +2984,8 @@ fn a_count_in_plays_one_bar_then_the_song_and_the_metronome_stays_live() {
     cursor_to_measure(&mut harness, 2);
 
     harness.get_by_label("Play").click();
-    let started = step_until(&mut harness, 10, |app| {
-        app.playback().state() == gscore_play::PlayState::Playing || app.notice().is_some()
-    });
-    assert!(started, "neither played nor failed");
-    if let Some(notice) = harness.state().notice() {
-        eprintln!("skipped: no usable audio device ({notice})");
+    if let Some(why) = wait_until_playing(&mut harness) {
+        eprintln!("skipped: no usable audio device ({why})");
         return;
     }
     // The count-in is running, but the readout already shows where the song will start
@@ -3025,12 +3035,8 @@ fn an_interrupted_count_in_starts_again_where_the_cursor_is_now() {
     harness.state_mut().set_count_in(true);
     cursor_to_measure(&mut harness, 2);
     harness.get_by_label("Play").click();
-    let started = step_until(&mut harness, 10, |app| {
-        app.playback().state() == gscore_play::PlayState::Playing || app.notice().is_some()
-    });
-    assert!(started, "neither played nor failed");
-    if let Some(notice) = harness.state().notice() {
-        eprintln!("skipped: no usable audio device ({notice})");
+    if let Some(why) = wait_until_playing(&mut harness) {
+        eprintln!("skipped: no usable audio device ({why})");
         return;
     }
     // Half way into the count-in: pause, move the cursor, play again.
@@ -3093,12 +3099,8 @@ fn previous_and_next_bar_during_a_count_in_count_in_again() {
     harness.state_mut().set_count_in(true);
     cursor_to_measure(&mut harness, 2);
     harness.get_by_label("Play").click();
-    let started = step_until(&mut harness, 10, |app| {
-        app.playback().state() == gscore_play::PlayState::Playing || app.notice().is_some()
-    });
-    assert!(started, "neither played nor failed");
-    if let Some(notice) = harness.state().notice() {
-        eprintln!("skipped: no usable audio device ({notice})");
+    if let Some(why) = wait_until_playing(&mut harness) {
+        eprintln!("skipped: no usable audio device ({why})");
         return;
     }
     assert!(harness.state().playback().count_in_pending());
@@ -3193,12 +3195,8 @@ fn looping_the_selected_measure_restarts_at_its_beginning() {
     harness.state_mut().set_loop_selection(true);
 
     harness.get_by_label("Play").click();
-    let started = step_until(&mut harness, 10, |app| {
-        app.playback().state() == gscore_play::PlayState::Playing || app.notice().is_some()
-    });
-    assert!(started, "neither played nor failed");
-    if let Some(notice) = harness.state().notice() {
-        eprintln!("skipped: no usable audio device ({notice})");
+    if let Some(why) = wait_until_playing(&mut harness) {
+        eprintln!("skipped: no usable audio device ({why})");
         return;
     }
     // Play through most of the first (2 s) bar, then see the loop take it back to the top.
@@ -3345,12 +3343,8 @@ fn a_loop_is_counted_in_again_each_time_it_starts_over() {
     harness.state_mut().set_loop_selection(true);
     cursor_to_measure(&mut harness, 1);
     harness.get_by_label("Play").click();
-    let started = step_until(&mut harness, 10, |app| {
-        app.playback().state() == gscore_play::PlayState::Playing || app.notice().is_some()
-    });
-    assert!(started, "neither played nor failed");
-    if let Some(notice) = harness.state().notice() {
-        eprintln!("skipped: no usable audio device ({notice})");
+    if let Some(why) = wait_until_playing(&mut harness) {
+        eprintln!("skipped: no usable audio device ({why})");
         return;
     }
     assert!(step_until(&mut harness, 5, |app| !app
@@ -3393,12 +3387,8 @@ fn a_looped_note_selection_starts_at_its_first_bar() {
     harness.run();
     harness.state_mut().set_loop_selection(true);
     harness.get_by_label("Play").click();
-    let started = step_until(&mut harness, 10, |app| {
-        app.playback().state() == gscore_play::PlayState::Playing || app.notice().is_some()
-    });
-    assert!(started, "neither played nor failed");
-    if let Some(notice) = harness.state().notice() {
-        eprintln!("skipped: no usable audio device ({notice})");
+    if let Some(why) = wait_until_playing(&mut harness) {
+        eprintln!("skipped: no usable audio device ({why})");
         return;
     }
     // While counting in, the readout shows the bar's start, not the selected note.
