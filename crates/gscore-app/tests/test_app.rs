@@ -2439,6 +2439,14 @@ fn after_a_grid_click_shift_arrows_select_whole_bars_there() {
     );
     shift(&mut harness, egui::Key::Home);
     assert_eq!(selected(&harness), (3, 0, Some(1)));
+    // Up or down: every track, as a drag off the row.
+    shift(&mut harness, egui::Key::ArrowUp);
+    assert_eq!(selected(&harness), (3, 0, None));
+    shift(&mut harness, egui::Key::ArrowRight);
+    assert_eq!(selected(&harness), (3, 1, None), "still every track");
+    left_click_at(&mut harness, cell(4, 0));
+    shift(&mut harness, egui::Key::ArrowDown);
+    assert_eq!(selected(&harness), (4, 4, None), "from the cursor's bar");
 
     // A drag's selection goes on the same way.
     harness.hover_at(cell(1, 0));

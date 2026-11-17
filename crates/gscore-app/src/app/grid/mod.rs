@@ -555,8 +555,9 @@ impl GuitarScoreApp {
 
     /// After a click in the grid, Shift+Left/Right extends the grid's bar selection by a
     /// bar and Shift+Home/End to the song's first or last bar (from the cursor's bar, in
-    /// its track, when nothing is selected), as a drag in the grid would. Returns whether
-    /// the grid took `action`.
+    /// its track, when nothing is selected), as a drag in the grid would; Shift+Up/Down
+    /// takes in every track, as a drag leaving the row does. Returns whether the grid took
+    /// `action`.
     pub(super) fn grid_select_key(&mut self, action: gscore_edit::ActionId) -> bool {
         use gscore_edit::ActionId;
         let Some(tab) = self.tabs.get(self.active) else {
@@ -569,6 +570,8 @@ impl GuitarScoreApp {
                     | ActionId::SelectRight
                     | ActionId::SelectHome
                     | ActionId::SelectEnd
+                    | ActionId::SelectLineUp
+                    | ActionId::SelectLineDown
             )
         {
             return false;
@@ -580,13 +583,17 @@ impl GuitarScoreApp {
         let current = tab
             .selection
             .unwrap_or_else(|| MeasureSelection::on(cursor.track.get(), cursor.measure.get()));
-        let focus = match action {
-            ActionId::SelectLeft => current.focus.saturating_sub(1),
-            ActionId::SelectRight => current.focus.saturating_add(1).min(last),
-            ActionId::SelectHome => 0,
-            _ => last,
+        let selection = match action {
+            ActionId::SelectLeft => current.to(current.focus.saturating_sub(1)),
+            ActionId::SelectRight => current.to(current.focus.saturating_add(1).min(last)),
+            ActionId::SelectHome => current.to(0),
+            ActionId::SelectEnd => current.to(last),
+            _ => MeasureSelection {
+                track: None,
+                ..current
+            },
         };
-        self.apply_grid_action(GridAction::Select(current.to(focus)));
+        self.apply_grid_action(GridAction::Select(selection));
         true
     }
 
