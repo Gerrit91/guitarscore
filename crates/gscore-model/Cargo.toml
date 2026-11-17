@@ -1,7 +1,10 @@
 [package]
 name = "gscore-model"
 version.workspace = true
-edition = "2024"
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
 
 [dependencies]
 # Wrapped by `Song`, never exposed (see the crate docs and `cargo xtask layers`).

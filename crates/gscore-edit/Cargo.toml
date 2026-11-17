@@ -1,7 +1,10 @@
 [package]
 name = "gscore-edit"
 version.workspace = true
-edition = "2024"
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
 
 [features]
 # Test hooks for other crates (a command that panics on demand). Not part of the normal API.

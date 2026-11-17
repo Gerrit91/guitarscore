@@ -1,7 +1,10 @@
 [package]
 name = "gscore-layout"
 version.workspace = true
-edition = "2024"
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
 
 [dependencies]
 gscore-model = { path = "../gscore-model" }
