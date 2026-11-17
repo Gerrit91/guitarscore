@@ -164,7 +164,7 @@ pub(super) fn draw_part(
         let mut place = measure.place(content_x, system.stretch, place_index);
         place.left = left;
         match measure.rest_run() {
-            RestRun::Leads(bars) => {
+            RestRun::Leads { bars, .. } => {
                 let slice = (place.right - place.content) / bars.max(1) as f32;
                 run = Some((place.content, slice, place.clone()));
                 place = slice_of(&place, &place.beats, place.content, slice, place.left);
@@ -265,6 +265,17 @@ pub(super) fn draw_part(
             .saturating_add(1)
             == system.last_measure;
         let end_repeat = measure_marks.repeat.end_repeats.is_some();
+        // A multi-bar rest's closing barline belongs to its last bar alone. The lead and
+        // the bars folded into it would draw a barline at the same x, and their plain thin
+        // line would clash with the repeat or final barline there (cutting through its
+        // dots, or crowding the thick rest bar).
+        let draws_barline = match measure.rest_run() {
+            RestRun::Leads { .. } => false,
+            RestRun::Folded => !line
+                .get(offset.saturating_add(1))
+                .is_some_and(|next| next.rest_run() == RestRun::Folded),
+            RestRun::None => true,
+        };
         let mut staves: Vec<(&Staff, f32)> = Vec::with_capacity(3);
         if show_tab {
             staves.push((&ctx.staff, tab_top));
@@ -294,6 +305,9 @@ pub(super) fn draw_part(
             }
             if measure_marks.repeat.start {
                 staff.draw_repeat(left, staff_top, true, font, &mut content);
+            }
+            if !draws_barline {
+                continue;
             }
             if end_repeat {
                 staff.draw_repeat(x, staff_top, false, font, &mut content);

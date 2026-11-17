@@ -558,8 +558,8 @@ impl MeasureLayout {
         self.draw_legato(&xs, top, ops);
         // Without a notation staff, the tab carries the tuplets itself, right under it.
         self.draw_under_staff(&xs, right, top, tops.notation.is_none(), ctx, ops);
-        if let super::RestRun::Leads(count) = self.rest_run() {
-            self.draw_rest_run(count, x, stretch, tops, ctx, ops);
+        if let super::RestRun::Leads { .. } = self.rest_run() {
+            self.draw_rest_run(self.rest_run(), x, stretch, tops, ctx, ops);
         }
     }
 

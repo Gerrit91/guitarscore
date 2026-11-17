@@ -7,11 +7,11 @@
 
 mod common;
 
-use gscore_layout::{DrawOp, Fonts, Glyph, Layout, LayoutOptions, layout_tracks};
+use gscore_layout::{ColorToken, DrawOp, Fonts, Glyph, Layout, LayoutOptions, layout_tracks};
 use gscore_model::testing::{self, GUITAR_6};
 use gscore_model::{
-    BeatIndex, BeatPosition, Fret, MeasureIndex, Song, StaffIndex, StringNumber, SystemBreak,
-    TrackColor, TrackIndex, VoiceIndex,
+    BeatIndex, BeatPosition, Fret, MeasureIndex, Repeat, Song, StaffIndex, StringNumber,
+    SystemBreak, TrackColor, TrackIndex, VoiceIndex,
 };
 
 /// A song of `tracks` guitar tracks and `bars` bars, with a note on track `track`'s bar
@@ -84,6 +84,55 @@ fn bars(layout: &Layout) -> Vec<(f32, f32)> {
         .iter()
         .map(|place| (place.left, place.right))
         .collect()
+}
+
+/// The right end of the thick bar of a multi-bar rest.
+fn rest_bar_right(layout: &Layout) -> f32 {
+    layout
+        .ops
+        .iter()
+        .filter_map(|op| match op {
+            DrawOp::Rect { rect, .. } if rect.height < 2.0 && rect.width > 5.0 => {
+                Some(rect.origin.x + rect.width)
+            }
+            _ => None,
+        })
+        .fold(f32::NEG_INFINITY, f32::max)
+}
+
+/// The vertical barline strokes as `(center x, thickness)`, one per stroke (a stroke is
+/// drawn once per shown staff).
+fn barlines(layout: &Layout) -> Vec<(f32, f32)> {
+    let mut strokes: Vec<(f32, f32)> = layout
+        .ops
+        .iter()
+        .filter_map(|op| match op {
+            DrawOp::Line {
+                from,
+                to,
+                thickness,
+                color: ColorToken::Barline,
+            } if (from.x - to.x).abs() < 1e-3 && (to.y - from.y).abs() > 1.0 => {
+                Some((from.x, *thickness))
+            }
+            _ => None,
+        })
+        .collect();
+    strokes.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
+    strokes.dedup_by(|a, b| (a.0 - b.0).abs() < 0.01);
+    strokes
+}
+
+/// The visible gap from the right end of a multi-bar rest's thick bar to the left edge of
+/// the barline that closes it.
+fn gap_to_closing_barline(layout: &Layout) -> f32 {
+    let right = rest_bar_right(layout);
+    let ink = barlines(layout)
+        .into_iter()
+        .filter(|&(x, _)| x > right)
+        .map(|(x, thickness)| x - thickness / 2.0)
+        .fold(f32::INFINITY, f32::min);
+    ink - right
 }
 
 #[test]
@@ -183,4 +232,57 @@ fn with_several_tracks_every_track_must_rest() {
         4,
         "{counts:?}"
     );
+}
+
+#[test]
+fn the_thick_bar_keeps_clear_of_a_final_or_double_barline() {
+    // Bars 2-3 rest and bar 4 plays: the run ends at a plain thin barline.
+    let plain = layout(&song(1, 4, &[(0, 0), (0, 3)]), true);
+    let plain_gap = gap_to_closing_barline(&plain);
+    assert!(plain_gap > 1.0, "{plain_gap}");
+    // The same run as the score's last bars ends at the thin-thick final barline...
+    let final_run = layout(&song(1, 4, &[(0, 0)]), true);
+    let final_gap = gap_to_closing_barline(&final_run);
+    // ...or at a double barline.
+    let mut song = song(1, 4, &[(0, 0), (0, 3)]);
+    let _ = song.set_double_bar(MeasureIndex::new(2), true).unwrap();
+    let double = layout(&song, true);
+    let double_gap = gap_to_closing_barline(&double);
+    // The thick bar leaves the same visible room before either: the barline's ink, not its
+    // nominal x, is what it must clear.
+    assert!(
+        (final_gap - plain_gap).abs() < 1e-3,
+        "final {final_gap}, plain {plain_gap}"
+    );
+    assert!(
+        (double_gap - plain_gap).abs() < 1e-3,
+        "double {double_gap}, plain {plain_gap}"
+    );
+}
+
+#[test]
+fn a_repeat_closing_a_run_is_the_only_barline_there() {
+    // Bars 2-3 rest, bar 3 repeats at its end, bar 4 plays.
+    let mut song = song(1, 4, &[(0, 0), (0, 3)]);
+    let _ = song
+        .set_repeat(
+            MeasureIndex::new(2),
+            Repeat {
+                start: false,
+                end_repeats: Some(1),
+                endings: 0,
+            },
+        )
+        .unwrap();
+    let layout = layout(&song, true);
+    let run_end = bars(&layout)[2].1;
+    // The repeat sign's thin and thick line, and nothing else: no plain barline of the
+    // run's lead or of a folded bar cutting through the dots.
+    let closing: Vec<(f32, f32)> = barlines(&layout)
+        .into_iter()
+        .filter(|&(x, _)| x > run_end - 1.0 && x < run_end + 3.0)
+        .collect();
+    assert_eq!(closing.len(), 2, "{closing:?}");
+    // The sign stands clear of the thick bar (its dots have room).
+    assert!(closing[0].0 - rest_bar_right(&layout) > 1.5, "{closing:?}");
 }

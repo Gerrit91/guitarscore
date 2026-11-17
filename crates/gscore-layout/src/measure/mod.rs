@@ -30,7 +30,7 @@ use crate::ornaments::{self, ColumnMarks, Fret};
 
 use columns::{as_f64, beat_length, beat_starts, column_items};
 use graces::Grace;
-pub(crate) use rest_run::RestRun;
+pub(crate) use rest_run::{RestRun, RunEnd};
 
 /// Space before and after a time signature.
 const TIME_SIG_PAD: (f32, f32) = (0.8, 0.6);

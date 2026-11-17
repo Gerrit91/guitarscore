@@ -175,7 +175,9 @@ pub(crate) fn layout_with(
     for part in &mut parts {
         for (measure, run) in part.measures.iter_mut().zip(&runs) {
             match run {
-                RestRun::Leads(bars) => *measure = Arc::new(measure.leading_rest_run(*bars)),
+                RestRun::Leads { bars, end } => {
+                    *measure = Arc::new(measure.leading_rest_run(*bars, *end));
+                }
                 RestRun::Folded => *measure = Arc::new(measure.folded_into_rest_run()),
                 RestRun::None => {}
             }

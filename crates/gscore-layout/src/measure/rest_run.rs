@@ -11,8 +11,10 @@ use super::{Column, MeasureLayout, Tops};
 use crate::Context;
 use crate::draw::{ColorToken, DrawOp, Point, Rect};
 use crate::glyph::{Digit, Glyph};
+use crate::metrics::MusicFont;
 use crate::notation;
 use crate::ornaments::ColumnMarks;
+use crate::staff::Staff;
 
 /// The width a multi-bar rest's content takes at a natural stretch.
 const RUN_SPACE: f32 = 12.0;
@@ -37,10 +39,56 @@ pub(crate) enum RestRun {
     /// Not in one: the measure shows its own rests.
     #[default]
     None,
-    /// The first bar of a run of this many bars: it is drawn as the multi-bar rest.
-    Leads(u32),
+    /// The first bar of a run of this many bars: it is drawn as the multi-bar rest. `end`
+    /// says which barline closes the run.
+    Leads { bars: u32, end: RunEnd },
     /// A later bar of a run: no room, nothing drawn but its barline.
     Folded,
+}
+
+/// The barline that closes a multi-bar rest (drawn by the run's last bar).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) enum RunEnd {
+    /// A plain thin barline.
+    #[default]
+    Plain,
+    /// The score's final thin-thick barline.
+    Final,
+    /// A double barline.
+    Double,
+    /// An end repeat (thick and thin line, dots).
+    Repeat,
+    /// A dashed barline (the run's last bar is in free time).
+    Dashed,
+}
+
+impl RunEnd {
+    /// How far left of the barline's `x` its ink reaches, in staff spaces: the room the
+    /// thick bar of the rest must leave.
+    fn left_reach(self, font: &MusicFont) -> f32 {
+        let engraving = font.engraving();
+        let (thin, thick, gap) = (
+            engraving.thin_barline_thickness,
+            engraving.thick_barline_thickness,
+            engraving.thin_thick_barline_separation,
+        );
+        match self {
+            RunEnd::Plain | RunEnd::Dashed => thin,
+            RunEnd::Final => thick + gap + thin,
+            RunEnd::Double => thin + gap + thin,
+            // The dots stand in the room reserved after the run's content, so the run's
+            // ink starts where its content ends.
+            RunEnd::Repeat => Staff::repeat_sign_width(font),
+        }
+    }
+
+    /// The room the barline takes after the run's content (an end repeat's sign).
+    fn allowance(self, font: &MusicFont) -> f32 {
+        match self {
+            RunEnd::Repeat => Staff::repeat_sign_width(font),
+            _ => 0.0,
+        }
+    }
 }
 
 impl MeasureLayout {
@@ -54,13 +102,14 @@ impl MeasureLayout {
         self.clef_change || self.key_signature.is_some() || self.time_signature.is_some()
     }
 
-    /// This measure as the first bar of a multi-bar rest of `count` bars: its signatures,
-    /// then one wide column where every beat of the run's first bar sits (for the cursor).
-    pub(crate) fn leading_rest_run(&self, count: u32) -> Self {
+    /// This measure as the first bar of a multi-bar rest of `count` bars closed by
+    /// `end`: its signatures, then one wide column where every beat of the run's first bar
+    /// sits (for the cursor).
+    pub(crate) fn leading_rest_run(&self, count: u32, end: RunEnd) -> Self {
         MeasureLayout {
             columns: vec![self.blank_column(RUN_SPACE, RUN_FLOOR)],
             tail_spacing: 0.0,
-            rest_run: RestRun::Leads(count),
+            rest_run: RestRun::Leads { bars: count, end },
             ..self.clone()
         }
     }
@@ -114,19 +163,30 @@ impl MeasureLayout {
     }
 
     /// Draws a leading bar's thick bar on every shown staff and the number of bars above
-    /// the topmost, between its signatures (the measure starting at `x`) and its end.
+    /// the topmost, between its signatures (the measure starting at `x`) and the barline
+    /// that closes the run, whose ink must stay clear of the bar.
     pub(super) fn draw_rest_run(
         &self,
-        count: u32,
+        run: RestRun,
         x: f32,
         stretch: f32,
         tops: Tops,
         ctx: &Context<'_>,
         ops: &mut Vec<DrawOp>,
     ) {
+        let RestRun::Leads { bars: count, end } = run else {
+            return;
+        };
+        let font = &ctx.fonts.music;
         let start = x + self.fixed_width();
-        let end = self.width(stretch) + x;
-        let (left, right) = (start + BAR_INSET, end - BAR_INSET);
+        let content_end = self.width(stretch) + x;
+        // The barline's `x` includes any room the run's last bar reserves after its
+        // content (an end repeat's sign); the thick bar keeps clear of its ink.
+        let barline_x = content_end + end.allowance(font);
+        let (left, right) = (
+            start + BAR_INSET,
+            barline_x - end.left_reach(font) - BAR_INSET,
+        );
         if right <= left {
             return;
         }
@@ -166,7 +226,6 @@ impl MeasureLayout {
             .filter_map(|digit| digit.to_digit(10).and_then(Digit::new))
             .map(Glyph::TimeSigDigit)
             .collect();
-        let font = &ctx.fonts.music;
         let width: f32 = digits.iter().map(|&glyph| font.advance(glyph)).sum();
         let mut at = (left + right) / 2.0 - width / 2.0;
         let y = tops.top_line() - COUNT_GAP - DIGIT_HALF;

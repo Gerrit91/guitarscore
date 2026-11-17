@@ -6089,3 +6089,18 @@ Tests: dragging the edge widens the column and the settings keep it.
   rest; the owner noticed). Each bar now has its own equal slice of the rest, its beats
   spread across it, so the cursor crosses the rest once over all its bars at the music's
   pace. Test: the cursor's positions rise bar by bar and beat by beat through a run.
+
+## 2026-11-17 — Multi-bar rests close cleanly at a final barline or a repeat
+
+- The thick bar now keeps its visible room from the barline that closes the run: the
+  inset is measured from the barline's ink, not its nominal position, so a final
+  (thin-thick) or double barline no longer crowds it (the owner saw it in the last bar
+  of a score).
+- The closing barline is drawn by the run's last bar alone. The leading bar and the
+  bars folded into it drew their own plain thin barlines at the same position, so an
+  end repeat there showed an extra line cutting through its dots (the owner saw it at
+  the end of a run before a free-time bar). Plain runs look as before.
+- `RestRun::Leads` now carries the closing barline's kind (`RunEnd`), decided where the
+  runs are planned.
+- Tests: the thick bar's visible gap is the same before a plain, a final and a double
+  barline; an end repeat is the only barline stroke at the run's end.
