@@ -254,6 +254,12 @@ impl GuitarScoreApp {
                 _ => {}
             }
         }
+        if let Action::Plain(id) = action
+            && self.grid_select_key(id)
+        {
+            ctx.request_repaint();
+            return;
+        }
         let Some(tab) = self.tabs.get_mut(self.active) else {
             return;
         };

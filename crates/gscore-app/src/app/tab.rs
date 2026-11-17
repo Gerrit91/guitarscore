@@ -73,6 +73,13 @@ pub(super) struct Tab {
     /// A bar was clicked in the song grid: the view turns to the cursor as playback turns
     /// it (its line to the top), even when the cursor was already there.
     pub(super) turn_to_cursor: bool,
+    /// The song grid was clicked last (not the page): Shift with the arrows, Home and End
+    /// selects whole bars there instead of beats in the score.
+    pub(super) grid_keys: bool,
+    /// Shift+Up/Down in the grid: the track the selection started in and which way the
+    /// keys left it (-1 up, 1 down: every track; 0: that one track). `None` once the
+    /// pointer changes the selection.
+    pub(super) grid_rows: Option<(usize, isize)>,
     /// In the page view: the cursor's page and the page count (1-based), for the status bar.
     pub(super) page_info: Option<(usize, usize)>,
     /// The track being renamed, while the rename window is open.
@@ -149,6 +156,8 @@ impl Tab {
             tone_basis: std::collections::BTreeMap::new(),
             shown_cursor: None,
             turn_to_cursor: false,
+            grid_keys: false,
+            grid_rows: None,
             page_info: None,
             renaming: None,
             song_text: None,

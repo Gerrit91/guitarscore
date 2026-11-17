@@ -2400,6 +2400,95 @@ fn a_grid_drag_keeps_the_bar_it_was_pressed_on() {
 }
 
 #[test]
+fn after_a_grid_click_shift_arrows_select_whole_bars_there() {
+    let mut harness = app_with(Some(testdata("basic/multi_staff.gp")));
+    let rect = harness.get_by_label("Song grid").rect();
+    let cell = |measure: usize, track: usize| {
+        rect.left_top() + egui::vec2(24.0 * measure as f32 + 12.0, 24.0 * track as f32 + 12.0)
+    };
+    let shift = |harness: &mut Harness<'static, GuitarScoreApp>, key: egui::Key| {
+        harness.key_press_modifiers(egui::Modifiers::SHIFT, key);
+        harness.run();
+    };
+    let selected = |harness: &Harness<'static, GuitarScoreApp>| {
+        let selection = harness.state().selection().expect("a grid selection");
+        (selection.anchor, selection.focus, selection.track)
+    };
+    let last = harness.state().document().unwrap().song().measure_count() - 1;
+
+    // From the clicked bar, in its track, a bar per key.
+    left_click_at(&mut harness, cell(3, 1));
+    shift(&mut harness, egui::Key::ArrowRight);
+    shift(&mut harness, egui::Key::ArrowRight);
+    assert_eq!(selected(&harness), (3, 5, Some(1)));
+    assert!(matches!(
+        harness.state().document().unwrap().editor().selection(),
+        Some(gscore_edit::Selection::Measures { .. })
+    ));
+    for _ in 0..3 {
+        shift(&mut harness, egui::Key::ArrowLeft);
+    }
+    assert_eq!(selected(&harness), (3, 2, Some(1)), "back over the start");
+    shift(&mut harness, egui::Key::End);
+    assert_eq!(selected(&harness), (3, last, Some(1)));
+    shift(&mut harness, egui::Key::ArrowRight);
+    assert_eq!(
+        selected(&harness),
+        (3, last, Some(1)),
+        "not past the last bar"
+    );
+    shift(&mut harness, egui::Key::Home);
+    assert_eq!(selected(&harness), (3, 0, Some(1)));
+    // Up or down: every track, as a drag off the row; back again: the one track.
+    shift(&mut harness, egui::Key::ArrowUp);
+    assert_eq!(selected(&harness), (3, 0, None));
+    shift(&mut harness, egui::Key::ArrowRight);
+    assert_eq!(selected(&harness), (3, 1, None), "still every track");
+    shift(&mut harness, egui::Key::ArrowDown);
+    assert_eq!(selected(&harness), (3, 1, Some(1)), "back on its row");
+    shift(&mut harness, egui::Key::ArrowDown);
+    assert_eq!(selected(&harness), (3, 1, None));
+    shift(&mut harness, egui::Key::ArrowUp);
+    assert_eq!(selected(&harness), (3, 1, Some(1)));
+    // Pressed again and again, one press the other way still comes back.
+    for _ in 0..5 {
+        shift(&mut harness, egui::Key::ArrowUp);
+    }
+    assert_eq!(selected(&harness), (3, 1, None));
+    shift(&mut harness, egui::Key::ArrowDown);
+    assert_eq!(selected(&harness), (3, 1, Some(1)), "one press back");
+    left_click_at(&mut harness, cell(4, 0));
+    shift(&mut harness, egui::Key::ArrowDown);
+    assert_eq!(selected(&harness), (4, 4, None), "from the cursor's bar");
+    shift(&mut harness, egui::Key::ArrowUp);
+    assert_eq!(selected(&harness), (4, 4, Some(0)));
+
+    // A drag's selection goes on the same way.
+    harness.hover_at(cell(1, 0));
+    harness.drag_at(cell(1, 0));
+    harness.run();
+    harness.hover_at(cell(2, 0));
+    harness.run();
+    harness.drop_at(cell(2, 0));
+    harness.run();
+    shift(&mut harness, egui::Key::ArrowRight);
+    assert_eq!(selected(&harness), (1, 3, Some(0)));
+
+    // After a click on the page, Shift+arrows select beats in the score again.
+    let page = harness.get_by_label("Score page").rect();
+    left_click_at(
+        &mut harness,
+        egui::pos2(page.left() + 250.0, page.top() + 300.0),
+    );
+    shift(&mut harness, egui::Key::ArrowRight);
+    assert!(matches!(
+        harness.state().document().unwrap().editor().selection(),
+        Some(gscore_edit::Selection::Beats { .. })
+    ));
+    assert!(harness.state().selection().is_none());
+}
+
+#[test]
 fn copy_and_delete_act_on_a_one_track_grid_selection() {
     let mut harness = app_with(Some(testdata("basic/multi_staff.gp")));
     let notes = |harness: &Harness<'static, GuitarScoreApp>, track: usize, measure: usize| {

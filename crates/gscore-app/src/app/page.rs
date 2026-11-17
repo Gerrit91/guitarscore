@@ -565,6 +565,14 @@ impl GuitarScoreApp {
             let hit = response
                 .interact_pointer_pos()
                 .and_then(|pos| layout.hit(to_layout(pos)));
+            // A press on the page gives Shift with the arrows back to the score's beats.
+            if response.is_pointer_button_down_on()
+                || response.clicked()
+                || response.secondary_clicked()
+                || response.drag_started()
+            {
+                tab.grid_keys = false;
+            }
             // A right-click acts on what it hits: the cursor goes there first, unless the
             // click is inside the selection (then the menu acts on the selection).
             if response.secondary_clicked()

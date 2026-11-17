@@ -263,8 +263,10 @@ pub(super) fn matrix(
     }
 
     // The cursor's bar, outlined in its track's row: over the squares and the measure
-    // lines, so a bar with notes (a filled square) shows it as well as an empty one.
-    if view.cursor_track < last_row
+    // lines, so a bar with notes (a filled square) shows it as well as an empty one. A
+    // selection is marked on its own (the cursor sits at its first bar).
+    if view.selection.is_none()
+        && view.cursor_track < last_row
         && view.cursor_track >= first_row
         && view.cursor_measure < view.measure_count
     {
