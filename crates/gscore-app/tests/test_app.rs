@@ -2363,6 +2363,43 @@ fn dragging_in_the_song_grid_selects_one_track_or_all() {
 }
 
 #[test]
+fn a_grid_drag_keeps_the_bar_it_was_pressed_on() {
+    let mut harness = app_with(Some(testdata("basic/multi_staff.gp")));
+    let rect = harness.get_by_label("Song grid").rect();
+    let cell = |measure: usize| rect.left_top() + egui::vec2(24.0 * measure as f32 + 12.0, 12.0);
+    let selected = |harness: &Harness<'static, GuitarScoreApp>| {
+        let selection = harness.state().selection().unwrap();
+        (selection.start(), selection.end())
+    };
+
+    // Dragged to the left, bar by bar: the pressed bar stays selected.
+    harness.hover_at(cell(6));
+    harness.drag_at(cell(6));
+    harness.run();
+    for measure in (2..6).rev() {
+        harness.hover_at(cell(measure));
+        harness.run();
+        assert_eq!(selected(&harness), (measure, 6), "dragged to bar {measure}");
+    }
+    harness.drop_at(cell(2));
+    harness.run();
+    assert_eq!(selected(&harness), (2, 6));
+
+    // Pressed at a bar's right edge, the first movement crossing into the next bar: the
+    // selection starts at the pressed bar.
+    let edge = cell(3) + egui::vec2(10.0, 0.0);
+    harness.hover_at(edge);
+    harness.drag_at(edge);
+    harness.run();
+    harness.hover_at(edge + egui::vec2(8.0, 0.0));
+    harness.run();
+    assert_eq!(selected(&harness), (3, 4));
+    harness.drop_at(edge + egui::vec2(8.0, 0.0));
+    harness.run();
+    assert_eq!(selected(&harness), (3, 4));
+}
+
+#[test]
 fn copy_and_delete_act_on_a_one_track_grid_selection() {
     let mut harness = app_with(Some(testdata("basic/multi_staff.gp")));
     let notes = |harness: &Harness<'static, GuitarScoreApp>, track: usize, measure: usize| {
