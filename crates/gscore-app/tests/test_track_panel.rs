@@ -672,6 +672,29 @@ fn context_click(harness: &mut Harness<'static, GuitarScoreApp>, label: &str) {
     harness.run();
 }
 
+#[test]
+fn an_empty_block_pastes_from_its_context_menu() {
+    let mut harness = app_with("basic/multi_staff.gp");
+    open_sound_chain(&mut harness);
+    // Copy a block from the first empty place.
+    let first = empty_block_index(&harness);
+    harness.get_by_label(&format!("Block {first}: +")).click();
+    harness.run();
+    harness.get_by_label("EQ").click();
+    harness.run();
+    context_click(&mut harness, &format!("Block {first}: EQ"));
+    harness.get_by_label("Copy block").click();
+    harness.run();
+    // A right-click on the next empty place offers the copied block, as a filled block's
+    // own menu does.
+    let next = empty_block_index(&harness);
+    assert_ne!(next, first);
+    context_click(&mut harness, &format!("Block {next}: +"));
+    harness.get_by_label("Paste block").click();
+    harness.run();
+    harness.get_by_label(&format!("Block {next}: EQ"));
+}
+
 /// A drum part's own chain in the drum track's sound payload (the sixth track of
 /// `multi_staff.gp`).
 fn drum_part_chain(

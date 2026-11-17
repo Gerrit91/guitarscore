@@ -6133,3 +6133,12 @@ Tests: dragging the edge widens the column and the settings keep it.
   Ctrl+Z restores the track. The row and strip context menus keep their own Delete.
 - Snapshots: the grid and mixer headers (grid zooms, grid eyes/selection/mute, mixer
   views and buses) show the new button row.
+
+## 2026-11-17 — An empty chain place pastes from its right-click menu
+
+- An empty place on the Sound chain board offers **Paste block** (and **Paste chain**
+  when one was copied) on right-click, as a filled block's menu does; the left-click menu
+  of effects is unchanged. The board is shared, so the master and bus chains get it too.
+- The right-click menu and the box's left-click menu get ids of their own; sharing one
+  made egui report a clash.
+- Test: copy an EQ block, right-click the next empty place, paste it, and find it there.

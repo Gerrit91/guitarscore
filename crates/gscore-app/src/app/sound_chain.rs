@@ -1509,6 +1509,38 @@ pub(super) fn board(
                         }
                     }
                 });
+                // A right-click on an empty place pastes what the clipboard holds, as a
+                // filled block's menu does.
+                if clipboard.is_some() {
+                    egui::Popup::context_menu(&response)
+                        .id(response.id.with("empty_place_context"))
+                        .show(|ui| {
+                            if let Some(SoundClip::Block(_)) = clipboard
+                                && icon_menu_item(
+                                    ui,
+                                    super::icons::Icon::Paste,
+                                    "Paste block",
+                                    "Put the copied block in this place",
+                                )
+                                .clicked()
+                            {
+                                actions.paste_block = Some(place);
+                                ui.close();
+                            }
+                            if let Some(SoundClip::Chain(_)) = clipboard
+                                && menu_row(
+                                    ui,
+                                    "Paste chain",
+                                    "Replace every place of this chain with the copied one",
+                                    |_, _, _| {},
+                                )
+                                .clicked()
+                            {
+                                actions.paste_chain = true;
+                                ui.close();
+                            }
+                        });
+                }
             } else {
                 if response.clicked() {
                     actions.select = Some(index);
