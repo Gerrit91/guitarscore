@@ -123,7 +123,9 @@ in AGENTS.md section 9.
     a background thread here, so Open… needs a change there. On Windows, egui turns
     Ctrl+Insert into Copy, so `insert_measure` needs another key. On Wayland the compositor
     may ignore a requested window position. The app snapshot tests need a GPU or software
-    Vulkan. Releases are not signed (Gatekeeper, SmartScreen warnings).
+    Vulkan. Releases are not signed (Gatekeeper, SmartScreen warnings). Opening a link
+    goes through `webbrowser` (xdg-open, open, ShellExecute): a Linux box with no
+    xdg-utils and no desktop handler opens nothing, and the app cannot tell.
 14. **Recovery.** Edits reach the journal within milliseconds; a crash in that window loses
     the last edit. The cursor, shown track and playback position are not journaled; SIGTERM
     and shutdown rely on the journal, not a final snapshot. Only commands are panic-tested
