@@ -228,3 +228,54 @@ fn the_ruler_ends_at_the_vertical_bar() {
         vertical.left()
     );
 }
+
+/// The cursor's bar has its border also on a track's colored square (a bar with notes),
+/// and on a bar that starts at a strong bar line (every fourth): the squares and the lines
+/// are drawn before it.
+#[test]
+fn the_cursor_bar_border_shows_on_a_bar_with_notes() {
+    let _gpu = common::lock_gpu();
+    // The song as it is: every bar of its one track has notes.
+    let mut harness = wide_song(1);
+    {
+        let editor = harness.state_mut().document_mut().unwrap().editor_mut();
+        while editor.song().measure_count() > 9 {
+            editor
+                .execute_command(Command::DeleteMeasure {
+                    measure: MeasureIndex::new(0),
+                })
+                .unwrap();
+        }
+    }
+    harness.run();
+    let grid = song_grid(&harness);
+    let image_of = |harness: &mut Harness<'static, GuitarScoreApp>| {
+        park_pointer(harness);
+        harness.render().expect("rendered")
+    };
+    let ppp = harness.ctx.pixels_per_point();
+    for bar in [1, 4] {
+        // 24 px square cells, the track's row at the top.
+        let cell = egui::Rect::from_min_size(
+            grid.left_top() + egui::vec2(24.0 * bar as f32, 0.0),
+            egui::vec2(24.0, 24.0),
+        );
+        harness.hover_at(cell.center());
+        harness.drag_at(cell.center());
+        harness.drop_at(cell.center());
+        harness.run();
+        let cursor = harness.state().document().unwrap().editor().cursor();
+        assert_eq!(cursor.measure, MeasureIndex::new(bar));
+        let image = image_of(&mut harness);
+        let pixel = |at: egui::Pos2| *image.get_pixel((at.x * ppp) as u32, (at.y * ppp) as u32);
+        let inside = pixel(cell.center());
+        for (edge, at) in [
+            ("left", egui::pos2(cell.left() + 0.75, cell.center().y)),
+            ("right", egui::pos2(cell.right() - 0.75, cell.center().y)),
+            ("top", egui::pos2(cell.center().x, cell.top() + 0.75)),
+            ("bottom", egui::pos2(cell.center().x, cell.bottom() - 0.75)),
+        ] {
+            assert_ne!(pixel(at), inside, "no border at the {edge} of bar {bar}");
+        }
+    }
+}
