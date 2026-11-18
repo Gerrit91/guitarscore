@@ -14,7 +14,7 @@ pub(crate) enum Icon {
     Stop,
     /// Metronome.
     Metronome,
-    /// Count-in (a metronome followed by a play sign).
+    /// Count-in (counting numbers in a box).
     CountIn,
     /// Loop (two arrows going round a circle).
     Loop,
@@ -105,7 +105,7 @@ pub(crate) enum Icon {
 }
 
 /// The size of the compact icon buttons in the panels and the toolbar.
-const BUTTON: Vec2 = vec2(26.0, 22.0);
+pub(crate) const BUTTON: Vec2 = vec2(26.0, 22.0);
 /// How much the toolbar's icons are shrunk inside their button: less than the panels', so
 /// the drawing is a little larger without making the toolbar wider (a wider toolbar pushes
 /// the side groups into the player at narrow window sizes).
@@ -324,18 +324,14 @@ pub(crate) fn paint(painter: &Painter, rect: Rect, color: Color32, icon: Icon) {
             paint_metronome(painter, center, size, color);
         }
         Icon::CountIn => {
-            // A full-height metronome, then a small play sign: click a bar, then start.
-            paint_metronome(
-                painter,
-                pos2(rect.left() + size * 0.45, center.y),
-                size,
-                color,
-            );
-            paint_triangle(
-                painter,
-                pos2(rect.right() - size * 0.16, center.y + size * 0.1),
-                size * 0.17,
-                true,
+            // Counting numbers in a rounded box (unlike the metronome beside it).
+            let frame = Rect::from_center_size(center, vec2(rect.width(), size * 0.9));
+            painter.rect_stroke(frame, 2.5, stroke, egui::StrokeKind::Inside);
+            painter.text(
+                center,
+                egui::Align2::CENTER_CENTER,
+                "123",
+                egui::FontId::proportional(size * 0.62),
                 color,
             );
         }
