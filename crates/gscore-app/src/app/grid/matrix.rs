@@ -210,7 +210,7 @@ pub(super) fn matrix(
         );
     }
 
-    // The squares of the bars with notes.
+    // Row stripes (a setting) and the squares of the bars with notes.
     for row in first_row..last_row {
         let Some(cells) = grid.cells.get(row) else {
             continue;
@@ -222,6 +222,9 @@ pub(super) fn matrix(
                 rect.top() + (row as f32 + 1.0) * ROW_HEIGHT,
             ),
         );
+        if view.stripes && row % 2 == 1 {
+            painter.rect_filled(row_rect, 0.0, visuals.faint_bg_color);
+        }
         for measure_index in first_measure..last_measure {
             if !cells.get(measure_index).copied().unwrap_or(false) {
                 continue;

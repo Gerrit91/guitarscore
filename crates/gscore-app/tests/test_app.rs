@@ -3277,6 +3277,28 @@ fn the_audio_tab_is_last_and_named_audio_io() {
 }
 
 #[test]
+fn the_song_grid_stripes_can_be_switched_off_in_the_settings() {
+    let _gpu = common::lock_gpu();
+    let mut harness = app_with(Some(testdata("basic/multi_staff.gp")));
+    assert!(harness.state().settings().grid_stripes, "on by default");
+    harness.get_by_label("File").click();
+    harness.run();
+    harness.get_by_label("Settings… ctrl+,").click();
+    harness.run();
+    harness.get_by_label("Editor").click();
+    harness.run();
+    harness.get_by_label("Stripe every other track row").click();
+    harness.run();
+    assert!(
+        !harness.state().settings().grid_stripes,
+        "kept for the next start"
+    );
+    harness.get_by_label("Close Settings").click();
+    harness.run();
+    harness.snapshot("grid_without_stripes");
+}
+
+#[test]
 fn the_metronome_tab_sets_the_click_and_the_count_in() {
     let mut harness = app_with(Some(testdata("basic/note_lengths.gp")));
     harness.get_by_label("File").click();

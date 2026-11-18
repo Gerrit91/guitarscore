@@ -701,6 +701,8 @@ pub struct Settings {
     pub shortcut_overrides: Vec<ShortcutSetting>,
     /// Whether a fret typed into the score is played back at once.
     pub audition_notes: bool,
+    /// Whether every other row of the song grid has a lighter background (on by default).
+    pub grid_stripes: bool,
     /// Whether stopping playback puts the cursor (and selection) back where playback
     /// started (the song's end always does).
     pub return_on_stop: bool,
@@ -800,6 +802,7 @@ impl Default for Settings {
             keymap_path: None,
             shortcut_overrides: Vec::new(),
             audition_notes: true,
+            grid_stripes: true,
             return_on_stop: true,
             flowing_cursor: true,
             autosave_seconds: DEFAULT_AUTOSAVE_SECONDS,
