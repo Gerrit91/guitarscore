@@ -1,12 +1,14 @@
 //! The app in the Linux applications menu: the first-start question, the switch in
 //! Settings › Editor, and keeping an entry the app added pointing at the running program
-//! (see [`crate::desktop_entry`]).
+//! (see [`crate::desktop_entry`]). Also the Guitar Pro files opening with the app, on
+//! Linux and Windows: only a switch in Settings › Editor (see [`crate::file_types`]).
 
 use egui::RichText;
 
 use super::GuitarScoreApp;
 use super::alert::{AlertIcon, Answer, Reply, alert};
 use crate::desktop_entry::{DesktopEntry, Refresh};
+use crate::file_types::FileTypes;
 
 /// The applications menu's state while the app runs.
 #[derive(Debug, Default)]
@@ -16,6 +18,9 @@ pub(super) struct DesktopMenu {
     entry: Option<DesktopEntry>,
     /// The first-start question was answered or dismissed in this run.
     asked: bool,
+    /// The file association this program would write; `None` where the app does not
+    /// offer one (not Linux or Windows, or a build from a source checkout).
+    file_types: Option<FileTypes>,
 }
 
 impl GuitarScoreApp {
@@ -76,6 +81,65 @@ impl GuitarScoreApp {
             }
         }
         self.settings.desktop_entry = Some(on);
+        self.save_settings();
+    }
+
+    /// Offers the Guitar Pro files' association in Settings, and brings one the app wrote
+    /// up to date with this program. The Linux and Windows release binaries call this.
+    #[cfg(any(target_os = "linux", windows))]
+    pub fn enable_file_association(&mut self) {
+        if let Some(types) = FileTypes::for_this_program() {
+            self.use_file_types(types);
+        }
+    }
+
+    /// [`GuitarScoreApp::enable_file_association`] with the association given (tests
+    /// write into a folder of their own).
+    pub(super) fn use_file_types(&mut self, types: FileTypes) {
+        // The program moved: quietly rewritten, while the setting is on.
+        if self.settings.file_association
+            && let Err(error) = types.refresh()
+        {
+            eprintln!("guitarscore: cannot update the file association: {error}");
+        }
+        self.desktop_menu.file_types = Some(types);
+    }
+
+    /// Whether this build can make the Guitar Pro files open with it.
+    pub(super) fn offers_file_association(&self) -> bool {
+        self.desktop_menu.file_types.is_some()
+    }
+
+    /// Whether the Guitar Pro files open with GuitarScore.
+    pub(super) fn has_file_association(&self) -> bool {
+        self.desktop_menu
+            .file_types
+            .as_ref()
+            .is_some_and(FileTypes::is_installed)
+    }
+
+    /// Makes the Guitar Pro files open with GuitarScore, or undoes it, and remembers it.
+    pub(super) fn set_file_association(&mut self, on: bool) {
+        let Some(types) = &self.desktop_menu.file_types else {
+            return;
+        };
+        let result = if on { types.install() } else { types.remove() };
+        match result {
+            Ok(()) => {
+                self.status = Some(
+                    if on {
+                        "Guitar Pro files now open with GuitarScore"
+                    } else {
+                        "Guitar Pro files no longer open with GuitarScore"
+                    }
+                    .to_owned(),
+                );
+            }
+            Err(error) => {
+                self.notice = Some(format!("Could not change the file association: {error}"));
+            }
+        }
+        self.settings.file_association = on;
         self.save_settings();
     }
 
@@ -224,6 +288,43 @@ mod tests {
         assert!(app.desktop_menu.asked);
         assert_eq!(app.settings.desktop_entry, Some(true));
         assert!(app.has_desktop_entry());
+        let _ = std::fs::remove_dir_all(home);
+    }
+
+    #[test]
+    fn the_file_association_is_only_a_setting_and_follows_the_program() {
+        let home = temp_dir("types");
+        let ctx = egui::Context::default();
+        let mut app = GuitarScoreApp::new(&ctx, None);
+        assert!(!app.offers_file_association());
+        app.use_file_types(FileTypes::Linux(DesktopEntry::new(
+            home.clone(),
+            "/old/guitarscore".into(),
+        )));
+        assert!(app.offers_file_association());
+        assert!(!app.has_file_association(), "nothing is written before it is switched on");
+        // No question at the start for it: only the menu entry's (which is not offered).
+        app.show_desktop_menu_question(&ctx);
+        assert!(!app.has_file_association());
+
+        app.set_file_association(true);
+        assert!(app.has_file_association());
+        assert!(app.settings.file_association);
+
+        // The program moved: the next start rewrites the association.
+        let mut moved = GuitarScoreApp::new(&ctx, None);
+        moved.settings.file_association = true;
+        moved.use_file_types(FileTypes::Linux(DesktopEntry::new(
+            home.clone(),
+            "/new/guitarscore".into(),
+        )));
+        let entry =
+            std::fs::read_to_string(home.join("applications/guitarscore-files.desktop")).unwrap();
+        assert!(entry.contains("Exec=\"/new/guitarscore\" %f"));
+
+        moved.set_file_association(false);
+        assert!(!moved.has_file_association());
+        assert!(!moved.settings.file_association);
         let _ = std::fs::remove_dir_all(home);
     }
 

@@ -17,7 +17,7 @@ use std::path::{Path, PathBuf};
 /// The desktop entry's file name; its id matches the window's app id.
 const ENTRY_FILE: &str = "guitarscore.desktop";
 /// Marks an entry the app wrote (and may rewrite or remove).
-const MARKER: &str = "X-GuitarScore-Managed=true";
+pub(crate) const MARKER: &str = "X-GuitarScore-Managed=true";
 /// The icon in the size most desktops use, and drawn for any size.
 const PNG: &[u8] = crate::APP_ICON;
 const SVG: &[u8] = include_bytes!("../../../packaging/guitarscore.svg");
@@ -66,6 +66,16 @@ impl DesktopEntry {
         DesktopEntry { data_home, program }
     }
 
+    /// The user's data folder the entry goes into.
+    pub(crate) fn data_home(&self) -> &Path {
+        &self.data_home
+    }
+
+    /// The program the entry starts.
+    pub(crate) fn program(&self) -> &Path {
+        &self.program
+    }
+
     fn entry_path(&self) -> PathBuf {
         self.data_home.join("applications").join(ENTRY_FILE)
     }
@@ -86,10 +96,34 @@ impl DesktopEntry {
     /// Writes the entry and the icons (over an entry of ours; over someone else's too,
     /// since the user asked for it).
     pub(crate) fn install(&self) -> io::Result<()> {
+        self.install_icons()?;
+        write_file(&self.entry_path(), self.text().as_bytes())
+    }
+
+    /// Writes the app's icons (the menu entry and the file association use them).
+    pub(crate) fn install_icons(&self) -> io::Result<()> {
         for (path, bytes) in self.icon_paths() {
             write_file(&path, bytes)?;
         }
-        write_file(&self.entry_path(), self.text().as_bytes())
+        Ok(())
+    }
+
+    /// Removes the app's icons (what is not there is no error).
+    pub(crate) fn remove_icons(&self) -> io::Result<()> {
+        for (path, _) in self.icon_paths() {
+            match std::fs::remove_file(path) {
+                Err(error) if error.kind() != io::ErrorKind::NotFound => return Err(error),
+                _ => {}
+            }
+        }
+        Ok(())
+    }
+
+    /// Whether the icons are there as this version draws them.
+    pub(crate) fn icons_current(&self) -> bool {
+        self.icon_paths()
+            .iter()
+            .all(|(path, bytes)| std::fs::read(path).is_ok_and(|have| have == *bytes))
     }
 
     /// Removes the entry and the icons, if the entry is ours.
@@ -98,13 +132,7 @@ impl DesktopEntry {
             return Ok(());
         }
         std::fs::remove_file(self.entry_path())?;
-        for (path, _) in self.icon_paths() {
-            match std::fs::remove_file(path) {
-                Err(error) if error.kind() != io::ErrorKind::NotFound => return Err(error),
-                _ => {}
-            }
-        }
-        Ok(())
+        self.remove_icons()
     }
 
     /// Brings an entry of ours up to date with this program; anything else stays as it
@@ -118,11 +146,7 @@ impl DesktopEntry {
         if !is_ours(&existing) {
             return Ok(Refresh::NotOurs);
         }
-        let icons_current = self
-            .icon_paths()
-            .iter()
-            .all(|(path, bytes)| std::fs::read(path).is_ok_and(|have| have == *bytes));
-        if existing == self.text() && icons_current {
+        if existing == self.text() && self.icons_current() {
             return Ok(Refresh::Current);
         }
         self.install()?;
@@ -155,14 +179,14 @@ impl DesktopEntry {
     }
 }
 
-fn is_ours(text: &str) -> bool {
+pub(crate) fn is_ours(text: &str) -> bool {
     text.lines().any(|line| line.trim() == MARKER)
 }
 
 /// `path` as the program in an `Exec` line: quoted, with the characters the desktop entry
 /// specification reserves inside quotes escaped, then escaped again as a string value
 /// (backslashes doubled) and with `%` doubled (field codes).
-fn exec_argument(path: &Path) -> String {
+pub(crate) fn exec_argument(path: &Path) -> String {
     let mut quoted = String::from('"');
     for c in path.to_string_lossy().chars() {
         if matches!(c, '"' | '`' | '$' | '\\') {
@@ -175,7 +199,7 @@ fn exec_argument(path: &Path) -> String {
 }
 
 /// Writes `bytes` to `path` through a temporary file and a rename, creating the folder.
-fn write_file(path: &Path, bytes: &[u8]) -> io::Result<()> {
+pub(crate) fn write_file(path: &Path, bytes: &[u8]) -> io::Result<()> {
     let dir = path
         .parent()
         .ok_or_else(|| io::Error::other("no folder for the file"))?;

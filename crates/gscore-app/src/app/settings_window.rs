@@ -681,6 +681,25 @@ impl GuitarScoreApp {
                 .weak(),
             );
         }
+        #[cfg(not(target_arch = "wasm32"))]
+        if self.offers_file_association() {
+            let mut associated = self.has_file_association();
+            if ui
+                .checkbox(&mut associated, "Open Guitar Pro files with GuitarScore")
+                .changed()
+            {
+                self.set_file_association(associated);
+            }
+            let how = if cfg!(windows) {
+                "GuitarScore is added to \"Open with\" for .gp, .gpx, .gp5, .gp4 and .gp3 \
+                 files, for you only. To open them with a double click, choose GuitarScore \
+                 there once with \"Always\": Windows lets only you set the default."
+            } else {
+                "A double click on a .gp, .gpx, .gp5, .gp4 or .gp3 file opens it in \
+                 GuitarScore. For you only; kept pointing at this copy when it moves."
+            };
+            ui.label(RichText::new(how).weak());
+        }
 
         #[cfg(not(target_arch = "wasm32"))]
         {
