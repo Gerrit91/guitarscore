@@ -15,6 +15,7 @@ use super::GuitarScoreApp;
 use super::alert::{AlertIcon, Answer, Reply, alert};
 use super::tab::{Tab, TabId};
 use crate::document::Document;
+use crate::settings::{FilePosition, same_file};
 use crate::tasks::{Event, SaveFailure};
 
 /// The path and format of a new, unsaved score: Save asks for a real `.gp` file.
@@ -473,6 +474,9 @@ impl GuitarScoreApp {
                             ),
                         };
                         self.push_tab(document);
+                        // Back to where the file was left last time (its cursor and
+                        // selection), if the settings remember it.
+                        self.restore_position(&recent);
                         self.notice = problem;
                         self.status = None;
                         self.settings.add_recent(recent);
@@ -654,6 +658,15 @@ impl GuitarScoreApp {
             return;
         }
         let was_active = index == self.active;
+        // Where the tab was stays remembered for the next time the file opens.
+        let remembered = self.tabs.get(index).and_then(|tab| {
+            tab.document
+                .reopen_path()
+                .map(|path| FilePosition::of_tab(path, tab))
+        });
+        if let Some(position) = remembered {
+            self.settings.remember_position(position);
+        }
         let tab = self.tabs.remove(index);
         tab.document.close(false);
         if self.tabs.is_empty() {
@@ -798,18 +811,6 @@ impl GuitarScoreApp {
     }
 }
 
-/// Whether `a` and `b` name the same file: the same path, or two spellings (relative vs
-/// absolute, a symlink) of one file.
-fn same_file(a: &Path, b: &Path) -> bool {
-    if a == b {
-        return true;
-    }
-    matches!(
-        (std::fs::canonicalize(a), std::fs::canonicalize(b)),
-        (Ok(a), Ok(b)) if a == b
-    )
-}
-
 #[cfg(test)]
 mod tests {
     #![allow(clippy::unwrap_used, clippy::indexing_slicing)]
@@ -817,6 +818,7 @@ mod tests {
     use super::*;
     use crate::Keymap;
     use crate::Settings;
+    use crate::settings::{FilePosition, FileSelection};
 
     fn app_with_tabs(count: usize) -> GuitarScoreApp {
         let ctx = egui::Context::default();
@@ -878,5 +880,189 @@ mod tests {
             "{:?}",
             app.status
         );
+    }
+
+    /// A tab with `measures` empty 4/4 bars on a six-string guitar, opened from `path`.
+    fn app_with_song(path: &str, measures: usize) -> GuitarScoreApp {
+        let ctx = egui::Context::default();
+        let mut app = GuitarScoreApp::with_settings(
+            &ctx,
+            None,
+            Keymap::default(),
+            None,
+            Settings::default(),
+            None,
+        );
+        let song = gscore_model::testing::song(&[gscore_model::testing::GUITAR_6], measures)
+            .expect("song");
+        app.push_tab(Document::new(
+            PathBuf::from(path),
+            song,
+            gscore_session::FileFormat::Gp,
+        ));
+        app
+    }
+
+    /// Puts the active tab's cursor at `measure`/`beat`/`string` (all exist in the test songs).
+    fn move_cursor(app: &mut GuitarScoreApp, measure: usize, beat: usize, string: u8) {
+        let mut cursor = gscore_edit::Cursor::start(gscore_model::TrackIndex::new(0));
+        cursor.measure = gscore_model::MeasureIndex::new(measure);
+        cursor.beat = gscore_model::BeatIndex::new(beat);
+        cursor.string = string;
+        app.document_mut()
+            .expect("document")
+            .editor_mut()
+            .set_cursor(cursor);
+    }
+
+    #[test]
+    fn opening_a_file_returns_to_the_cursor_and_selection_it_was_left_at() {
+        let path = PathBuf::from("remembered.gp");
+        let mut settings = Settings::default();
+        settings.remember_position(FilePosition {
+            path: path.clone(),
+            track: 0,
+            staff: 0,
+            measure: 2,
+            voice: 0,
+            beat: 1,
+            string: 3,
+            shown_track: 0,
+            selection: Some(FileSelection::Beats {
+                track: 0,
+                staff: 0,
+                voice: 0,
+                anchor_measure: 1,
+                anchor_beat: 0,
+                focus_measure: 2,
+                focus_beat: 1,
+            }),
+        });
+        let ctx = egui::Context::default();
+        let mut app =
+            GuitarScoreApp::with_settings(&ctx, None, Keymap::default(), None, settings, None);
+        let song =
+            gscore_model::testing::song(&[gscore_model::testing::GUITAR_6], 4).expect("song");
+        app.push_tab(Document::new(
+            path.clone(),
+            song,
+            gscore_session::FileFormat::Gp,
+        ));
+        app.restore_position(&path);
+        let editor = app.document().expect("document").editor();
+        assert_eq!(editor.cursor().measure.get(), 2);
+        assert_eq!(editor.cursor().beat.get(), 1);
+        assert_eq!(editor.cursor().string, 3);
+        let selection = editor.selection().expect("the selection came back");
+        assert_eq!(selection.first_measure().get(), 1);
+        assert_eq!(selection.last_measure().get(), 2);
+    }
+
+    #[test]
+    fn a_measure_selection_comes_back_to_the_grid_too() {
+        let path = PathBuf::from("bars.gp");
+        let mut settings = Settings::default();
+        settings.remember_position(FilePosition {
+            path: path.clone(),
+            measure: 1,
+            selection: Some(FileSelection::Measures {
+                anchor: 1,
+                focus: 2,
+                track: None,
+            }),
+            ..FilePosition::default()
+        });
+        let ctx = egui::Context::default();
+        let mut app =
+            GuitarScoreApp::with_settings(&ctx, None, Keymap::default(), None, settings, None);
+        let song =
+            gscore_model::testing::song(&[gscore_model::testing::GUITAR_6], 3).expect("song");
+        app.push_tab(Document::new(
+            path.clone(),
+            song,
+            gscore_session::FileFormat::Gp,
+        ));
+        app.restore_position(&path);
+        let selection = app.selection().expect("the grid shows the selection");
+        assert_eq!(selection.anchor, 1);
+        assert_eq!(selection.focus, 2);
+        assert_eq!(selection.track, None);
+    }
+
+    #[test]
+    fn a_stored_place_that_no_longer_exists_is_clamped_or_dropped() {
+        let path = PathBuf::from("shorter.gp");
+        let mut settings = Settings::default();
+        settings.remember_position(FilePosition {
+            path: path.clone(),
+            measure: 99,
+            beat: 99,
+            selection: Some(FileSelection::Beats {
+                track: 0,
+                staff: 0,
+                voice: 0,
+                anchor_measure: 99,
+                anchor_beat: 99,
+                focus_measure: 99,
+                focus_beat: 99,
+            }),
+            ..FilePosition::default()
+        });
+        let ctx = egui::Context::default();
+        let mut app =
+            GuitarScoreApp::with_settings(&ctx, None, Keymap::default(), None, settings, None);
+        let song =
+            gscore_model::testing::song(&[gscore_model::testing::GUITAR_6], 2).expect("song");
+        app.push_tab(Document::new(
+            path.clone(),
+            song,
+            gscore_session::FileFormat::Gp,
+        ));
+        app.restore_position(&path);
+        let editor = app.document().expect("document").editor();
+        assert_eq!(editor.cursor().measure.get(), 1);
+        assert!(editor.selection().is_none());
+    }
+
+    #[test]
+    fn the_settings_remember_where_each_open_tab_is() {
+        let mut app = app_with_song("place.gp", 4);
+        move_cursor(&mut app, 2, 1, 4);
+        let document = app.document_mut().expect("document");
+        document
+            .editor_mut()
+            .set_selection(Some(gscore_edit::Selection::Measures {
+                anchor: gscore_model::MeasureIndex::new(1),
+                focus: gscore_model::MeasureIndex::new(2),
+                track: None,
+            }));
+        let settings = app.settings();
+        let stored = settings
+            .position_for(Path::new("place.gp"))
+            .expect("the place is remembered");
+        assert_eq!(stored.measure, 2);
+        assert_eq!(stored.beat, 1);
+        assert_eq!(stored.string, 4);
+        assert_eq!(
+            stored.selection,
+            Some(FileSelection::Measures {
+                anchor: 1,
+                focus: 2,
+                track: None,
+            })
+        );
+    }
+
+    #[test]
+    fn closing_a_tab_keeps_its_place_for_the_next_open() {
+        let mut app = app_with_song("closed.gp", 4);
+        move_cursor(&mut app, 2, 1, 4);
+        app.remove_tab(0);
+        assert_eq!(app.tab_count(), 0);
+        let settings = app.settings();
+        let stored = settings
+            .position_for(Path::new("closed.gp"))
+            .expect("the closed tab's place stays");
+        assert_eq!(stored.measure, 2);
     }
 }

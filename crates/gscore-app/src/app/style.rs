@@ -39,6 +39,8 @@ pub(crate) struct Tokens {
     /// neither with each other nor with the blue accent.
     pub mute: Color32,
     pub solo: Color32,
+    /// The song grid's background: light enough that dark track colors still show on it.
+    pub grid: Color32,
 }
 
 /// The app's tokens. The chrome is always dark (a soft charcoal, white icons and text),
@@ -57,6 +59,7 @@ pub(crate) const TOKENS: Tokens = Tokens {
     on_accent: Color32::WHITE,
     mute: Color32::from_rgb(0xE0, 0x4A, 0x45),
     solo: Color32::from_rgb(0xE9, 0xA8, 0x2E),
+    grid: Color32::from_rgb(0x45, 0x48, 0x4E),
 };
 
 /// The red behind a window's or tab's close button while it is hovered.
