@@ -6467,3 +6467,20 @@ Tests: dragging the edge widens the column and the settings keep it.
 - Tests: `ctrl_shift_insert_opens_the_paste_dialog_too`,
   `a_paste_event_with_shift_opens_the_paste_dialog`, and the key map's second binding.
 
+
+## 2026-11-18 — Ctrl+Shift+V after a selection in the score
+
+- Reported: Ctrl+Shift+V showed nothing. The key reached the app (GNOME binds nothing to
+  it and no clipboard manager runs); the cause was the clipboard. A selection made in the
+  score (Shift+arrows, dragging) is a beat selection, and both Ctrl+C and Ctrl+Shift+C
+  copied beats from it. The paste dialog only places bars, so Ctrl+Shift+V fell back to a
+  plain paste, which wrote the beats back over themselves: nothing visible changed, but an
+  undo step was added.
+- `copy_all_tracks` (Ctrl+Shift+C) now always copies whole bars in every track: the
+  selected bars, the bars a beat selection touches, or the cursor's bar when nothing is
+  selected. Score selection, Ctrl+Shift+C, Ctrl+Shift+V now opens the dialog.
+- With notes or beats on the clipboard, Ctrl+Shift+V no longer pastes; the status bar
+  says that the dialog places bars and how to copy them.
+- Tests: `ctrl_shift_c_on_a_score_selection_copies_its_bars_for_the_paste_dialog`,
+  `the_paste_dialog_key_with_beats_copied_says_how_to_copy_bars_and_changes_nothing`,
+  `copying_every_track_takes_the_whole_bars_a_beat_selection_touches`.

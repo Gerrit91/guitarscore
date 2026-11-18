@@ -831,6 +831,32 @@ fn cut_bars_pasted_over_the_same_selection_go_there_and_are_not_duplicated() {
 }
 
 #[test]
+fn copying_every_track_takes_the_whole_bars_a_beat_selection_touches() {
+    let mut e = TabEditor::new(
+        testing::song(&[GUITAR_6, GUITAR_6], 4).unwrap(),
+        TrackIndex::new(0),
+    );
+    // Beats of the first track, from bar 2 into bar 3.
+    e.set_selection(Some(Selection::Beats {
+        track: TrackIndex::new(0),
+        staff: gscore_model::StaffIndex::new(0),
+        voice: VoiceIndex::new(0),
+        anchor: spot(1, 0),
+        focus: spot(2, 0),
+    }));
+    plain(&mut e, ActionId::CopyAllTracks);
+    assert_eq!(e.clipboard_bars(), Some(2));
+    assert_eq!(
+        e.clipboard_text().as_deref(),
+        Some("GuitarScore: 2 bars of 2 tracks")
+    );
+    // Nothing selected: the cursor's bar.
+    e.set_selection(None);
+    plain(&mut e, ActionId::CopyAllTracks);
+    assert_eq!(e.clipboard_bars(), Some(1));
+}
+
+#[test]
 fn pasting_over_bars_replaces_them_and_only_grows_the_song_at_its_end() {
     let mut e = TabEditor::new(
         testing::song(&[GUITAR_6, GUITAR_6], 3).unwrap(),

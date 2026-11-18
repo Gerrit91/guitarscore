@@ -2,7 +2,7 @@
 //! at a bar typed in — either adding bars or overwriting the ones there.
 
 use egui::{Margin, RichText, vec2};
-use gscore_edit::{Action, ActionId, MAX_PASTE_COPIES, PasteOptions};
+use gscore_edit::{MAX_PASTE_COPIES, PasteOptions};
 use gscore_model::MeasureIndex;
 
 use super::GuitarScoreApp;
@@ -51,15 +51,20 @@ pub(super) struct PasteAround {
 }
 
 impl GuitarScoreApp {
-    /// Opens the dialog for the active tab, or pastes as usual when the clipboard does not
-    /// hold bars (only bars can be placed).
-    pub(super) fn open_paste_around(&mut self, ctx: &egui::Context) {
+    /// Opens the dialog for the active tab. Only bars can be placed: with notes or beats
+    /// on the clipboard (copied from a selection in the score) the status bar says how to
+    /// copy bars instead, rather than pasting them where they came from unnoticed.
+    pub(super) fn open_paste_around(&mut self) {
         let Some(tab) = self.tabs.get(self.active) else {
             return;
         };
         let editor = tab.document.editor();
         let Some(count) = editor.clipboard_bars() else {
-            self.perform_action(Action::Plain(ActionId::Paste), ctx);
+            self.status = Some(
+                "Paste bars places copied bars, and the clipboard holds notes or beats: \
+                 copy bars with Ctrl+Shift+C (every track) or from the song grid first"
+                    .to_owned(),
+            );
             return;
         };
         let measure_count = editor.song().measure_count();

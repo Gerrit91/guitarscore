@@ -969,3 +969,72 @@ fn a_paste_event_with_shift_opens_the_paste_dialog() {
         .push(egui::Event::ModifiersChanged(egui::Modifiers::NONE));
     harness.run();
 }
+
+/// Selects from the cursor over the first bar lines in the score, as Shift+Right does: a
+/// beat selection, not a bar selection.
+fn select_beats_in_the_score(harness: &mut Harness<'static, GuitarScoreApp>) {
+    for _ in 0..12 {
+        harness.key_press_modifiers(egui::Modifiers::SHIFT, egui::Key::ArrowRight);
+        harness.run();
+    }
+    assert!(matches!(
+        harness.state().document().unwrap().editor().selection(),
+        Some(Selection::Beats { .. })
+    ));
+}
+
+#[test]
+fn ctrl_shift_c_on_a_score_selection_copies_its_bars_for_the_paste_dialog() {
+    let mut harness = song_with_sections(false);
+    select_beats_in_the_score(&mut harness);
+    let ctrl_shift = egui::Modifiers {
+        command: true,
+        shift: true,
+        ..egui::Modifiers::NONE
+    };
+    harness.key_press_modifiers(ctrl_shift, egui::Key::C);
+    harness.run();
+    // The beats from bar 1 into bar 3: those three bars, whole.
+    assert_eq!(
+        harness
+            .state()
+            .document()
+            .unwrap()
+            .editor()
+            .clipboard_bars(),
+        Some(3)
+    );
+    harness.key_press_modifiers(ctrl_shift, egui::Key::V);
+    harness.run();
+    harness.get_by_label("After the selection");
+}
+
+#[test]
+fn the_paste_dialog_key_with_beats_copied_says_how_to_copy_bars_and_changes_nothing() {
+    let mut harness = song_with_sections(false);
+    select_beats_in_the_score(&mut harness);
+    harness.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::C);
+    harness.run();
+    let depth = harness.state().document().unwrap().editor().undo_depth();
+    let ctrl_shift = egui::Modifiers {
+        command: true,
+        shift: true,
+        ..egui::Modifiers::NONE
+    };
+    harness.key_press_modifiers(ctrl_shift, egui::Key::V);
+    harness.run();
+    assert!(harness.query_by_label("After the selection").is_none());
+    assert_eq!(
+        harness.state().document().unwrap().editor().undo_depth(),
+        depth,
+        "nothing was pasted"
+    );
+    assert!(
+        harness
+            .state()
+            .status()
+            .is_some_and(|status| status.contains("Ctrl+Shift+C")),
+        "{:?}",
+        harness.state().status()
+    );
+}

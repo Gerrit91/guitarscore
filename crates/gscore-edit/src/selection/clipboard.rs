@@ -118,19 +118,19 @@ impl TabEditor {
         Ok(Outcome::Nothing)
     }
 
-    /// Copies the selected bars from every track, whatever track the selection is in (a
-    /// bar selection made in the score is one track's). Beats are copied as they are.
+    /// Copies whole bars from every track, whatever track the selection is in: the
+    /// selected bars, the bars a beat selection in the score touches, or with nothing
+    /// selected the cursor's bar. The bars can then be placed with the paste dialog.
     pub fn copy_selection_all_tracks(&mut self) -> Result<Outcome, EditError> {
-        let Some(selection) = self.selection else {
-            return self.copy_selection();
+        let (anchor, focus) = match self.selection {
+            Some(Selection::Measures { anchor, focus, .. }) => (anchor, focus),
+            Some(Selection::Beats { anchor, focus, .. }) => (anchor.measure, focus.measure),
+            None => (self.cursor().measure, self.cursor().measure),
         };
-        let selection = match selection {
-            Selection::Measures { anchor, focus, .. } => Selection::Measures {
-                anchor,
-                focus,
-                track: None,
-            },
-            Selection::Beats { .. } => selection,
+        let selection = Selection::Measures {
+            anchor,
+            focus,
+            track: None,
         };
         self.clipboard = self.clipboard_from(selection)?;
         Ok(Outcome::Nothing)

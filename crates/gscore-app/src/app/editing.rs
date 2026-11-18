@@ -965,7 +965,7 @@ impl GuitarScoreApp {
             Request::PlayPause => self.play_pause(),
             Request::Stop => self.stop_playback(),
             Request::Save => self.save_song(ctx),
-            Request::PasteAround => self.open_paste_around(ctx),
+            Request::PasteAround => self.open_paste_around(),
             Request::SelectLine { down } => self.select_line(down, ctx),
         }
     }
