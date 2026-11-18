@@ -6559,3 +6559,23 @@ Tests: dragging the edge widens the column and the settings keep it.
 - `cursor_scroll` takes the next line's rectangle (`next_line_rect`: the next system of
   the cursor's staff).
 - Tests: `playback_turns_the_view_over_once_the_next_line_is_not_in_view`.
+
+## 2026-11-18 — Saved .gp files open in Guitar Pro 7 again
+
+- Every `.gp` GuitarScore saved failed to open in Guitar Pro 7 ("Failed to open file"),
+  even without a change, and a song with a drum kit (testdata/basic/multi_staff.gp)
+  crashed it. Found by the owner swapping single parts between our files and Guitar Pro's
+  own in Guitar Pro 7 (container entries, then the score's sections).
+- The archive lacked the `VERSION` entry (`7.0`): without it Guitar Pro refuses the
+  file whatever is inside. The `Content/` folder entry is written too, as Guitar Pro's
+  own archives have it.
+- The score lacked Guitar Pro 7's version header (`GPVersion` 7.6.0, `GPRevision`,
+  `Encoding` GP7): without it Guitar Pro 7 reads it as an older score, which crashes it
+  on a drum kit. `gp7_gpif` adds the header and the empty `AudioTracks` for `.gp` only;
+  the `.gpx` (GP6) writer is unchanged.
+- Files saved before keep failing in Guitar Pro until opened in GuitarScore and saved
+  again.
+- A crash can leave Guitar Pro unable to open anything until its dead process is ended,
+  so such checks need one file per fresh start.
+- Tests: `a_gp_archive_has_the_version_and_folder_entries_guitar_pro_needs` (the entries,
+  the header's place and the audio tracks).
