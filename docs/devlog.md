@@ -6511,3 +6511,30 @@ Tests: dragging the edge widens the column and the settings keep it.
   larger, undo) and `copy_with_only_the_cursor_takes_its_beat_and_paste_inserts_it_after`;
   the copy/paste tests in `test_selection`, `test_tab_editor`, `test_staves` and
   `test_editing` now select the beats they paste over, or expect the copy after the cursor.
+
+## 2026-11-18 — Song grid: Guitar Pro's tiles, sections on top, playback in blue
+
+- Every bar of every track is a tile: a 1 px dark line (`grid_line`, `#2A2C31`) between
+  every two bars and rows, drawn over the squares with notes too, as in Guitar Pro. The
+  faint measure lines (stronger every fourth bar) are gone. The background is lighter
+  (`#4A4D55`, stripes `#53565F`), and the row stripes are off by default (Settings ›
+  Editor); a settings file that already stores `grid_stripes` keeps its value.
+- The ruler shows the measure numbers and, below them, the sections (start marker, line,
+  title; 30 px instead of 26). Clicking a section's title selects its bars in every
+  track, shift-click grows the selection over the whole section, and a title dragged onto
+  another section swaps their bars, all in the ruler now. A click on the numbers (or a
+  bar before the first section) places the cursor as before. The master row shows the
+  repeats instead: an ending's number at the top, `|:` and `:|` (and `×N`) at the bottom.
+- The playing measure is tinted in the score's playing cursor color instead of amber.
+  While playing the grid does not draw its selection, as the score hides its own; it
+  stays selected (a loop plays it), and its bars cannot be dragged until playback pauses
+  or stops (`GridView::shown_selection`).
+- Shift-click in another track's row than a one-track selection's, or than the cursor's
+  when nothing is selected, takes in every track, as Shift+Up/Down do; in that row it
+  stays the one track.
+- Tests: `shift_clicking_another_tracks_row_grows_the_selection_to_every_track`,
+  `while_playing_the_hidden_grid_selection_cannot_be_dragged` (skipped without an audio
+  device), `the_song_grid_stripes_can_be_switched_on_in_the_settings` (snapshot
+  `grid_with_stripes` replaces `grid_without_stripes`); the section tests click and drag
+  in the ruler (`section_band`), `a_section_scrolled_off_the_left_edge_still_marks_the_ruler`;
+  snapshots updated.

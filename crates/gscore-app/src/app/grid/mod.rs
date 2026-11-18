@@ -30,8 +30,8 @@ pub(crate) use strips::MixerState;
 const COLUMN_HANDLE: f32 = 6.0;
 /// Height of one track row.
 pub(super) const ROW_HEIGHT: f32 = 24.0;
-/// Height of the ruler above the matrix (measure numbers, sections, repeats).
-pub(super) const RULER_HEIGHT: f32 = 26.0;
+/// Height of the ruler above the matrix (measure numbers, and the sections below them).
+pub(super) const RULER_HEIGHT: f32 = 30.0;
 /// Most track rows the panel shows when it opens; more tracks scroll.
 pub(crate) const OPEN_ROWS: usize = 8;
 /// The panel's margins and the horizontal scroll bar, around the rows.
@@ -356,9 +356,11 @@ impl GuitarScoreApp {
                 cursor_measure: cursor.measure.get(),
                 cursor_track: cursor.track.get(),
                 playing,
+                cursor_color: crate::canvas::color(self.view.theme.palette().cursor),
                 // The grid shows the score's selection too (the bars a beat selection
                 // spans), in that track.
                 selection: tab.loop_measures(),
+                show_selection: self.playback.state() != gscore_play::PlayState::Playing,
                 selection_color: crate::canvas::color(self.view.theme.palette().selection),
                 shown_track: tab.track,
                 mixer: self.view.grid_mixer,
@@ -851,7 +853,12 @@ pub(super) struct GridView {
     cursor_measure: usize,
     cursor_track: usize,
     playing: Option<usize>,
+    /// The score's playing cursor color, for the playing measure.
+    cursor_color: Color32,
     selection: Option<MeasureSelection>,
+    /// Whether the selection is drawn (and its bars can be dragged): not while playing,
+    /// as in the score. It stays selected (a loop plays it).
+    show_selection: bool,
     /// The score's selection color, so a selection looks the same in both views.
     selection_color: Color32,
     shown_track: usize,
@@ -864,6 +871,13 @@ pub(super) struct GridView {
     track_column: f32,
     /// Whether every other row has a lighter background (a setting).
     stripes: bool,
+}
+
+impl GridView {
+    /// The selection as drawn: none while playing.
+    fn shown_selection(&self) -> Option<MeasureSelection> {
+        self.selection.filter(|_| self.show_selection)
+    }
 }
 
 #[allow(clippy::too_many_arguments)]

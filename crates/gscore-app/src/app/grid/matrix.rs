@@ -2,7 +2,7 @@
 //! repeats and alternative endings, and one row of squares per track. Clicking puts the
 //! cursor on a bar's first beat; dragging selects measures; the playing measure is highlighted.
 
-use egui::{Align2, Color32, FontId, Rect, Response, Sense, Stroke, pos2, vec2};
+use egui::{Align2, FontId, Rect, Response, Sense, Stroke, pos2, vec2};
 
 use crate::app::style;
 use crate::document::GridData;
@@ -12,8 +12,14 @@ use super::super::page::SELECTION_ALPHA;
 use super::rows::{TrackRow, color32};
 use super::{CELL_PADDING, GridAction, GridView, MEASURE_WIDTH, ROW_HEIGHT, RULER_HEIGHT, mixer};
 
-/// The measure ruler above the tracks: measure numbers, section markers, repeats and
-/// alternative endings. It stays at the top while the tracks scroll under it, and follows
+/// The width of the lines between the grid's tiles.
+const GRID_LINE_WIDTH: f32 = 1.0;
+
+/// How strongly the playing measure is tinted in the score's playing cursor color.
+const PLAYING_ALPHA: f32 = 0.25;
+
+/// The measure ruler above the tracks: measure numbers, and the sections below them (the
+/// repeats and alternative endings are in the master row). It stays at the top while the tracks scroll under it, and follows
 /// the matrix sideways by `scroll_x`, and is as wide as the measures the matrix shows
 /// (`width`, when known), so it ends where the matrix's vertical scroll bar starts.
 pub(super) fn ruler(
@@ -30,7 +36,8 @@ pub(super) fn ruler(
     // scroll bar.
     let available = ui.available_width();
     let width = width.map_or(available, |width| width.min(available));
-    let (rect, response) = ui.allocate_exact_size(vec2(width, RULER_HEIGHT), Sense::click());
+    let (rect, response) =
+        ui.allocate_exact_size(vec2(width, RULER_HEIGHT), Sense::click_and_drag());
     ui.ctx().accesskit_node_builder(response.id, |node| {
         node.set_label("Measure ruler");
         node.set_role(egui::Role::Group);
@@ -58,10 +65,10 @@ pub(super) fn ruler(
         painter.rect_filled(
             column(playing),
             0.0,
-            Color32::from_rgb(255, 200, 40).gamma_multiply(0.25),
+            view.cursor_color.gamma_multiply(PLAYING_ALPHA),
         );
     }
-    if let Some(selection) = view.selection
+    if let Some(selection) = view.shown_selection()
         && last > first
     {
         let start = selection.start().max(first);
@@ -76,90 +83,245 @@ pub(super) fn ruler(
     }
     let number_font = FontId::monospace(9.0);
     for measure in first..last {
-        let x = x_of(measure);
         if measure % 4 == 0 || view.measure_count <= 64 {
             painter.text(
-                pos2(x + 2.0, rect.top() + 2.0),
+                pos2(x_of(measure) + 2.0, rect.top() + 2.0),
                 Align2::LEFT_TOP,
                 (measure.saturating_add(1)).to_string(),
                 number_font.clone(),
                 visuals.weak_text_color(),
             );
         }
-        // The section's line above the ruler's bottom edge marks where it starts.
-        if let Some(Some(section)) = grid.sections.get(measure) {
-            painter.line_segment(
-                [
-                    pos2(x, rect.top() + RULER_HEIGHT - 3.0),
-                    pos2(x + mw, rect.top() + RULER_HEIGHT - 3.0),
-                ],
-                Stroke::new(2.0, color32(section.color)),
-            );
-        }
-        if let Some(repeat) = grid.repeats.get(measure) {
-            let y = rect.top() + RULER_HEIGHT - 6.0;
-
-            if repeat.start {
-                painter.text(
-                    pos2(x + 1.0, y),
-                    Align2::LEFT_BOTTOM,
-                    "|:",
-                    number_font.clone(),
-                    visuals.text_color(),
-                );
-            }
-            if let Some(times) = repeat.end_repeats {
-                painter.text(
-                    pos2(x + mw - 1.0, y),
-                    Align2::RIGHT_BOTTOM,
-                    ":|",
-                    number_font.clone(),
-                    visuals.text_color(),
-                );
-                if times > 1 {
-                    painter.text(
-                        pos2(x + mw - 1.0, rect.top() + 2.0),
-                        Align2::RIGHT_TOP,
-                        format!("\u{00d7}{times}"),
-                        FontId::proportional(8.0),
-                        visuals.weak_text_color(),
-                    );
-                }
-            }
-            if repeat.endings != 0 {
-                painter.text(
-                    pos2(x + 2.0, rect.top() + 10.0),
-                    Align2::LEFT_TOP,
-                    ending_label(repeat.endings),
-                    number_font.clone(),
-                    visuals.weak_text_color(),
-                );
-            }
-        }
     }
-    // A click puts the cursor on the bar (in the cursor's track); shift-click selects
-    // whole bars across every track, growing the selection (or from the cursor's bar).
+    let band = Rect::from_min_max(pos2(rect.left(), rect.top() + NUMBERS_HEIGHT), rect.max);
+    sections(ui, &painter, &response, band, left, grid, view, actions);
+    // A click on the measure numbers (or a bar before the first section) puts the cursor on
+    // the bar (in the cursor's track); shift-click selects whole bars across every track,
+    // growing the selection (or from the cursor's bar).
+    let at_section = |pointer: egui::Pos2| {
+        pointer.y >= band.top()
+            && measure_at(pointer.x - left, mw, view.measure_count)
+                .and_then(|measure| section_span(grid, view.measure_count, measure))
+                .is_some()
+    };
     if response.clicked()
         && let Some(pointer) = response.interact_pointer_pos()
+        && !at_section(pointer)
+        && let Some(measure) = measure_at(pointer.x - left, mw, view.measure_count)
     {
-        let x = pointer.x - left;
-        if x >= 0.0 {
-            let measure = (x / mw) as usize;
-            if measure < view.measure_count {
-                if ui.input(|input| input.modifiers.shift) {
-                    let mut selection = view
-                        .selection
-                        .unwrap_or_else(|| MeasureSelection::new(view.cursor_measure))
-                        .extend_to(measure);
-                    selection.track = None;
-                    actions.push(GridAction::Select(selection));
-                } else {
-                    actions.push(GridAction::Place {
-                        track: view.cursor_track,
-                        measure,
-                    });
-                }
+        if ui.input(|input| input.modifiers.shift) {
+            let mut selection = view
+                .selection
+                .unwrap_or_else(|| MeasureSelection::new(view.cursor_measure))
+                .extend_to(measure);
+            selection.track = None;
+            actions.push(GridAction::Select(selection));
+        } else {
+            actions.push(GridAction::Place {
+                track: view.cursor_track,
+                measure,
+            });
+        }
+    }
+}
+
+/// The height of the ruler's measure numbers, above the sections' band.
+const NUMBERS_HEIGHT: f32 = 12.0;
+
+/// The measure `x` (from the first measure's left edge) falls in, if any.
+fn measure_at(x: f32, mw: f32, measure_count: usize) -> Option<usize> {
+    if x < 0.0 {
+        return None;
+    }
+    let measure = (x / mw) as usize;
+    (measure < measure_count).then_some(measure)
+}
+
+/// The sections in the ruler's lower `band`: each one's start marker, a line along its
+/// bars and its title. A click on a section selects its bars in every track (as the track
+/// panel's section rows do); dragging it onto another section swaps their bars.
+#[allow(clippy::too_many_arguments)]
+fn sections(
+    ui: &egui::Ui,
+    painter: &egui::Painter,
+    response: &Response,
+    band: Rect,
+    left: f32,
+    grid: &GridData,
+    view: GridView,
+    actions: &mut Vec<GridAction>,
+) {
+    let mw = MEASURE_WIDTH * view.zoom;
+    let x_of = |measure: usize| left + measure as f32 * mw;
+    let first = measure_at(band.left() - left, mw, view.measure_count).unwrap_or(0);
+    let last = measure_at(band.right() - left, mw, view.measure_count)
+        .map_or(view.measure_count, |measure| measure.saturating_add(1));
+
+    // While a section is dragged, it and the section under the pointer are marked:
+    // dropping it there swaps the two sections' bars.
+    let drag_id = ui.make_persistent_id("section_drag");
+    let drag: Option<(usize, Option<usize>)> = ui.ctx().data(|data| data.get_temp(drag_id));
+    if let Some((from, target)) = drag {
+        for (start, emphasis) in [(from, true), (target.unwrap_or(from), false)] {
+            if !emphasis && target.is_none() {
+                continue;
             }
+            let Some((first, last)) = section_span(grid, view.measure_count, start) else {
+                continue;
+            };
+            let area = Rect::from_min_max(
+                pos2(x_of(first), band.top()),
+                pos2(x_of(last) + mw, band.bottom()),
+            );
+            painter.rect_filled(
+                area,
+                2.0,
+                view.selection_color
+                    .gamma_multiply(if emphasis { 0.3 } else { 0.15 }),
+            );
+            painter.rect_stroke(
+                area,
+                2.0,
+                Stroke::new(1.5, view.selection_color),
+                egui::StrokeKind::Inside,
+            );
+        }
+    }
+
+    // A section lasts until the next one starts (or the song ends), so it also covers
+    // measures on screen when its own start has scrolled off the left edge: such a
+    // half-visible section keeps its line there and shows its title at the edge.
+    let starts: Vec<usize> = (0..view.measure_count)
+        .filter(|&measure| grid.sections.get(measure).is_some_and(Option::is_some))
+        .collect();
+    for (index, &measure) in starts.iter().enumerate() {
+        let Some(Some(section)) = grid.sections.get(measure) else {
+            continue;
+        };
+        let next = starts
+            .get(index.saturating_add(1))
+            .copied()
+            .unwrap_or(view.measure_count);
+        if next <= first || measure >= last {
+            continue;
+        }
+        let x = x_of(measure);
+        let color = color32(section.color);
+        let room = next.saturating_sub(measure) as f32 * mw;
+        // The title may run into the empty area after the last measure; it stops at the
+        // next section's marker.
+        let end_x = if next >= view.measure_count {
+            band.right()
+        } else {
+            x + room
+        };
+        let title_x = x.max(band.left());
+        painter.line_segment(
+            [pos2(x, band.top()), pos2(x, band.bottom() - 2.0)],
+            Stroke::new(2.0, color),
+        );
+        painter.line_segment(
+            [
+                pos2(x, band.bottom() - 2.0),
+                pos2(x + room, band.bottom() - 2.0),
+            ],
+            Stroke::new(1.5, color),
+        );
+        if end_x - title_x >= mw {
+            // Clip the title to the measures before the next section, so two markers
+            // never write over each other.
+            let clip = Rect::from_min_max(
+                pos2(title_x + 3.0, band.top()),
+                pos2(end_x - 2.0, band.bottom()),
+            );
+            painter.with_clip_rect(clip.intersect(band)).text(
+                pos2(title_x + 4.0, band.center().y - 1.0),
+                Align2::LEFT_CENTER,
+                &section.title,
+                FontId::proportional(10.0),
+                color,
+            );
+        }
+    }
+
+    let at = response
+        .interact_pointer_pos()
+        .and_then(|pointer| measure_at(pointer.x - left, mw, view.measure_count));
+    let in_band = response
+        .hover_pos()
+        .or_else(|| response.interact_pointer_pos())
+        .is_some_and(|pointer| band.contains(pointer));
+    let pressed_in_band = ui
+        .input(|input| input.pointer.press_origin())
+        .is_some_and(|origin| band.contains(origin));
+    let section_at =
+        |measure: usize| section_span(grid, view.measure_count, measure).map(|(start, _)| start);
+
+    if in_band
+        && response.clicked()
+        && let Some(measure) = at
+        && let Some((start, end)) = section_span(grid, view.measure_count, measure)
+    {
+        // Shift-click grows the selection to take in the whole section.
+        let selection = if ui.input(|input| input.modifiers.shift) {
+            let mut grown = view
+                .selection
+                .unwrap_or_else(|| MeasureSelection::new(start))
+                .extend_to(start)
+                .extend_to(end);
+            grown.track = None;
+            grown
+        } else {
+            MeasureSelection {
+                anchor: start,
+                focus: end,
+                track: None,
+            }
+        };
+        actions.push(GridAction::Select(selection));
+        actions.push(GridAction::MoveCursor {
+            track: view.cursor_track,
+            measure: start,
+        });
+    }
+    let hovered = response
+        .hover_pos()
+        .filter(|pointer| band.contains(*pointer))
+        .and_then(|pointer| measure_at(pointer.x - left, mw, view.measure_count));
+    if !response.dragged() && hovered.and_then(section_at).is_some() {
+        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+        response.clone().on_hover_text(
+            "Click to select the section (every track); drag it onto another section to \
+             swap their bars",
+        );
+    }
+    // The drag may start only after the pointer has left the section's name, so the
+    // section is the one under the press, not under the pointer now.
+    let pressed_at = ui
+        .input(|input| input.pointer.press_origin())
+        .and_then(|origin| measure_at(origin.x - left, mw, view.measure_count));
+    if pressed_in_band
+        && response.drag_started()
+        && let Some(from) = pressed_at.and_then(section_at)
+    {
+        // Only the section being dragged is marked: the selection goes.
+        actions.push(GridAction::ClearSelection);
+        ui.ctx()
+            .data_mut(|data| data.insert_temp(drag_id, (from, None::<usize>)));
+    }
+    if let Some((from, _)) = drag {
+        let target = at.and_then(section_at).filter(|start| *start != from);
+        if response.dragged() {
+            ui.ctx()
+                .data_mut(|data| data.insert_temp(drag_id, (from, target)));
+            ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
+        }
+        if response.drag_stopped() {
+            if let Some(to) = target {
+                actions.push(GridAction::SwapSections { from, to });
+            }
+            ui.ctx()
+                .data_mut(|data| data.remove_temp::<(usize, Option<usize>)>(drag_id));
         }
     }
 }
@@ -203,11 +365,7 @@ pub(super) fn matrix(
         && playing < last_measure
     {
         let column = measure_rect(rect, playing, view.zoom);
-        painter.rect_filled(
-            column,
-            0.0,
-            Color32::from_rgb(255, 200, 40).gamma_multiply(0.25),
-        );
+        painter.rect_filled(column, 0.0, view.cursor_color.gamma_multiply(PLAYING_ALPHA));
     }
 
     // Row stripes (a setting) and the squares of the bars with notes.
@@ -243,30 +401,27 @@ pub(super) fn matrix(
         }
     }
 
-    // The measure lines between the squares.
-    for measure in first_measure..last_measure {
+    // The tile lines, over the squares so the bars with notes are tiles too: one dark
+    // line between every two bars and every two rows, as in Guitar Pro.
+    let line = Stroke::new(GRID_LINE_WIDTH, style::tokens(ui).grid_line);
+    let rows_bottom = rect.top() + rows.len() as f32 * ROW_HEIGHT;
+    for measure in first_measure..=last_measure {
         let x = rect.left() + measure as f32 * mw;
-        let strong = measure % 4 == 0 || grid.sections.get(measure).is_some_and(Option::is_some);
-        let color = if strong {
-            visuals.widgets.noninteractive.bg_stroke.color
-        } else {
-            visuals
-                .widgets
-                .noninteractive
-                .bg_stroke
-                .color
-                .gamma_multiply(0.4)
-        };
-        painter.line_segment(
-            [pos2(x, rect.top()), pos2(x, rect.bottom())],
-            Stroke::new(1.0, color),
-        );
+        painter.line_segment([pos2(x, rect.top()), pos2(x, rows_bottom)], line);
+    }
+    let (left, right) = (
+        rect.left() + first_measure as f32 * mw,
+        rect.left() + last_measure as f32 * mw,
+    );
+    for row in first_row..=last_row {
+        let y = rect.top() + row as f32 * ROW_HEIGHT;
+        painter.line_segment([pos2(left, y), pos2(right, y)], line);
     }
 
     // The cursor's bar, outlined in its track's row: over the squares and the measure
     // lines, so a bar with notes (a filled square) shows it as well as an empty one. A
     // selection is marked on its own (the cursor sits at its first bar).
-    if view.selection.is_none()
+    if view.shown_selection().is_none()
         && view.cursor_track < last_row
         && view.cursor_track >= first_row
         && view.cursor_measure < view.measure_count
@@ -290,7 +445,7 @@ pub(super) fn matrix(
     // The selection, over the squares so it shows on the colored ones too: the score's
     // color and shade, and an outline around the selected bars (of one track's row, or of
     // every row).
-    if let Some(selection) = view.selection
+    if let Some(selection) = view.shown_selection()
         && selection.start() < last_measure
         && selection.end() >= first_measure
     {
@@ -316,41 +471,6 @@ pub(super) fn matrix(
             painter.rect_stroke(
                 area,
                 0.0,
-                Stroke::new(1.5, view.selection_color),
-                egui::StrokeKind::Inside,
-            );
-        }
-    }
-
-    // While a section's name is dragged, it and the section under the pointer are marked:
-    // dropping it there swaps the two sections' bars.
-    let drag_id = ui.make_persistent_id("section_drag");
-    let drag: Option<(usize, Option<usize>)> = ui.ctx().data(|data| data.get_temp(drag_id));
-    if let Some((from, target)) = drag {
-        let master_top = rect.top() + rows.len() as f32 * ROW_HEIGHT;
-        for (start, emphasis) in [(from, true), (target.unwrap_or(from), false)] {
-            if !emphasis && target.is_none() {
-                continue;
-            }
-            let Some((first, last)) = section_span(grid, view.measure_count, start) else {
-                continue;
-            };
-            let area = Rect::from_min_max(
-                pos2(rect.left() + first as f32 * mw, master_top),
-                pos2(
-                    rect.left() + (last as f32 + 1.0) * mw,
-                    master_top + ROW_HEIGHT,
-                ),
-            );
-            painter.rect_filled(
-                area,
-                2.0,
-                view.selection_color
-                    .gamma_multiply(if emphasis { 0.3 } else { 0.15 }),
-            );
-            painter.rect_stroke(
-                area,
-                2.0,
                 Stroke::new(1.5, view.selection_color),
                 egui::StrokeKind::Inside,
             );
@@ -383,65 +503,50 @@ pub(super) fn matrix(
         );
     }
 
-    // Section titles in the master row, below every track: there they have the whole
-    // width of their section and no measure number or repeat sign to collide with.
+    // Repeats and alternative endings in the master row, below every track: an ending's
+    // number at the top, the repeat signs at the bottom.
     let master_top = rect.top() + rows.len() as f32 * ROW_HEIGHT;
-    // A section lasts until the next one starts (or the song ends), so it also covers
-    // measures on screen when its own start has scrolled off the left edge: such a
-    // half-visible section keeps its line there and shows its title at the edge.
-    let starts: Vec<usize> = (0..view.measure_count)
-        .filter(|&measure| grid.sections.get(measure).is_some_and(Option::is_some))
-        .collect();
-    for (index, &measure) in starts.iter().enumerate() {
-        let Some(Some(section)) = grid.sections.get(measure) else {
+    let sign_font = FontId::monospace(9.0);
+    for measure in first_measure..last_measure {
+        let Some(repeat) = grid.repeats.get(measure) else {
             continue;
         };
-        let next = starts
-            .get(index.saturating_add(1))
-            .copied()
-            .unwrap_or(view.measure_count);
-        // Nothing of it is on screen: every one of its measures is left or right of the
-        // view.
-        if next <= first_measure || measure >= last_measure {
-            continue;
-        }
         let x = rect.left() + measure as f32 * mw;
-        let color = color32(section.color);
-        let room = next.saturating_sub(measure) as f32 * mw;
-        // The title may run into the empty area after the last measure; it stops at the
-        // next section's marker.
-        let end_x = if next >= view.measure_count {
-            rect.right()
-        } else {
-            x + room
-        };
-        // Where the title starts: at its measure, or at the view's left edge for a
-        // section whose start is scrolled out, so it stays readable.
-        let title_x = x.max(shown.left());
-        painter.line_segment(
-            [pos2(x, master_top), pos2(x, master_top + ROW_HEIGHT - 2.0)],
-            Stroke::new(2.0, color),
-        );
-        painter.line_segment(
-            [
-                pos2(x, master_top + ROW_HEIGHT - 2.0),
-                pos2(x + room, master_top + ROW_HEIGHT - 2.0),
-            ],
-            Stroke::new(1.5, color),
-        );
-        if end_x - title_x >= mw {
-            // Clip the title to the measures before the next section, so two markers
-            // never write over each other.
-            let clip = Rect::from_min_max(
-                pos2(title_x + 3.0, master_top),
-                pos2(end_x - 2.0, master_top + ROW_HEIGHT),
+        let bottom = master_top + ROW_HEIGHT - 3.0;
+        if repeat.start {
+            painter.text(
+                pos2(x + 2.0, bottom),
+                Align2::LEFT_BOTTOM,
+                "|:",
+                sign_font.clone(),
+                visuals.text_color(),
             );
-            painter.with_clip_rect(clip).text(
-                pos2(title_x + 4.0, master_top + ROW_HEIGHT / 2.0),
-                Align2::LEFT_CENTER,
-                &section.title,
-                FontId::proportional(10.0),
-                color,
+        }
+        if let Some(times) = repeat.end_repeats {
+            painter.text(
+                pos2(x + mw - 2.0, bottom),
+                Align2::RIGHT_BOTTOM,
+                ":|",
+                sign_font.clone(),
+                visuals.text_color(),
+            );
+            if times > 1 {
+                painter.text(
+                    pos2(x + mw - 2.0, master_top + 2.0),
+                    Align2::RIGHT_TOP,
+                    format!("\u{00d7}{times}"),
+                    FontId::proportional(8.0),
+                    visuals.weak_text_color(),
+                );
+            }
+        }
+        if repeat.endings != 0 {
+            painter.text(
+                pos2(x + 2.0, master_top + 2.0),
+                Align2::LEFT_TOP,
+                ending_label(repeat.endings),
+                sign_font.clone(),
+                visuals.weak_text_color(),
             );
         }
     }
@@ -456,7 +561,7 @@ pub(super) fn matrix(
         );
         response.clone().on_hover_text(text);
     }
-    handle_matrix_clicks(ui, &response, rect, grid, view, cell, rows.len(), actions);
+    handle_matrix_clicks(ui, &response, rect, view, cell, rows.len(), actions);
 }
 
 /// The selected bars being dragged in the grid: the selection's first bar and length, the
@@ -513,7 +618,7 @@ fn drag_selected_bars(
     actions: &mut Vec<GridAction>,
 ) -> bool {
     let on_selection = |pos: egui::Pos2| {
-        let Some(selection) = view.selection else {
+        let Some(selection) = view.shown_selection() else {
             return false;
         };
         cell_at(pos, rect, view.measure_count, track_count, view.zoom).is_some_and(
@@ -526,7 +631,7 @@ fn drag_selected_bars(
     if response.drag_started()
         && let Some(origin) = ui.input(|input| input.pointer.press_origin())
         && on_selection(origin)
-        && let Some(selection) = view.selection
+        && let Some(selection) = view.shown_selection()
         && let Some(grab) = at_x(origin.x)
     {
         let start = selection.start();
@@ -653,7 +758,6 @@ fn handle_matrix_clicks(
     ui: &egui::Ui,
     response: &Response,
     rect: Rect,
-    grid: &GridData,
     view: GridView,
     cell: Option<(usize, usize)>,
     track_count: usize,
@@ -673,92 +777,13 @@ fn handle_matrix_clicks(
     let at = response
         .interact_pointer_pos()
         .and_then(|pointer| at_x(pointer.x));
-    // The master row under the tracks shows the sections' names; it is no place for a bar
+    // The master row under the tracks shows the repeats; it is no place for a bar
     // selection or the cursor.
     let master_top = rect.top() + track_count as f32 * ROW_HEIGHT;
-    let in_master = response
-        .hover_pos()
-        .or_else(|| response.interact_pointer_pos())
-        .is_some_and(|pointer| pointer.y >= master_top && rect.contains(pointer));
     let pressed_in_master = ui
         .input(|input| input.pointer.press_origin())
         .is_some_and(|origin| origin.y >= master_top && rect.contains(origin));
 
-    // A click on a section's name selects all its bars, in every track, as the track
-    // panel's section rows do (a click on its bars elsewhere only places the cursor).
-    if in_master
-        && response.clicked()
-        && let Some(measure) = at
-        && let Some((start, end)) = section_span(grid, view.measure_count, measure)
-    {
-        let selection = if ui.input(|input| input.modifiers.shift) {
-            view.selection.map_or_else(
-                || MeasureSelection::new(start),
-                |selection| selection.extend_to(start),
-            )
-        } else {
-            MeasureSelection {
-                anchor: start,
-                focus: end,
-                track: None,
-            }
-        };
-        actions.push(GridAction::Select(selection));
-        actions.push(GridAction::MoveCursor {
-            track: view.cursor_track,
-            measure: start,
-        });
-    }
-    if in_master
-        && !response.dragged()
-        && at.is_some_and(|m| section_span(grid, view.measure_count, m).is_some())
-    {
-        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-        response.clone().on_hover_text(
-            "Click to select the section (every track); drag it onto another section to \
-             swap their bars",
-        );
-    }
-    // Dragging a section's name onto another section swaps their bars.
-    let drag_id = ui.make_persistent_id("section_drag");
-    let section_at =
-        |measure: usize| section_span(grid, view.measure_count, measure).map(|(start, _)| start);
-    // The drag may start only after the pointer has left the section's name, so the
-    // section is the one under the press, not under the pointer now.
-    let pressed_at = ui
-        .input(|input| input.pointer.press_origin())
-        .and_then(|origin| at_x(origin.x));
-    if pressed_in_master
-        && response.drag_started()
-        && let Some(from) = pressed_at.and_then(section_at)
-    {
-        // Only the section being dragged is marked: the selection goes.
-        actions.push(GridAction::ClearSelection);
-        ui.ctx()
-            .data_mut(|data| data.insert_temp(drag_id, (from, None::<usize>)));
-    }
-    let dragging: Option<(usize, Option<usize>)> = ui.ctx().data(|data| data.get_temp(drag_id));
-    if let Some((from, _)) = dragging {
-        let inside = response
-            .interact_pointer_pos()
-            .is_some_and(|pointer| rect.contains(pointer));
-        let target = at
-            .filter(|_| inside)
-            .and_then(section_at)
-            .filter(|start| *start != from);
-        if response.dragged() {
-            ui.ctx()
-                .data_mut(|data| data.insert_temp(drag_id, (from, target)));
-            ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
-        }
-        if response.drag_stopped() {
-            if let Some(to) = target {
-                actions.push(GridAction::SwapSections { from, to });
-            }
-            ui.ctx()
-                .data_mut(|data| data.remove_temp::<(usize, Option<usize>)>(drag_id));
-        }
-    }
     if pressed_in_master {
         return;
     }
@@ -813,13 +838,24 @@ fn handle_matrix_clicks(
     {
         if ui.input(|input| input.modifiers.shift) {
             // Shift-click grows the selection to take in this bar (whichever end is
-            // nearer it), or else selects from the cursor's bar to this one.
+            // nearer it), or else selects from the cursor's bar to this one. A click in
+            // another track's row than a one-track selection's takes in every track, as
+            // Shift+Up/Down do.
             let selection = match (view.selection, cell) {
-                (Some(selection), _) => selection.extend_to(measure),
-                (None, Some((track, _))) => {
+                (Some(selection), cell) => {
+                    let mut grown = selection.extend_to(measure);
+                    if selection.track.is_some() && cell.map(|(track, _)| track) != selection.track
+                    {
+                        grown.track = None;
+                    }
+                    grown
+                }
+                // From the cursor's tile: in its row that track, in another row every
+                // track (the cursor's bar and this one, in all of them).
+                (None, Some((track, _))) if track == view.cursor_track => {
                     MeasureSelection::on(track, view.cursor_measure).to(measure)
                 }
-                (None, None) => MeasureSelection::new(view.cursor_measure).to(measure),
+                (None, _) => MeasureSelection::new(view.cursor_measure).to(measure),
             };
             actions.push(GridAction::Select(selection));
         } else if let Some((track, measure)) = cell {

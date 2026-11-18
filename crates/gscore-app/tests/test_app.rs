@@ -1121,7 +1121,7 @@ fn the_eq_curve_and_its_knob_columns_match_their_snapshot() {
 }
 
 #[test]
-fn section_titles_sit_in_the_master_row() {
+fn section_titles_sit_in_the_ruler() {
     let _gpu = common::lock_gpu();
     let mut harness = Harness::builder()
         .with_size(egui::vec2(1000.0, 700.0))
@@ -2497,6 +2497,42 @@ fn clicking_the_song_grid_puts_the_cursor_on_the_bar_without_selecting_it() {
 }
 
 #[test]
+fn shift_clicking_another_tracks_row_grows_the_selection_to_every_track() {
+    let mut harness = app_with(Some(testdata("basic/multi_staff.gp")));
+    let rect = harness.get_by_label("Song grid").rect();
+    let cell = |measure: usize, track: usize| {
+        rect.left_top() + egui::vec2(24.0 * measure as f32 + 12.0, 24.0 * track as f32 + 12.0)
+    };
+    let selected = |harness: &Harness<'static, GuitarScoreApp>| {
+        let selection = harness.state().selection().expect("a grid selection");
+        (selection.start(), selection.end(), selection.track)
+    };
+    // Bars 2-4 of the second track.
+    left_click_at(&mut harness, cell(1, 1));
+    click_with(&mut harness, cell(3, 1), egui::Modifiers::SHIFT);
+    assert_eq!(selected(&harness), (1, 3, Some(1)));
+    // In the same row: still that track.
+    click_with(&mut harness, cell(4, 1), egui::Modifiers::SHIFT);
+    assert_eq!(selected(&harness), (1, 4, Some(1)));
+    // In the row above, even inside the selected bars: every track.
+    click_with(&mut harness, cell(2, 0), egui::Modifiers::SHIFT);
+    assert_eq!(selected(&harness), (1, 4, None));
+    // And it stays every track, growing as before.
+    click_with(&mut harness, cell(5, 1), egui::Modifiers::SHIFT);
+    assert_eq!(selected(&harness), (1, 5, None));
+
+    // From a clicked tile (only the cursor, nothing selected yet): Shift-click in its row
+    // selects that track, in the row above the same bar every track.
+    left_click_at(&mut harness, cell(2, 1));
+    assert!(harness.state().selection().is_none());
+    click_with(&mut harness, cell(2, 0), egui::Modifiers::SHIFT);
+    assert_eq!(selected(&harness), (2, 2, None));
+    left_click_at(&mut harness, cell(2, 1));
+    click_with(&mut harness, cell(4, 1), egui::Modifiers::SHIFT);
+    assert_eq!(selected(&harness), (2, 4, Some(1)));
+}
+
+#[test]
 fn dragging_in_the_song_grid_selects_one_track_or_all() {
     let mut harness = app_with(Some(testdata("basic/multi_staff.gp")));
     let rect = harness.get_by_label("Song grid").rect();
@@ -2546,13 +2582,13 @@ fn dragging_in_the_song_grid_selects_one_track_or_all() {
     harness.drop_at(cell(1, 0));
     harness.run();
 
-    // A click on the ruler places the cursor; shift-click selects whole bars across every
-    // track, from the cursor's bar.
-    left_click_at(&mut harness, cell(2, 0) - egui::vec2(0.0, 25.0));
+    // A click on the ruler's measure numbers places the cursor; shift-click selects whole
+    // bars across every track, from the cursor's bar. (Below the numbers are the sections.)
+    left_click_at(&mut harness, cell(2, 0) - egui::vec2(0.0, 35.0));
     assert!(selection(&harness).is_none());
     click_with(
         &mut harness,
-        cell(3, 0) - egui::vec2(0.0, 25.0),
+        cell(3, 0) - egui::vec2(0.0, 35.0),
         egui::Modifiers::SHIFT,
     );
     let selected = selection(&harness).unwrap();
@@ -3388,10 +3424,10 @@ fn the_audio_tab_is_last_and_named_audio_io() {
 }
 
 #[test]
-fn the_song_grid_stripes_can_be_switched_off_in_the_settings() {
+fn the_song_grid_stripes_can_be_switched_on_in_the_settings() {
     let _gpu = common::lock_gpu();
     let mut harness = app_with(Some(testdata("basic/multi_staff.gp")));
-    assert!(harness.state().settings().grid_stripes, "on by default");
+    assert!(!harness.state().settings().grid_stripes, "off by default");
     harness.get_by_label("File").click();
     harness.run();
     harness.get_by_label("Settings… ctrl+,").click();
@@ -3401,12 +3437,12 @@ fn the_song_grid_stripes_can_be_switched_off_in_the_settings() {
     harness.get_by_label("Stripe every other track row").click();
     harness.run();
     assert!(
-        !harness.state().settings().grid_stripes,
+        harness.state().settings().grid_stripes,
         "kept for the next start"
     );
     harness.get_by_label("Close Settings").click();
     harness.run();
-    harness.snapshot("grid_without_stripes");
+    harness.snapshot("grid_with_stripes");
 }
 
 #[test]

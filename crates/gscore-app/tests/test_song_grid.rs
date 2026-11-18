@@ -231,9 +231,9 @@ fn the_ruler_ends_at_the_vertical_bar() {
 
 /// A section lasts until the next one starts, so with the grid scrolled right it may begin
 /// left of the view: the measures of it that are on screen still show its line in the
-/// master row, and its title begins at the view's edge instead of being missing.
+/// ruler, and its title begins at the view's edge instead of being missing.
 #[test]
-fn a_section_scrolled_off_the_left_edge_still_marks_the_master_row() {
+fn a_section_scrolled_off_the_left_edge_still_marks_the_ruler() {
     let _gpu = common::lock_gpu();
     let mut harness = wide_song(1);
     // Magenta: nothing else in the grid is (the theme's backgrounds are dark grey, the
@@ -281,19 +281,20 @@ fn a_section_scrolled_off_the_left_edge_still_marks_the_master_row() {
     let sectionish = |pixel: image::Rgba<u8>| {
         i32::from(pixel.0[0]) > 120 && i32::from(pixel.0[2]) > 120 && i32::from(pixel.0[1]) < 120
     };
-    // The master row sits below the one track's row; its line runs along its bottom.
-    let master_top = grid.top() + 24.0;
+    // The sections sit in the ruler under the measure numbers; the line runs along its
+    // bottom.
+    let band_top = view.top() + 12.0;
     for x in [60.0, 250.0, 450.0] {
-        let at = egui::pos2(left + x, master_top + 22.5);
+        let at = egui::pos2(left + x, view.bottom() - 2.0);
         assert!(
             sectionish(pixel(at)),
             "no section line at {at:?} ({:?})",
             pixel(at)
         );
     }
-    // The title is drawn at the view's left edge, over the row's middle.
+    // The title is drawn at the view's left edge, in the band's middle.
     let title = (2..80)
-        .flat_map(|dx| (2..20).map(move |dy| egui::pos2(left + dx as f32, master_top + dy as f32)))
+        .flat_map(|dx| (1..15).map(move |dy| egui::pos2(left + dx as f32, band_top + dy as f32)))
         .filter(|&at| sectionish(pixel(at)))
         .count();
     assert!(
