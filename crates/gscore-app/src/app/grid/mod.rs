@@ -356,6 +356,7 @@ impl GuitarScoreApp {
                     self.playback.metronome_level(),
                 ),
                 track_column: self.view.grid_track_column(),
+                stripes: self.settings.grid_stripes,
             },
             &levels,
             &comp_sends,
@@ -820,6 +821,8 @@ pub(super) struct GridView {
     metronome: (f32, f32),
     /// The track column's width.
     track_column: f32,
+    /// Whether every other row has a lighter background (a setting).
+    stripes: bool,
 }
 
 #[allow(clippy::too_many_arguments)]

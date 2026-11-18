@@ -622,15 +622,31 @@ impl GuitarScoreApp {
     /// The playback speed (25 % to 150 % of the written tempo: typed, or one of the usual
     /// steps), and whether the speed trainer is on.
     fn speed_control(&mut self, ui: &mut egui::Ui) {
+        let tokens = style::tokens(ui);
         let mut speed = self.playback.speed();
         let chosen = speed;
         let trainer = self.playback.trainer();
+        // Blue while playback is not at the written tempo, so a changed speed shows at a
+        // glance and not only in the number.
+        let altered = off_tempo(speed);
         // The number takes a typed speed (a click edits it, a drag changes it); the arrow
         // beside it lists the usual steps.
         let (response, list) = ui
             .scope(|ui| {
                 ui.spacing_mut().item_spacing.x = 0.0;
                 ui.spacing_mut().interact_size.x = 46.0;
+                if altered {
+                    let visuals = ui.visuals_mut();
+                    visuals.override_text_color = Some(tokens.accent);
+                    for widget in [
+                        &mut visuals.widgets.inactive,
+                        &mut visuals.widgets.hovered,
+                        &mut visuals.widgets.active,
+                        &mut visuals.widgets.open,
+                    ] {
+                        widget.fg_stroke.color = tokens.accent;
+                    }
+                }
                 let typed = ui.add(percent_value(&mut speed));
                 // A slim arrow beside the number opens the list of steps.
                 let list = dropdown_arrow(ui, ui.spacing().interact_size.y);
@@ -989,6 +1005,12 @@ fn paint_cross(painter: &egui::Painter, rect: Rect, ink: egui::Color32) {
     painter.line_segment([r.right_top(), r.left_bottom()], stroke);
 }
 
+/// Whether `speed` differs from the written tempo as the speed control shows it (whole
+/// percent): the number turns blue then.
+fn off_tempo(speed: f32) -> bool {
+    (speed * 100.0).round() != 100.0
+}
+
 /// A speed (1 = 100 %) typed or dragged in whole percent, within the playback speed's
 /// range.
 fn percent_value(speed: &mut f32) -> egui::DragValue<'_> {
@@ -1050,7 +1072,7 @@ mod tests {
     use gscore_model::{BeatIndex, BeatPosition, MeasureIndex, NoteValue, TrackIndex, VoiceIndex};
     use gscore_play::{PPQ, Timeline};
 
-    use super::{FillState, bar_fill, beats_text, playback_times, time_text};
+    use super::{FillState, bar_fill, beats_text, off_tempo, playback_times, time_text};
     use crate::state::MeasureSelection;
 
     fn at(beat: usize) -> BeatPosition {
@@ -1156,5 +1178,18 @@ mod tests {
 
         let (elapsed, total) = playback_times(&timeline, bar, None, true);
         assert_eq!((elapsed, total), (2_000_000, 8_000_000));
+    }
+
+    #[test]
+    fn a_speed_off_the_written_tempo_is_marked() {
+        // 100 % reads as the written tempo (the control shows whole percent).
+        assert!(!off_tempo(1.0));
+        assert!(!off_tempo(0.999_9));
+        assert!(!off_tempo(1.000_4));
+        // Anything the control shows as another number is marked.
+        assert!(off_tempo(0.25));
+        assert!(off_tempo(0.9));
+        assert!(off_tempo(1.1));
+        assert!(off_tempo(1.5));
     }
 }

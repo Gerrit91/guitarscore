@@ -130,6 +130,7 @@ mod tests {
     /// Every block's symbol, light and dark, at the board's size and larger.
     #[test]
     fn the_block_symbols_match_their_snapshot() {
+        let _gpu = crate::test_support::lock_gpu();
         let choices = [
             BlockChoice::Drive,
             BlockChoice::Amp,

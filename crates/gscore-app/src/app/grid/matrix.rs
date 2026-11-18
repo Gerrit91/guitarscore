@@ -4,6 +4,7 @@
 
 use egui::{Align2, Color32, FontId, Rect, Response, Sense, Stroke, pos2, vec2};
 
+use crate::app::style;
 use crate::document::GridData;
 use crate::state::MeasureSelection;
 
@@ -36,7 +37,7 @@ pub(super) fn ruler(
     });
     let painter = ui.painter_at(rect);
     let visuals = ui.visuals().clone();
-    painter.rect_filled(rect, 0.0, visuals.extreme_bg_color);
+    painter.rect_filled(rect, 0.0, style::tokens(ui).grid);
     // The measures the strip shows: the matrix's sideways scroll decides where it starts.
     let left = rect.left() - scroll_x;
     let first = (scroll_x / mw).floor().max(0.0) as usize;
@@ -186,7 +187,7 @@ pub(super) fn matrix(
     });
     let painter = ui.painter_at(rect);
     let visuals = ui.visuals().clone();
-    painter.rect_filled(rect, 0.0, visuals.extreme_bg_color);
+    painter.rect_filled(rect, 0.0, style::tokens(ui).grid);
 
     // Paint only the measures and rows the scroll area shows.
     let shown = ui.clip_rect().intersect(rect);
@@ -209,7 +210,7 @@ pub(super) fn matrix(
         );
     }
 
-    // Row stripes and squares.
+    // Row stripes (a setting) and the squares of the bars with notes.
     for row in first_row..last_row {
         let Some(cells) = grid.cells.get(row) else {
             continue;
@@ -221,7 +222,7 @@ pub(super) fn matrix(
                 rect.top() + (row as f32 + 1.0) * ROW_HEIGHT,
             ),
         );
-        if row % 2 == 1 {
+        if view.stripes && row % 2 == 1 {
             painter.rect_filled(row_rect, 0.0, visuals.faint_bg_color);
         }
         for measure_index in first_measure..last_measure {
