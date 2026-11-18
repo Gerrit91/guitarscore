@@ -2,7 +2,7 @@
 //! Plain serializable data, stored as JSON in the user's config directory (`gscore-session`),
 //! so it can be inspected and restored without a running app.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use gscore_edit::{ActionId, KeyCombo, Keymap};
@@ -15,6 +15,8 @@ use crate::state::{ViewState, ZOOM_RANGE};
 pub const MAX_RECENT_FILES: usize = 20;
 /// Most tabs remembered to reopen at the next start.
 pub const MAX_OPEN_FILES: usize = 64;
+/// How many files' cursor and selection positions are remembered.
+pub const MAX_FILE_POSITIONS: usize = 64;
 /// Most changed actions accepted from the settings file, and keys per action.
 const MAX_SHORTCUT_OVERRIDES: usize = 1024;
 const MAX_KEYS_PER_ACTION: usize = 32;
@@ -638,6 +640,81 @@ impl DrumPartTone {
     }
 }
 
+/// Where the cursor was and what was selected in a file when it was last open, so opening
+/// it again returns there. Guitar Pro files have no field for this, so it lives with the
+/// app's settings.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct FilePosition {
+    /// The file, as the platform spelled it when it was opened.
+    pub path: PathBuf,
+    /// The cursor's track.
+    pub track: usize,
+    /// The cursor's staff of that track (0 for most tracks).
+    pub staff: usize,
+    /// The cursor's measure.
+    pub measure: usize,
+    /// The cursor's voice.
+    pub voice: usize,
+    /// The cursor's beat.
+    pub beat: usize,
+    /// The cursor's string, 1 = highest.
+    pub string: u8,
+    /// The track the tab showed (the cursor's, unless another was chosen).
+    pub shown_track: usize,
+    /// The selected beats or measures, if any.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub selection: Option<FileSelection>,
+}
+
+impl Default for FilePosition {
+    fn default() -> Self {
+        FilePosition {
+            path: PathBuf::new(),
+            track: 0,
+            staff: 0,
+            measure: 0,
+            voice: 0,
+            beat: 0,
+            string: 1,
+            shown_track: 0,
+            selection: None,
+        }
+    }
+}
+
+/// A selection as the settings keep it (the editor's own types are not serializable).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum FileSelection {
+    /// A range of whole beats in one track and voice.
+    Beats {
+        /// The track.
+        track: usize,
+        /// Which staff of it.
+        staff: usize,
+        /// The voice.
+        voice: usize,
+        /// Where the selection started.
+        anchor_measure: usize,
+        /// The beat the selection started at.
+        anchor_beat: usize,
+        /// Where it ends now.
+        focus_measure: usize,
+        /// The beat it ends at now.
+        focus_beat: usize,
+    },
+    /// A range of whole measures, in one track or in every track.
+    Measures {
+        /// Where the selection started.
+        anchor: usize,
+        /// Where it ends now.
+        focus: usize,
+        /// The one selected track, or `None` for every track.
+        track: Option<usize>,
+    },
+}
+
 /// Everything the app remembers between runs.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
@@ -692,6 +769,8 @@ pub struct Settings {
     pub open_files: Vec<PathBuf>,
     /// The file of the tab that was active when they were saved, if any.
     pub active_file: Option<PathBuf>,
+    /// Where the cursor and selection were in files opened before, newest first.
+    pub file_positions: Vec<FilePosition>,
     /// The file to reopen at startup (written for older versions; see `open_files`).
     pub last_file: Option<PathBuf>,
     /// The keymap file, if the user chose one.
@@ -796,6 +875,7 @@ impl Default for Settings {
             reopen_last_file: true,
             open_files: Vec::new(),
             active_file: None,
+            file_positions: Vec::new(),
             last_file: None,
             keymap_path: None,
             shortcut_overrides: Vec::new(),
@@ -877,6 +957,21 @@ impl Settings {
         view.hide_empty_staves = self.hide_empty_staves;
         view.multi_bar_rests = self.multi_bar_rests;
         view.set_grid_track_column(self.grid_track_column);
+    }
+
+    /// Where `path` was left when it was last open, if it was opened before.
+    pub fn position_for(&self, path: &Path) -> Option<&FilePosition> {
+        self.file_positions
+            .iter()
+            .find(|position| same_file(&position.path, path))
+    }
+
+    /// Remembers `position` as the newest, replacing the older one for the same file.
+    pub fn remember_position(&mut self, position: FilePosition) {
+        self.file_positions
+            .retain(|stored| !same_file(&stored.path, &position.path));
+        self.file_positions.insert(0, position);
+        self.file_positions.truncate(MAX_FILE_POSITIONS);
     }
 
     /// Puts `path` first in the recent files, without duplicates.
@@ -1019,6 +1114,10 @@ impl Settings {
         self.speed_trainer_target = trainer.target;
         self.recent_files.truncate(MAX_RECENT_FILES);
         self.open_files.truncate(MAX_OPEN_FILES);
+        // A broken path cannot be reopened anyway; a huge list would slow every start.
+        self.file_positions.truncate(MAX_FILE_POSITIONS);
+        self.file_positions
+            .retain(|position| !position.path.as_os_str().is_empty());
         // A hostile or broken file cannot make the keymap huge.
         self.shortcut_overrides.truncate(MAX_SHORTCUT_OVERRIDES);
         self.shortcut_overrides
@@ -1071,6 +1170,18 @@ impl Settings {
         self.drum_parts
             .retain(|tone| tone.part().is_some_and(|part| parts.insert(part.index())));
     }
+}
+
+/// Whether `a` and `b` name the same file: the same spelling, or (where the file exists)
+/// the same file once links and `..` are resolved.
+pub(crate) fn same_file(a: &Path, b: &Path) -> bool {
+    if a == b {
+        return true;
+    }
+    matches!(
+        (std::fs::canonicalize(a), std::fs::canonicalize(b)),
+        (Ok(a), Ok(b)) if a == b
+    )
 }
 
 #[cfg(test)]
@@ -1365,6 +1476,35 @@ mod tests {
     }
 
     #[test]
+    fn file_positions_keep_the_newest_place_of_each_file() {
+        let mut settings = Settings::default();
+        let position = |path: &str, measure: usize| FilePosition {
+            path: PathBuf::from(path),
+            measure,
+            ..FilePosition::default()
+        };
+        settings.remember_position(position("a.gp", 1));
+        settings.remember_position(position("b.gp", 2));
+        // Opening a file again replaces its place and makes it the newest.
+        settings.remember_position(position("a.gp", 3));
+        assert_eq!(settings.file_positions.len(), 2);
+        assert_eq!(settings.file_positions[0].measure, 3);
+        assert_eq!(
+            settings
+                .position_for(Path::new("a.gp"))
+                .map(|position| position.measure),
+            Some(3)
+        );
+        assert!(settings.position_for(Path::new("missing.gp")).is_none());
+        // A hostile or broken settings file cannot make the list grow without bound.
+        for index in 0..MAX_FILE_POSITIONS + 5 {
+            settings.remember_position(position(&format!("{index}.gp"), index));
+        }
+        settings.sanitize();
+        assert_eq!(settings.file_positions.len(), MAX_FILE_POSITIONS);
+    }
+
+    #[test]
     fn a_json_round_trip_keeps_every_field() {
         let mut settings = Settings::default();
         settings.add_recent(PathBuf::from("/tabs/song.gp"));
@@ -1376,6 +1516,25 @@ mod tests {
         settings.grid_height_chosen = Some(180.0);
         settings.open_files = vec![PathBuf::from("/tabs/a.gp"), PathBuf::from("/tabs/b.gp")];
         settings.active_file = Some(PathBuf::from("/tabs/b.gp"));
+        settings.file_positions = vec![FilePosition {
+            path: PathBuf::from("/tabs/b.gp"),
+            track: 1,
+            staff: 0,
+            measure: 4,
+            voice: 0,
+            beat: 2,
+            string: 5,
+            shown_track: 1,
+            selection: Some(FileSelection::Beats {
+                track: 1,
+                staff: 0,
+                voice: 0,
+                anchor_measure: 2,
+                anchor_beat: 0,
+                focus_measure: 4,
+                focus_beat: 2,
+            }),
+        }];
         settings.window = Some(WindowState {
             x: Some(10.0),
             y: Some(20.0),
