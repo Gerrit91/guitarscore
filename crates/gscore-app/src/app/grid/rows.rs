@@ -361,15 +361,25 @@ fn track_header(
     });
     activity.on_hover_text("Output activity (estimated from recent notes)");
 
-    response
-        .clone()
-        .on_hover_text(format!("{} — {}", row.description, row.name));
+    response.clone().on_hover_text(format!(
+        "{} — {}\nDouble-click the name to rename",
+        row.description, row.name
+    ));
     if response.clicked() {
         let measure = view.cursor_measure;
         actions.push(GridAction::MoveCursor {
             track: index,
             measure,
         });
+    }
+    // A double click on the name opens the rename window, as Guitar Pro's track headers
+    // do; a single click still shows the track (and moves the cursor to its bar).
+    if response.double_clicked()
+        && response
+            .interact_pointer_pos()
+            .is_some_and(|pos| name_rect.contains(pos))
+    {
+        actions.push(GridAction::Rename { track: index });
     }
     response.context_menu(|ui| {
         if ui.button("Edit track…").clicked() {

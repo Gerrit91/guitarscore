@@ -63,6 +63,7 @@ mod style;
 mod swatches;
 mod tab;
 mod tab_bar;
+mod table;
 mod tile_faces;
 mod tiles;
 mod title_bar;

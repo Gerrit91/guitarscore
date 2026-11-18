@@ -6262,3 +6262,38 @@ Tests: dragging the edge widens the column and the settings keep it.
   read or the device opens becomes "the synthesizer failed unexpectedly" instead of a
   player that stays on "loading" with nothing to report. Test:
   `a_panic_in_the_synth_thread_becomes_an_error`.
+
+## 2026-11-18 — The track panel's Song tab and its section list
+
+- The right panel now has the two tabs Guitar Pro's inspector has: **Song** and **Track**.
+  Track keeps today's settings unchanged. Song shows the song's essentials (title,
+  subtitle, artist, album, music by, lyrics by, copyright) as property rows, edited live
+  (typing is one undo step per field, as the lyrics editor does), and under them a
+  Sections category.
+- The sections form a table like the track's tone presets: one dark surface, a row per
+  section with its color strip and its name at the left and its bars at the right (from
+  its start to the bar before the next section, or the song's last bar, as the grid's
+  master row draws them). A click selects all those bars across every track (the grid's
+  and the score's selection, so copy, delete and loop act on them) and puts the cursor on
+  the first bar, so the score turns to it.
+- The table's row and surface moved to `app/table.rs`, which the tone presets draw
+  through too; their snapshots did not change (the pixels are the same).
+- The fields are property rows (a label column, then the field) rather than label-above
+  fields: that keeps the Sections category on screen in the default window; the panel
+  scrolls for the rest. The tab strip costs the Track tab about 30 pixels of height; the
+  mixer test now scrolls the Sound section into view before clicking it.
+- Tests: `test_song_panel` (both tabs and the song's fields, a section row's selection and
+  cursor in `Verse` and the last `Chorus`, the title typed and undone as one step); all
+  app snapshots regenerated for the tab strip.
+
+## 2026-11-18 — Double-click a track's name in the grid to rename it
+
+- A double click on a track's name in the song grid's track column opens the rename
+  window (the same one as the row menu's "Rename…"), as Guitar Pro's track headers do.
+  A single click still shows the track and moves the cursor to its bar, and only the name
+  area reacts: the eye, mute, solo, faders and knobs keep their own clicks.
+- The row's tooltip says so.
+- Tests: `a_single_click_on_a_track_name_in_the_grid_does_not_open_the_rename_window` and
+  `a_double_click_on_a_track_name_in_the_grid_opens_the_rename_window` (renames through
+  the window's field); no snapshot changes.
+
