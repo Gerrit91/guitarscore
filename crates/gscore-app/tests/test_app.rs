@@ -2530,6 +2530,8 @@ fn dragging_in_the_song_grid_selects_one_track_or_all() {
     ));
 
     // Leaving the row on to another track makes it every track; coming back makes it one.
+    // (A drag pressed on the selection moves its bars: a click drops the selection first.)
+    left_click_at(&mut harness, cell(5, 0));
     harness.hover_at(cell(1, 0));
     harness.drag_at(cell(1, 0));
     harness.run();
@@ -2584,7 +2586,9 @@ fn a_grid_drag_keeps_the_bar_it_was_pressed_on() {
     assert_eq!(selected(&harness), (2, 6));
 
     // Pressed at a bar's right edge, the first movement crossing into the next bar: the
-    // selection starts at the pressed bar.
+    // selection starts at the pressed bar. (A drag pressed on the selection moves its
+    // bars: a click drops the selection first.)
+    left_click_at(&mut harness, cell(8));
     let edge = cell(3) + egui::vec2(10.0, 0.0);
     harness.hover_at(edge);
     harness.drag_at(edge);
@@ -2755,6 +2759,23 @@ fn left_click_at(harness: &mut Harness<'static, GuitarScoreApp>, pos: egui::Pos2
     click_with(harness, pos, egui::Modifiers::NONE);
 }
 
+/// Double-clicks at `pos` with the primary button, both clicks in one frame (as a quick
+/// double click arrives).
+fn double_click_at(harness: &mut Harness<'static, GuitarScoreApp>, pos: egui::Pos2) {
+    harness.hover_at(pos);
+    for _ in 0..2 {
+        for pressed in [true, false] {
+            harness.input_mut().events.push(egui::Event::PointerButton {
+                pos,
+                button: egui::PointerButton::Primary,
+                pressed,
+                modifiers: egui::Modifiers::NONE,
+            });
+        }
+    }
+    harness.run();
+}
+
 /// Left-clicks at `pos` with `modifiers` held.
 fn click_with(
     harness: &mut Harness<'static, GuitarScoreApp>,
@@ -2811,6 +2832,47 @@ fn a_track_row_offers_add_delete_duplicate_and_rename_with_undo() {
     harness.run();
     assert_eq!(harness.state().document().unwrap().song().track_count(), 1);
     assert!(harness.state().notice().is_none());
+}
+
+#[test]
+fn a_single_click_on_a_track_name_in_the_grid_does_not_open_the_rename_window() {
+    let mut harness = app_with(Some(testdata("basic/steel_guitar_dadgad.gp")));
+    let row = harness.get_by_label("Track 1: Steel Guitar").rect();
+    // On the name, left of the eye, mute and solo.
+    left_click_at(&mut harness, row.left_center() + egui::vec2(60.0, 0.0));
+    harness.run();
+    assert!(harness.query_by_label("Track name").is_none());
+    // It shows the track, as before.
+    assert_eq!(
+        harness
+            .state()
+            .document()
+            .unwrap()
+            .editor()
+            .cursor()
+            .track
+            .get(),
+        0
+    );
+}
+
+#[test]
+fn a_double_click_on_a_track_name_in_the_grid_opens_the_rename_window() {
+    let mut harness = app_with(Some(testdata("basic/steel_guitar_dadgad.gp")));
+    let row = harness.get_by_label("Track 1: Steel Guitar").rect();
+    let name = row.left_center() + egui::vec2(60.0, 0.0);
+    double_click_at(&mut harness, name);
+    // The row's own rename window, at once on the name.
+    harness.get_by_label("Track name").click();
+    harness.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::A);
+    harness.run();
+    harness
+        .get_by_label("Track name")
+        .type_text("Renamed by click");
+    harness.run();
+    harness.key_press(egui::Key::Enter);
+    harness.run();
+    assert_eq!(first_track(&harness).name(), "Renamed by click");
 }
 
 /// The app built with `settings`, waiting until opening finishes.
@@ -3470,6 +3532,17 @@ fn a_looped_note_selection_starts_at_its_first_bar() {
     harness.state_mut().playback_mut().stop().unwrap();
 }
 
+/// Clicks the Copy action's "Change" button in the shortcut editor: the filter "Copy"
+/// also lists "Copy every track's bars", so the first row is the one.
+fn click_change_for_copy(harness: &mut Harness<'static, GuitarScoreApp>) {
+    harness
+        .query_all_by_label("Change")
+        .next()
+        .expect("the Copy row")
+        .click();
+    harness.run();
+}
+
 #[test]
 fn shortcuts_can_be_changed_and_reverted_from_the_editor() {
     let mut harness = app_with(Some(testdata("basic/note_lengths.gp")));
@@ -3486,8 +3559,7 @@ fn shortcuts_can_be_changed_and_reverted_from_the_editor() {
     harness.get_by_label("Filter shortcuts").click();
     harness.get_by_label("Filter shortcuts").type_text("Copy");
     harness.run();
-    harness.get_by_label("Change").click();
-    harness.run();
+    click_change_for_copy(&mut harness);
     harness.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::K);
     harness.run();
     assert_eq!(
@@ -3509,8 +3581,7 @@ fn shortcuts_can_be_changed_and_reverted_from_the_editor() {
     );
 
     // A key another action uses is reported and can replace it.
-    harness.get_by_label("Change").click();
-    harness.run();
+    click_change_for_copy(&mut harness);
     harness.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::X);
     harness.run();
     harness.get_by_label_contains("is already used by");
@@ -4389,7 +4460,10 @@ fn a_songs_mixer_state_travels_in_its_notes() {
     harness.get_by_label("Mute reverb bus").click();
     harness.run();
     assert!(harness.state().playback().reverb_bus().muted);
-    // And a tone of its own for the track's preset (27: Clean Guitar).
+    // And a tone of its own for the track's preset (27: Clean Guitar). The Sound section
+    // is below the panel's fold in this window: scroll it into view as a user would.
+    harness.get_by_label("Sound chain").scroll_to_me();
+    harness.run();
     harness.get_by_label("Sound chain").click();
     harness.run();
     harness.run();

@@ -76,6 +76,7 @@ impl GuitarScoreApp {
             || tab.is_some_and(|tab| tab.new_track.is_some())
             || tab.is_some_and(|tab| tab.renaming.is_some())
             || tab.is_some_and(|tab| tab.song_text.is_some())
+            || self.paste_around.is_some()
             || tab.is_some_and(|tab| tab.track_panel.tuning_open())
             || tab.is_some_and(|tab| tab.edit_palette.staff.is_open())
             || tab.is_some_and(|tab| tab.edit_palette.takes_keys())
@@ -84,6 +85,9 @@ impl GuitarScoreApp {
         {
             return;
         }
+        // Some platforms turn Ctrl+Shift+V into a paste event without its key; the held
+        // Shift then says the bars dialog was meant, as on the desktop's key event.
+        let shift_paste = ctx.input(|input| input.modifiers.shift);
         let events = ctx.input_mut(|input| std::mem::take(&mut input.events));
         let mut kept = Vec::with_capacity(events.len());
         let mut actions = Vec::new();
@@ -120,7 +124,18 @@ impl GuitarScoreApp {
                     continue;
                 }
             }
-            match self.keys.combo(&event).and_then(|c| self.keymap.action(c)) {
+            let combo = match &event {
+                egui::Event::Paste(_) if shift_paste => Some(gscore_edit::KeyCombo::new(
+                    gscore_edit::Key::Char('v'),
+                    gscore_edit::Modifiers {
+                        ctrl: true,
+                        shift: true,
+                        ..gscore_edit::Modifiers::default()
+                    },
+                )),
+                _ => self.keys.combo(&event),
+            };
+            match combo.and_then(|c| self.keymap.action(c)) {
                 Some(action) if !without_song || needs_no_song(action) => actions.push(action),
                 _ => kept.push(event),
             }
@@ -296,7 +311,10 @@ impl GuitarScoreApp {
         // sends Ctrl+V on as a paste only when the system clipboard holds text, so without
         // it the paste would never reach us (and another program sees what was copied).
         if performed.is_ok()
-            && matches!(action, Action::Plain(ActionId::Copy | ActionId::Cut))
+            && matches!(
+                action,
+                Action::Plain(ActionId::Copy | ActionId::CopyAllTracks | ActionId::Cut)
+            )
             && let Some(text) = document.editor().clipboard_text()
         {
             ctx.copy_text(text);
@@ -343,6 +361,7 @@ impl GuitarScoreApp {
                         }),
                     _ => None,
                 };
+                self.sync_grid_selection();
                 self.after_edit(effect, layout);
                 if let Some(semitones) = transposed {
                     self.status = Some(transpose_status(semitones));
@@ -946,7 +965,70 @@ impl GuitarScoreApp {
             Request::PlayPause => self.play_pause(),
             Request::Stop => self.stop_playback(),
             Request::Save => self.save_song(ctx),
+            Request::PasteAround => self.open_paste_around(),
             Request::SelectLine { down } => self.select_line(down, ctx),
+        }
+    }
+
+    /// Swaps the bars of the two sections that start at `from` and `to` (a drag in the
+    /// grid's master row), with the effects a structural edit has.
+    pub(super) fn swap_sections(&mut self, from: usize, to: usize) {
+        let swapped = self.document_mut().map(|document| {
+            document
+                .editor_mut()
+                .swap_sections(MeasureIndex::new(from), MeasureIndex::new(to))
+        });
+        match swapped {
+            Some(Ok(_)) => self.after_bars_edit(),
+            Some(Err(error)) => self.notice = Some(error.to_string()),
+            None => {}
+        }
+    }
+
+    /// Moves the `count` bars starting at `from` so they start at `to`, in every track
+    /// (dragging the grid's bar selection), with the effects a structural edit has.
+    pub(super) fn move_bars(&mut self, from: usize, count: usize, to: usize) {
+        let moved = self.document_mut().map(|document| {
+            document
+                .editor_mut()
+                .move_bars(MeasureIndex::new(from), count, MeasureIndex::new(to))
+        });
+        match moved {
+            Some(Ok(_)) => self.after_bars_edit(),
+            Some(Err(error)) => self.notice = Some(error.to_string()),
+            None => {}
+        }
+    }
+
+    /// What an edit of whole bars made outside [`Self::perform_action`] (a section swap, a
+    /// paste from the paste dialog) needs afterwards, as any edit does: the grid shows the
+    /// bars it selected, stale layouts go, and playback stops and is built again.
+    pub(super) fn after_bars_edit(&mut self) {
+        self.status = None;
+        self.sync_grid_selection();
+        self.after_edit(EditEffect::Other, true);
+    }
+
+    /// The grid shows the editor's measure selection: an edit can select what it wrote (a
+    /// paste selects the bars it pasted).
+    pub(super) fn sync_grid_selection(&mut self) {
+        let Some(tab) = self.tabs.get_mut(self.active) else {
+            return;
+        };
+        let measures = match tab.document.editor().selection() {
+            Some(gscore_edit::Selection::Measures {
+                anchor,
+                focus,
+                track,
+            }) => Some(crate::state::MeasureSelection {
+                anchor: anchor.get(),
+                focus: focus.get(),
+                track: track.map(|track| track.get()),
+            }),
+            _ => None,
+        };
+        if measures.is_some() {
+            tab.selection = measures;
         }
     }
 

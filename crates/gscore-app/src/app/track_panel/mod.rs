@@ -1,8 +1,10 @@
-//! The track panel (the right panel): a track's name, instrument, sound, color, staves,
-//! tuning, capo and string count. Every change is a [`Command`] with undo, and sound changes
-//! are heard at once (the sound commands go to the player while it plays).
+//! The right panel, in two tabs like Guitar Pro's inspector: the song's information and
+//! sections, or the shown track's name, instrument, sound, color, staves, tuning, capo and
+//! string count. Every change is a [`Command`] with undo, and sound changes are heard at
+//! once (the sound commands go to the player while it plays).
 
 pub(super) mod look;
+mod song;
 mod tuning;
 
 use egui::RichText;
@@ -18,10 +20,23 @@ use super::instrument;
 use super::style;
 use crate::chain_settings::{BlockChoice, BlockSetting, Tone};
 
-/// What the track panel keeps between frames: which track it showed, and the name being
-/// typed (so a rename is one undo step, not one per keystroke).
+/// The panel's two tabs, as Guitar Pro's inspector has them: the song's information and
+/// its sections, or the shown track's settings.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub(super) enum PanelTab {
+    /// The song: its text information and its section list.
+    Song,
+    /// The shown track's settings.
+    #[default]
+    Track,
+}
+
+/// What the track panel keeps between frames: which tab it shows, which track it showed,
+/// and the name being typed (so a rename is one undo step, not one per keystroke).
 #[derive(Debug, Default)]
 pub(super) struct TrackPanelState {
+    /// The tab the panel shows.
+    pub(super) tab: PanelTab,
     /// The track the draft belongs to.
     track: Option<usize>,
     /// The name in the text field.
@@ -32,6 +47,8 @@ pub(super) struct TrackPanelState {
     tuning: Option<tuning::TuningDialog>,
     /// The Tone presets table's picker (its filter and scroll position).
     pub(super) tone_picker: super::tone_picker::TonePickerState,
+    /// The Song tab's text fields as typed.
+    pub(super) song: song::SongPanelState,
 }
 
 impl TrackPanelState {
@@ -103,9 +120,55 @@ fn staff_tuning(staff: &gscore_model::StaffView<'_>) -> Option<String> {
     Some(name)
 }
 
+/// The panel's two tabs across its top ("Song", "Track"), a line under them like the track
+/// header's. Returns the chosen tab in `chosen`.
+fn panel_tabs(ui: &mut egui::Ui, chosen: &mut PanelTab) {
+    let tokens = style::tokens(ui);
+    egui::Frame::new()
+        .inner_margin(egui::Margin::symmetric(8, 6))
+        .show(ui, |ui| {
+            ui.horizontal(|ui| {
+                ui.spacing_mut().item_spacing.x = 4.0;
+                let width = ((ui.available_width() - 4.0) / 2.0).max(1.0);
+                for (tab, label) in [(PanelTab::Song, "Song"), (PanelTab::Track, "Track")] {
+                    let response = ui.add_sized(
+                        egui::vec2(width, 24.0),
+                        egui::Button::selectable(*chosen == tab, label),
+                    );
+                    ui.ctx().accesskit_node_builder(response.id, |node| {
+                        node.set_label(format!("{label} tab"));
+                    });
+                    if response.clicked() {
+                        *chosen = tab;
+                    }
+                }
+            });
+        });
+    let rect = ui.max_rect();
+    ui.painter().hline(
+        rect.x_range(),
+        ui.cursor().top(),
+        egui::Stroke::new(1.0, tokens.line),
+    );
+}
+
 impl GuitarScoreApp {
-    /// The right panel: the shown track's settings.
+    /// The right panel: the Song tab or the Track tab.
     pub(super) fn track_panel(&mut self, ui: &mut egui::Ui) {
+        let Some(tab) = self.tabs.get_mut(self.active) else {
+            return;
+        };
+        let mut chosen = tab.track_panel.tab;
+        panel_tabs(ui, &mut chosen);
+        tab.track_panel.tab = chosen;
+        match chosen {
+            PanelTab::Song => self.song_tab(ui),
+            PanelTab::Track => self.track_tab(ui),
+        }
+    }
+
+    /// The Track tab: the shown track's settings.
+    fn track_tab(&mut self, ui: &mut egui::Ui) {
         let Some(index) = self.tabs.get(self.active).map(|tab| tab.track) else {
             return;
         };

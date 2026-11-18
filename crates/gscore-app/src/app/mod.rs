@@ -45,6 +45,7 @@ mod new_track;
 mod note_tools;
 mod page;
 mod page_menu;
+mod paste;
 mod recent;
 mod recovery;
 mod reverb_bus_window;
@@ -64,6 +65,7 @@ mod style;
 mod swatches;
 mod tab;
 mod tab_bar;
+mod table;
 mod tile_faces;
 mod tiles;
 mod title_bar;
@@ -161,6 +163,8 @@ pub struct GuitarScoreApp {
     score_views: Option<score_views_dialog::ScoreViewsDialog>,
     /// The new-song dialog, while it is open.
     new_song_dialog: Option<new_song::NewSongDialog>,
+    /// The "paste before or after" dialog, while it is open.
+    paste_around: Option<paste::PasteAround>,
     /// The empty workspace's recent songs, search and preview.
     recent: recent::RecentFiles,
     /// Files still to open when the tabs from last time are being restored.
@@ -341,6 +345,7 @@ impl GuitarScoreApp {
             history: None,
             score_views: None,
             new_song_dialog: None,
+            paste_around: None,
             recent: recent::RecentFiles::default(),
             pending_opens: VecDeque::new(),
             startup_active: None,
@@ -995,6 +1000,7 @@ impl eframe::App for GuitarScoreApp {
         self.show_dialog(&ctx);
         self.show_new_song_dialog(&ctx);
         self.show_rename_window(&ctx);
+        self.show_paste_around(&ctx);
         self.show_tuning_dialog(&ctx);
         self.show_sound_chain(&ctx);
         self.show_reverb_bus_window(&ctx);

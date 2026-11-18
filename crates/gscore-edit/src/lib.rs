@@ -37,7 +37,7 @@ pub use editor::{DEFAULT_HISTORY_BYTES, DEFAULT_HISTORY_LIMIT, EditError, Editor
 pub use info::{COMMANDS, CommandInfo, ParamInfo, find_command};
 pub use keymap::{DEFAULT_KEYMAP, Key, KeyCombo, Keymap, KeymapError, Modifiers, NamedKey};
 pub use parse::{ParseError, parse_line};
-pub use selection::{BeatSpot, Selection};
+pub use selection::{BeatSpot, MAX_PASTE_COPIES, PasteOptions, Selection};
 pub use tab_editor::{FRET_DIGIT_WINDOW_MS, Outcome, Request, TabEditor};
 
 // The integration tests save edited songs again with `gscore-io`; this marks the

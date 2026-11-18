@@ -211,14 +211,18 @@ fn playback_and_saving_are_requests_for_the_app() {
         plain(&mut e, ActionId::Save),
         Outcome::Request(Request::Save)
     );
-    // Nothing is selected or copied yet.
-    assert!(matches!(
-        e.perform(Action::Plain(ActionId::Copy), 0),
-        Err(EditError::NothingSelected)
-    ));
+    // Nothing is copied yet.
     assert!(matches!(
         e.perform(Action::Plain(ActionId::Paste), 0),
         Err(EditError::NothingToPaste)
+    ));
+    // In a bar without beats there is no beat to copy either.
+    for _ in 0..4 {
+        plain(&mut e, ActionId::DeleteBeat);
+    }
+    assert!(matches!(
+        e.perform(Action::Plain(ActionId::Copy), 0),
+        Err(EditError::NothingSelected)
     ));
 }
 
@@ -388,8 +392,10 @@ fn a_beat_selection_copies_and_pastes_in_one_undo_step() {
     }));
     plain(&mut e, ActionId::Copy);
     let before_paste = e.song().clone();
+    // With only the cursor (on beat 2), the copy goes in after it.
+    e.set_selection(None);
     e.set_cursor(Cursor {
-        beat: BeatIndex::new(2),
+        beat: BeatIndex::new(1),
         ..e.cursor()
     });
     assert_eq!(plain(&mut e, ActionId::Paste), Outcome::Edited);
@@ -456,10 +462,8 @@ fn a_pasted_note_keeps_its_effects() {
         focus: spot(0, 0),
     }));
     plain(&mut e, ActionId::Copy);
-    e.set_cursor(Cursor {
-        beat: BeatIndex::new(1),
-        ..e.cursor()
-    });
+    // With only the cursor, the copy goes in after its beat.
+    e.set_selection(None);
     plain(&mut e, ActionId::Paste);
     let pasted = e.song().beat(at(0, 1)).unwrap();
     let note = pasted.notes().next().unwrap();

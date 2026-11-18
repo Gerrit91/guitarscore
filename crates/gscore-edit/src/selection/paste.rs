@@ -6,8 +6,8 @@ use gscore_model::{
     VoiceIndex,
 };
 
-use super::BeatSpot;
 use super::clipboard::{BeatClip, MeasureClip};
+use super::{BeatSpot, MAX_PASTE_COPIES, PasteOptions};
 use crate::command::Command;
 use crate::editor::EditError;
 
@@ -55,7 +55,15 @@ fn beat_effect_is_off(effect: &BeatEffect) -> bool {
 
 /// Commands that make the beat at `at` match `clip`. `inserted` says the beat was just
 /// inserted (a rest of the right length without effects); otherwise it is overwritten.
-fn write_beat(at: BeatPosition, clip: &BeatClip, inserted: bool, commands: &mut Vec<Command>) {
+/// `text` says the beat's text comes along (bars pasted without their texts keep the
+/// target's).
+fn write_beat(
+    at: BeatPosition,
+    clip: &BeatClip,
+    inserted: bool,
+    text: bool,
+    commands: &mut Vec<Command>,
+) {
     if !inserted {
         commands.push(Command::SetDuration {
             at,
@@ -100,6 +108,13 @@ fn write_beat(at: BeatPosition, clip: &BeatClip, inserted: bool, commands: &mut 
     {
         commands.push(Command::SetDynamic { at, dynamic });
     }
+    // The text above the beat; an inserted beat has none to clear.
+    if text && (!inserted || !clip.text.is_empty()) {
+        commands.push(Command::SetBeatText {
+            at,
+            text: clip.text.clone(),
+        });
+    }
     // An overwritten beat keeps its own effects unless every one is set.
     for effect in clip
         .effects
@@ -113,59 +128,86 @@ fn write_beat(at: BeatPosition, clip: &BeatClip, inserted: bool, commands: &mut 
     }
 }
 
-/// Commands that write copied beats from `at` on, and the spot of the last one written.
-/// The first group goes into the cursor's measure from the cursor's beat, each further group
-/// into the next measure from its first beat (so the copy's bar lines stay where they were).
-/// Existing beats are overwritten; beats past a voice's end are added.
-pub(super) fn paste_beats(
+/// Commands that put copied beats into the voice of `voice` (its track, staff and voice):
+/// first the beats from `remove`'s first spot to its last are taken out, then the copied
+/// beats go in from `start`, the first group into `start`'s measure from `start`'s beat and
+/// each further group into the next measure from its first beat (so the copy's bar lines
+/// stay where they were). Nothing is overwritten: a bar can end up with more or less than
+/// fits, as in Guitar Pro. Returns the commands and the spots of the first and last beat
+/// put in.
+pub(super) fn replace_beats(
     song: &Song,
-    at: BeatPosition,
+    voice: BeatPosition,
+    start: BeatSpot,
+    remove: Option<(BeatSpot, BeatSpot)>,
     groups: &[Vec<BeatClip>],
-) -> Result<(Vec<Command>, BeatSpot), EditError> {
-    let needed = at.measure.get().saturating_add(groups.len());
+) -> Result<(Vec<Command>, BeatSpot, BeatSpot), EditError> {
+    let needed = start.measure.get().saturating_add(groups.len());
     if needed > song.measure_count() {
         return Err(EditError::Unsupported(format!(
             "the copied beats need {} measures from here; insert measures first",
             groups.len()
         )));
     }
-    let mut commands = Vec::new();
-    let mut last = BeatSpot {
-        measure: at.measure,
-        beat: at.beat,
+    let at = |measure: MeasureIndex, beat: usize| BeatPosition {
+        measure,
+        beat: BeatIndex::new(beat),
+        ..voice
     };
-    for (offset, beats) in groups.iter().enumerate() {
-        let measure = MeasureIndex::new(at.measure.get().saturating_add(offset));
-        let first = if offset == 0 { at.beat.get() } else { 0 };
-        let mut existing = song
-            .staff(at.track, at.staff)
-            .and_then(|track| track.measure(measure))
-            .and_then(|measure| measure.voice(at.voice))
-            .map_or(0, |voice| voice.beats().len());
-        for (index, clip) in beats.iter().enumerate() {
-            let index = first.saturating_add(index);
-            let target = BeatPosition {
-                measure,
-                beat: BeatIndex::new(index),
-                ..at
+    let beats_in = |measure: MeasureIndex| {
+        song.staff(voice.track, voice.staff)
+            .and_then(|staff| staff.measure(measure))
+            .and_then(|measure| measure.voice(voice.voice))
+            .map_or(0, |voice| voice.beats().len())
+    };
+    let mut commands = Vec::new();
+    if let Some((first, last)) = remove {
+        for index in first.measure.get()..=last.measure.get() {
+            let measure = MeasureIndex::new(index);
+            let count = beats_in(measure);
+            let from = if measure == first.measure {
+                first.beat.get()
+            } else {
+                0
             };
-            // Only a beat past the voice's end is inserted; an existing beat is overwritten.
-            let inserted = index >= existing;
-            if inserted {
-                commands.push(Command::InsertBeat {
-                    at: target,
-                    duration: clip.duration,
-                });
-                existing = index.saturating_add(1);
+            let to = if measure == last.measure {
+                last.beat.get().min(count.saturating_sub(1))
+            } else {
+                count.saturating_sub(1)
+            };
+            if count == 0 || from > to {
+                continue;
             }
-            write_beat(target, clip, inserted, &mut commands);
-            last = BeatSpot {
+            // The beats after the removed ones move up, so the same index goes each time.
+            for _ in from..=to {
+                commands.push(Command::DeleteBeat {
+                    at: at(measure, from),
+                });
+            }
+        }
+    }
+    let mut first = None;
+    let mut last = start;
+    for (offset, beats) in groups.iter().enumerate() {
+        let measure = MeasureIndex::new(start.measure.get().saturating_add(offset));
+        let from = if offset == 0 { start.beat.get() } else { 0 };
+        for (index, clip) in beats.iter().enumerate() {
+            let target = at(measure, from.saturating_add(index));
+            commands.push(Command::InsertBeat {
+                at: target,
+                duration: clip.duration,
+            });
+            write_beat(target, clip, true, true, &mut commands);
+            let spot = BeatSpot {
                 measure,
                 beat: target.beat,
             };
+            first.get_or_insert(spot);
+            last = spot;
         }
     }
-    Ok((commands, last))
+    let first = first.ok_or(EditError::NothingToPaste)?;
+    Ok((commands, first, last))
 }
 
 /// Most voices a measure can have edits in (as Guitar Pro 7: four).
@@ -178,48 +220,58 @@ pub(super) fn paste_measures(
     song: &Song,
     start: MeasureIndex,
     staves: &[(TrackIndex, StaffIndex, Vec<MeasureClip>)],
+    options: PasteOptions,
 ) -> Result<Vec<Command>, EditError> {
     let count = staves.first().map_or(0, |(_, _, measures)| measures.len());
     if count == 0 {
         return Err(EditError::NothingToPaste);
     }
-    let end = start.get().saturating_add(count);
+    let copies = options.copies.clamp(1, MAX_PASTE_COPIES);
+    let total = count.saturating_mul(copies);
+    let end = start.get().saturating_add(total);
     if end > song.measure_count() {
         return Err(EditError::Unsupported(
             "paste measures inside the song; insert empty measures first".to_owned(),
         ));
     }
     let mut commands = Vec::new();
-    // The header data is the same in every track's and staff's copy: take the first's.
+    // The header data is the same in every track's and staff's copy: take the first's. The
+    // copied bars repeat `copies` times.
     for (offset, clip) in staves
         .first()
         .into_iter()
-        .flat_map(|(_, _, measures)| measures)
+        .flat_map(|(_, _, measures)| measures.iter().cycle().take(total))
         .enumerate()
     {
         let measure = MeasureIndex::new(start.get().saturating_add(offset));
-        commands.push(Command::SetTimeSignature {
-            measure,
-            numerator: clip.time_signature.numerator(),
-            denominator: clip.time_signature.denominator(),
-        });
-        if let Some(tempo) = clip.tempo {
+        if options.time_signatures {
+            commands.push(Command::SetTimeSignature {
+                measure,
+                numerator: clip.time_signature.numerator(),
+                denominator: clip.time_signature.denominator(),
+            });
+        }
+        if options.tempo
+            && let Some(tempo) = clip.tempo
+        {
             commands.push(Command::SetMeasureTempo { measure, tempo });
         }
-        match &clip.section {
-            Some(section) => commands.push(Command::SetSection {
-                measure,
-                title: section.title.clone(),
-                color: section.color,
-            }),
-            None => commands.push(Command::ClearSection { measure }),
+        if options.sections {
+            match &clip.section {
+                Some(section) => commands.push(Command::SetSection {
+                    measure,
+                    title: section.title.clone(),
+                    color: section.color,
+                }),
+                None => commands.push(Command::ClearSection { measure }),
+            }
         }
     }
     for (track_at, staff_at, measures) in staves {
         let Some(staff) = song.staff(*track_at, *staff_at) else {
             continue;
         };
-        for (offset, clip) in measures.iter().enumerate() {
+        for (offset, clip) in measures.iter().cycle().take(total).enumerate() {
             let measure = MeasureIndex::new(start.get().saturating_add(offset));
             let Some(target) = staff.measure(measure) else {
                 continue;
@@ -255,7 +307,7 @@ pub(super) fn paste_measures(
                         at,
                         duration: clip.duration,
                     });
-                    write_beat(at, clip, true, &mut commands);
+                    write_beat(at, clip, true, options.texts, &mut commands);
                 }
             }
         }

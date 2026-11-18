@@ -120,6 +120,14 @@ fn parses_every_command_and_fills_defaults() {
             },
         ),
         (
+            "move_measures measure=5 count=3 to=1",
+            Command::MoveMeasures {
+                from: MeasureIndex::new(4),
+                count: 3,
+                to: MeasureIndex::new(0),
+            },
+        ),
+        (
             "duplicate_track",
             Command::DuplicateTrack {
                 track: TrackIndex::new(0),
@@ -612,6 +620,11 @@ fn every_command_writes_a_line_that_parses_back_to_it() {
         },
         Command::DeleteMeasure {
             measure: MeasureIndex::new(499),
+        },
+        Command::MoveMeasures {
+            from: MeasureIndex::new(7),
+            count: 2,
+            to: MeasureIndex::new(1),
         },
         Command::Undo,
         Command::Redo,

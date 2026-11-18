@@ -162,6 +162,16 @@ impl Song {
                     self.stamps.remove(at.get());
                 }
             }
+            Moved::Touched { first, end } => {
+                let end = end.get().min(self.stamps.len());
+                for stamp in self
+                    .stamps
+                    .get_mut(first.get().min(end)..end)
+                    .unwrap_or_default()
+                {
+                    *stamp = new_stamp();
+                }
+            }
         }
         debug_assert_eq!(self.stamps.len(), self.inner.measure_headers.len());
         Ok(value)
@@ -388,4 +398,10 @@ pub(crate) enum Moved {
     Inserted(MeasureIndex),
     /// The measure at this index was removed from every track.
     Removed(MeasureIndex),
+    /// The measures from `first` up to (not including) `end` were reordered: their count
+    /// stayed, their content moved.
+    Touched {
+        first: MeasureIndex,
+        end: MeasureIndex,
+    },
 }

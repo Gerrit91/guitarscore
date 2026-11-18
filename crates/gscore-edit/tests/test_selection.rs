@@ -6,7 +6,8 @@
 #![allow(unused_crate_dependencies)]
 
 use gscore_edit::{
-    Action, ActionId, BeatSpot, Command, Cursor, Keymap, Outcome, Request, Selection, TabEditor,
+    Action, ActionId, BeatSpot, Command, Cursor, Keymap, Outcome, PasteOptions, Request, Selection,
+    TabEditor,
 };
 use gscore_model::testing::{self, GUITAR_6};
 use gscore_model::{
@@ -232,7 +233,14 @@ fn a_selection_over_a_bar_line_copies_and_pastes_bar_by_bar() {
     }));
     plain(&mut e, ActionId::Copy);
 
-    go(&mut e, 2, 3);
+    // Pasted over the same two beats further on, they replace them one for one.
+    e.set_selection(Some(Selection::Beats {
+        staff: gscore_model::StaffIndex::new(0),
+        track: TrackIndex::new(0),
+        voice: VoiceIndex::new(0),
+        anchor: spot(2, 3),
+        focus: spot(3, 0),
+    }));
     let before = e.song().clone();
     assert_eq!(plain(&mut e, ActionId::Paste), Outcome::Edited);
     let string = StringNumber::new(1).unwrap().get();
@@ -247,7 +255,13 @@ fn a_selection_over_a_bar_line_copies_and_pastes_bar_by_bar() {
     assert!(differences(&before, e.song()).is_empty());
 
     // In the last measure there is no next one for the second bar: nothing changes.
-    go(&mut e, 3, 0);
+    e.set_selection(Some(Selection::Beats {
+        staff: gscore_model::StaffIndex::new(0),
+        track: TrackIndex::new(0),
+        voice: VoiceIndex::new(0),
+        anchor: spot(3, 0),
+        focus: spot(3, 0),
+    }));
     assert!(e.perform(Action::Plain(ActionId::Paste), 0).is_err());
     assert!(differences(&before, e.song()).is_empty());
 }
@@ -278,7 +292,13 @@ fn pasted_notes_keep_their_dynamic() {
         focus: spot(0, 0),
     }));
     plain(&mut e, ActionId::Copy);
-    go(&mut e, 1, 2);
+    e.set_selection(Some(Selection::Beats {
+        staff: gscore_model::StaffIndex::new(0),
+        track: TrackIndex::new(0),
+        voice: VoiceIndex::new(0),
+        anchor: spot(1, 2),
+        focus: spot(1, 2),
+    }));
     assert_eq!(plain(&mut e, ActionId::Paste), Outcome::Edited);
     let dynamic =
         |e: &TabEditor, measure, beat| e.song().beat(at(measure, beat)).unwrap().dynamic();
@@ -289,61 +309,131 @@ fn pasted_notes_keep_their_dynamic() {
     );
 }
 
+/// How many beats the first voice of `measure` has.
+fn beat_count(e: &TabEditor, measure: usize) -> usize {
+    e.song()
+        .track(TrackIndex::new(0))
+        .unwrap()
+        .measure(MeasureIndex::new(measure))
+        .unwrap()
+        .voice(VoiceIndex::new(0))
+        .unwrap()
+        .beats()
+        .len()
+}
+
 #[test]
-fn copy_with_the_cursor_on_a_note_pastes_that_note_on_another_string() {
+fn copy_with_only_the_cursor_takes_its_beat_and_paste_inserts_it_after() {
+    // As Guitar Pro: with no selection Ctrl+C copies the cursor's whole beat and Ctrl+V
+    // puts a copy after it; nothing is overwritten.
     let mut e = editor(1);
     let string = |string: u8| StringNumber::new(string).unwrap();
-    let set = |e: &mut TabEditor, beat: usize, string_number: u8, fret: u8| {
+    for (string_number, fret) in [(1, 2), (2, 4)] {
         e.execute_command(Command::SetFret {
-            at: at(0, beat),
+            at: at(0, 0),
             string: string(string_number),
             fret: gscore_model::Fret::new(fret).unwrap(),
         })
         .unwrap();
-    };
-    set(&mut e, 0, 1, 2);
+    }
     e.execute_command(Command::SetNoteEffect {
         at: at(0, 0),
         string: string(1),
         effect: NoteEffect::PalmMute(true),
     })
     .unwrap();
-    // The target beat already has notes on both strings; the second one is a ghost note
-    // that the paste must replace.
-    set(&mut e, 1, 1, 7);
-    set(&mut e, 1, 2, 9);
-    e.execute_command(Command::SetNoteEffect {
+    e.execute_command(Command::SetFret {
         at: at(0, 1),
-        string: string(2),
-        effect: NoteEffect::Ghost(true),
+        string: string(1),
+        fret: gscore_model::Fret::new(7).unwrap(),
     })
     .unwrap();
-
-    // The cursor is on the note; nothing is selected.
     assert_eq!(e.selection(), None);
     go(&mut e, 0, 0);
     assert_eq!(plain(&mut e, ActionId::Copy), Outcome::Nothing);
-    go(&mut e, 0, 1);
-    e.set_cursor(Cursor {
-        string: 2,
-        ..e.cursor()
-    });
     let before = e.song().clone();
+    let beats = beat_count(&e, 0);
     let depth = e.undo_depth();
     assert_eq!(plain(&mut e, ActionId::Paste), Outcome::Edited);
-    assert_eq!(notes_at(&e, at(0, 1)), vec![(1, 7), (2, 2)]);
-    let pasted = e
-        .song()
-        .beat(at(0, 1))
-        .unwrap()
-        .notes()
-        .find(|n| n.string().unwrap().get() == 2)
-        .unwrap();
-    assert!(pasted.is_palm_muted(), "the note effect came along");
-    assert!(!pasted.is_ghost(), "the target note's effect was replaced");
+    assert_eq!(beat_count(&e, 0), beats + 1, "a beat was added");
+    assert_eq!(
+        notes_at(&e, at(0, 1)),
+        vec![(1, 2), (2, 4)],
+        "the copy, whole"
+    );
+    assert!(
+        e.song()
+            .beat(at(0, 1))
+            .unwrap()
+            .notes()
+            .find(|n| n.string().unwrap().get() == 1)
+            .unwrap()
+            .is_palm_muted(),
+        "the note effect came along"
+    );
+    assert_eq!(
+        notes_at(&e, at(0, 2)),
+        vec![(1, 7)],
+        "the next beat moved on"
+    );
+    assert_eq!(selected(&e), vec![(0, 1)], "the pasted beat is selected");
     assert_eq!(e.undo_depth(), depth + 1, "one undo step");
     plain(&mut e, ActionId::Undo);
     assert!(differences(&before, e.song()).is_empty());
+}
+
+#[test]
+fn pasted_beats_replace_the_selection_whatever_its_size() {
+    // Guitar Pro's rule: the copied beats take the selection's place. As many as were
+    // copied: nothing changes; fewer selected: the rest are added; more: they go.
+    let mut e = editor(2);
+    for (beat, fret) in [(0, 1), (1, 2), (2, 3), (3, 4)] {
+        go(&mut e, 0, beat);
+        e.perform(Action::Digit(fret), 0).unwrap();
+    }
+    let frets = |e: &TabEditor| -> Vec<Vec<(u8, u8)>> {
+        (0..beat_count(e, 0))
+            .map(|beat| notes_at(e, at(0, beat)))
+            .collect()
+    };
+    let select = |e: &mut TabEditor, from: usize, to: usize| {
+        e.set_selection(Some(Selection::Beats {
+            staff: gscore_model::StaffIndex::new(0),
+            track: TrackIndex::new(0),
+            voice: VoiceIndex::new(0),
+            anchor: spot(0, from),
+            focus: spot(0, to),
+        }));
+    };
+    // Beats 2 and 3 copied.
+    select(&mut e, 1, 2);
+    plain(&mut e, ActionId::Copy);
+    let original = frets(&e);
+    // Pasted on the same selection: nothing changes.
+    plain(&mut e, ActionId::Paste);
+    assert_eq!(frets(&e), original);
+    // Over one beat (the 4th): it is replaced and the second copied beat added.
+    select(&mut e, 3, 3);
+    plain(&mut e, ActionId::Paste);
+    assert_eq!(
+        frets(&e),
+        vec![
+            vec![(1, 1)],
+            vec![(1, 2)],
+            vec![(1, 3)],
+            vec![(1, 2)],
+            vec![(1, 3)]
+        ]
+    );
+    assert_eq!(selected(&e), vec![(0, 3), (0, 4)]);
+    // Over four beats (the 1st to 4th): two take their place, the other two go.
+    select(&mut e, 0, 3);
+    plain(&mut e, ActionId::Paste);
+    assert_eq!(frets(&e), vec![vec![(1, 2)], vec![(1, 3)], vec![(1, 3)]]);
+    // Each paste is one undo step.
+    plain(&mut e, ActionId::Undo);
+    plain(&mut e, ActionId::Undo);
+    assert_eq!(frets(&e), original);
 }
 
 #[test]
@@ -381,7 +471,13 @@ fn a_selection_over_a_bar_line_replaces_existing_beats_whole() {
     e.perform(Action::Digit(7), 0).unwrap();
     let before = e.song().clone();
     let depth = e.undo_depth();
-    go(&mut e, 1, 2);
+    e.set_selection(Some(Selection::Beats {
+        staff: gscore_model::StaffIndex::new(0),
+        track: TrackIndex::new(0),
+        voice: VoiceIndex::new(0),
+        anchor: spot(1, 2),
+        focus: spot(1, 3),
+    }));
     assert_eq!(plain(&mut e, ActionId::Paste), Outcome::Edited);
     let first = e.song().beat(at(1, 2)).unwrap();
     assert_eq!(first.note_value().unwrap().value(), 8, "the copied length");
@@ -537,4 +633,553 @@ fn shift_up_and_down_ask_the_page_for_the_neighbouring_line() {
     // A spot past the song changes nothing.
     assert_eq!(e.extend_selection_to_spot(spot(9, 0)), Outcome::Nothing);
     assert_eq!(e.cursor().measure, MeasureIndex::new(1));
+}
+
+#[test]
+fn pasting_copied_bars_without_moving_the_selection_duplicates_them_after_it() {
+    let mut e = TabEditor::new(
+        testing::song(&[GUITAR_6, GUITAR_6], 2).unwrap(),
+        TrackIndex::new(0),
+    );
+    // A note in the first bar of both tracks.
+    for track in 0..2 {
+        let position = BeatPosition {
+            track: TrackIndex::new(track),
+            ..at(0, 0)
+        };
+        e.execute_command(Command::SetFret {
+            at: position,
+            string: StringNumber::new(1).unwrap(),
+            fret: gscore_model::Fret::new(3).unwrap(),
+        })
+        .unwrap();
+    }
+    e.set_selection(Some(Selection::Measures {
+        anchor: MeasureIndex::new(0),
+        focus: MeasureIndex::new(0),
+        track: None,
+    }));
+    plain(&mut e, ActionId::Copy);
+    // Pasting without moving the selection puts a copy of the bar right after it, in every
+    // track, and the song grows.
+    assert_eq!(plain(&mut e, ActionId::Paste), Outcome::Edited);
+    assert_eq!(e.song().measure_count(), 3);
+    for track in 0..2 {
+        let position = BeatPosition {
+            track: TrackIndex::new(track),
+            ..at(1, 0)
+        };
+        assert_eq!(notes_at(&e, position), vec![(1, 3)], "track {track}");
+    }
+    assert!(matches!(
+        e.selection(),
+        Some(Selection::Measures { anchor, focus, .. })
+            if anchor == MeasureIndex::new(1) && focus == MeasureIndex::new(1)
+    ));
+    // The last bar can be duplicated past the song's end too.
+    e.set_selection(Some(Selection::Measures {
+        anchor: MeasureIndex::new(2),
+        focus: MeasureIndex::new(2),
+        track: None,
+    }));
+    plain(&mut e, ActionId::Copy);
+    assert_eq!(plain(&mut e, ActionId::Paste), Outcome::Edited);
+    assert_eq!(e.song().measure_count(), 4);
+    // Each paste is one undo step.
+    plain(&mut e, ActionId::Undo);
+    assert_eq!(e.song().measure_count(), 3);
+}
+
+#[test]
+fn copying_all_tracks_from_a_one_track_selection_and_inserting_the_bars() {
+    let mut e = TabEditor::new(
+        testing::song(&[GUITAR_6, GUITAR_6], 2).unwrap(),
+        TrackIndex::new(0),
+    );
+    // A note in each track's first bar; only track 1 has one in the second bar.
+    for track in 0..2 {
+        let position = BeatPosition {
+            track: TrackIndex::new(track),
+            ..at(0, 0)
+        };
+        e.execute_command(Command::SetFret {
+            at: position,
+            string: StringNumber::new(1).unwrap(),
+            fret: gscore_model::Fret::new(3).unwrap(),
+        })
+        .unwrap();
+    }
+    // Copying bar 1 of track 1 only, but from every track.
+    e.set_selection(Some(Selection::Measures {
+        anchor: MeasureIndex::new(0),
+        focus: MeasureIndex::new(0),
+        track: Some(TrackIndex::new(0)),
+    }));
+    plain(&mut e, ActionId::CopyAllTracks);
+    assert_eq!(e.clipboard_bars(), Some(1));
+    // Inserting the copied bars after that bar grows the song by one, both tracks.
+    assert!(matches!(
+        e.paste_measures_inserting(MeasureIndex::new(1)),
+        Ok(Outcome::Edited)
+    ));
+    assert_eq!(e.song().measure_count(), 3);
+    for track in 0..2 {
+        let position = BeatPosition {
+            track: TrackIndex::new(track),
+            ..at(1, 0)
+        };
+        assert_eq!(notes_at(&e, position), vec![(1, 3)], "track {track}");
+    }
+    // Inserting before the first bar shifts it and the copy to bars 2 and 3.
+    e.set_selection(None);
+    assert!(matches!(
+        e.paste_measures_inserting(MeasureIndex::new(0)),
+        Ok(Outcome::Edited)
+    ));
+    assert_eq!(e.song().measure_count(), 4);
+    for track in 0..2 {
+        let first = BeatPosition {
+            track: TrackIndex::new(track),
+            ..at(0, 0)
+        };
+        let third = BeatPosition {
+            track: TrackIndex::new(track),
+            ..at(2, 0)
+        };
+        assert_eq!(notes_at(&e, first), vec![(1, 3)], "track {track}");
+        assert_eq!(notes_at(&e, third), vec![(1, 3)], "track {track}");
+    }
+    // One undo step per insert.
+    plain(&mut e, ActionId::Undo);
+    assert_eq!(e.song().measure_count(), 3);
+}
+
+#[test]
+fn swapping_two_sections_swaps_their_bars_and_names() {
+    // Six bars: section A at bar 1 (bars 1-3) and B at bar 4 (bars 4-6).
+    let mut e = editor(6);
+    for (measure, title) in [(0, "A"), (3, "B")] {
+        e.execute_command(Command::SetSection {
+            measure: MeasureIndex::new(measure),
+            title: title.to_owned(),
+            color: gscore_model::Section::DEFAULT_COLOR,
+        })
+        .unwrap();
+    }
+    for (measure, fret) in [(0, 3), (3, 7)] {
+        e.execute_command(Command::SetFret {
+            at: at(measure, 0),
+            string: StringNumber::new(1).unwrap(),
+            fret: gscore_model::Fret::new(fret).unwrap(),
+        })
+        .unwrap();
+    }
+    // Dragging A onto B swaps the two blocks: B's bars come first, A's last.
+    assert!(matches!(
+        e.swap_sections(MeasureIndex::new(0), MeasureIndex::new(3)),
+        Ok(Outcome::Edited)
+    ));
+    assert_eq!(
+        e.song().section(MeasureIndex::new(0)).map(|s| s.title),
+        Some("B".to_owned())
+    );
+    assert_eq!(
+        e.song().section(MeasureIndex::new(3)).map(|s| s.title),
+        Some("A".to_owned())
+    );
+    assert_eq!(notes_at(&e, at(0, 0)), vec![(1, 7)], "B's note came along");
+    assert_eq!(notes_at(&e, at(3, 0)), vec![(1, 3)], "A's note came along");
+    // The dragged section (A) is selected where it went: bars 4-6.
+    assert!(matches!(
+        e.selection(),
+        Some(Selection::Measures { anchor, focus, .. })
+            if anchor == MeasureIndex::new(3) && focus == MeasureIndex::new(5)
+    ));
+    // One undo step puts both sections back.
+    plain(&mut e, ActionId::Undo);
+    assert_eq!(
+        e.song().section(MeasureIndex::new(0)).map(|s| s.title),
+        Some("A".to_owned())
+    );
+    assert_eq!(notes_at(&e, at(0, 0)), vec![(1, 3)]);
+}
+
+/// What a bar holds that a swap must carry: its section, tempo change, key signature,
+/// repeat signs and endings, and its first beat's notes.
+fn bar_data(e: &TabEditor, measure: usize) -> String {
+    let index = MeasureIndex::new(measure);
+    let song = e.song();
+    format!(
+        "{:?} {:?} {:?} {:?} {:?}",
+        song.section(index).map(|section| section.title),
+        song.tempo_change(index),
+        song.key_signature(index),
+        song.repeat(index),
+        notes_at(e, at(measure, 0)),
+    )
+}
+
+#[test]
+fn swapping_sections_carries_every_bar_setting_with_the_bars() {
+    // Seven bars: A (bars 1-3) with a repeat, a one-bar bridge, B (bars 5-7) starting in
+    // another key and tempo.
+    let mut e = editor(7);
+    for (measure, title) in [(0, "A"), (3, "Bridge"), (4, "B")] {
+        e.execute_command(Command::SetSection {
+            measure: MeasureIndex::new(measure),
+            title: title.to_owned(),
+            color: gscore_model::Section::DEFAULT_COLOR,
+        })
+        .unwrap();
+    }
+    for (measure, fret) in [(0, 3), (3, 5), (4, 7), (6, 9)] {
+        e.execute_command(Command::SetFret {
+            at: at(measure, 0),
+            string: StringNumber::new(1).unwrap(),
+            fret: gscore_model::Fret::new(fret).unwrap(),
+        })
+        .unwrap();
+    }
+    for command in [
+        Command::SetRepeat {
+            measure: MeasureIndex::new(1),
+            repeat: gscore_model::Repeat {
+                start: true,
+                end_repeats: None,
+                endings: 0,
+            },
+        },
+        Command::SetRepeat {
+            measure: MeasureIndex::new(2),
+            repeat: gscore_model::Repeat {
+                start: false,
+                end_repeats: Some(1),
+                endings: 0,
+            },
+        },
+        Command::SetMeasureTempo {
+            measure: MeasureIndex::new(4),
+            tempo: 140,
+        },
+        Command::SetKeySignature {
+            measure: MeasureIndex::new(4),
+            key: 2,
+            minor: false,
+        },
+    ] {
+        e.execute_command(command).unwrap();
+    }
+    let before: Vec<String> = (0..7).map(|measure| bar_data(&e, measure)).collect();
+    assert!(matches!(
+        e.swap_sections(MeasureIndex::new(0), MeasureIndex::new(4)),
+        Ok(Outcome::Edited)
+    ));
+    // B, the bridge, then A: each bar exactly as it was, only somewhere else. The tempo
+    // change that started B leaves with it instead of staying behind at bar 5.
+    let after: Vec<String> = (0..7).map(|measure| bar_data(&e, measure)).collect();
+    let order = [4, 5, 6, 3, 0, 1, 2];
+    let expected: Vec<String> = order.iter().map(|&index| before[index].clone()).collect();
+    assert_eq!(after, expected);
+    assert_eq!(e.song().tempo_change(MeasureIndex::new(4)), None);
+    // A is selected where it went: bars 5-7.
+    assert!(matches!(
+        e.selection(),
+        Some(Selection::Measures { anchor, focus, .. })
+            if anchor == MeasureIndex::new(4) && focus == MeasureIndex::new(6)
+    ));
+    // One undo step puts everything back.
+    plain(&mut e, ActionId::Undo);
+    let undone: Vec<String> = (0..7).map(|measure| bar_data(&e, measure)).collect();
+    assert_eq!(undone, before);
+}
+
+#[test]
+fn cut_bars_pasted_over_the_same_selection_go_there_and_are_not_duplicated() {
+    let mut e = editor(6);
+    e.execute_command(Command::SetFret {
+        at: at(0, 0),
+        string: StringNumber::new(1).unwrap(),
+        fret: gscore_model::Fret::new(3).unwrap(),
+    })
+    .unwrap();
+    e.set_selection(Some(Selection::Measures {
+        anchor: MeasureIndex::new(0),
+        focus: MeasureIndex::new(1),
+        track: None,
+    }));
+    plain(&mut e, ActionId::Cut);
+    assert_eq!(e.song().measure_count(), 4);
+    // The selection still covers bars 1-2, which now hold what came after the cut: the
+    // paste writes the cut bars there, as before copying learned to duplicate.
+    e.set_selection(Some(Selection::Measures {
+        anchor: MeasureIndex::new(0),
+        focus: MeasureIndex::new(1),
+        track: None,
+    }));
+    plain(&mut e, ActionId::Paste);
+    assert_eq!(
+        e.song().measure_count(),
+        4,
+        "nothing was added after the selection"
+    );
+    assert_eq!(notes_at(&e, at(0, 0)), vec![(1, 3)]);
+}
+
+#[test]
+fn copying_every_track_takes_the_whole_bars_a_beat_selection_touches() {
+    let mut e = TabEditor::new(
+        testing::song(&[GUITAR_6, GUITAR_6], 4).unwrap(),
+        TrackIndex::new(0),
+    );
+    // Beats of the first track, from bar 2 into bar 3.
+    e.set_selection(Some(Selection::Beats {
+        track: TrackIndex::new(0),
+        staff: gscore_model::StaffIndex::new(0),
+        voice: VoiceIndex::new(0),
+        anchor: spot(1, 0),
+        focus: spot(2, 0),
+    }));
+    plain(&mut e, ActionId::CopyAllTracks);
+    assert_eq!(e.clipboard_bars(), Some(2));
+    assert_eq!(
+        e.clipboard_text().as_deref(),
+        Some("GuitarScore: 2 bars of 2 tracks")
+    );
+    // Nothing selected: the cursor's bar.
+    e.set_selection(None);
+    plain(&mut e, ActionId::CopyAllTracks);
+    assert_eq!(e.clipboard_bars(), Some(1));
+}
+
+#[test]
+fn copied_bars_of_one_track_pasted_on_their_selection_overwrite_them() {
+    // A bar selection in one track (as the score makes it) is pasted over, not after.
+    let mut e = editor(3);
+    e.execute_command(Command::SetFret {
+        at: at(0, 0),
+        string: StringNumber::new(1).unwrap(),
+        fret: gscore_model::Fret::new(3).unwrap(),
+    })
+    .unwrap();
+    let one_track = Selection::Measures {
+        anchor: MeasureIndex::new(0),
+        focus: MeasureIndex::new(0),
+        track: Some(TrackIndex::new(0)),
+    };
+    e.set_selection(Some(one_track));
+    plain(&mut e, ActionId::Copy);
+    assert_eq!(plain(&mut e, ActionId::Paste), Outcome::Edited);
+    assert_eq!(e.song().measure_count(), 3, "no bar was added");
+    assert_eq!(notes_at(&e, at(0, 0)), vec![(1, 3)]);
+    assert!(notes_at(&e, at(1, 0)).is_empty());
+    // Moved to another bar, the paste writes over that one.
+    e.set_selection(Some(Selection::Measures {
+        anchor: MeasureIndex::new(2),
+        focus: MeasureIndex::new(2),
+        track: Some(TrackIndex::new(0)),
+    }));
+    plain(&mut e, ActionId::Paste);
+    assert_eq!(e.song().measure_count(), 3);
+    assert_eq!(notes_at(&e, at(2, 0)), vec![(1, 3)]);
+}
+
+#[test]
+fn pasting_over_bars_replaces_them_and_only_grows_the_song_at_its_end() {
+    let mut e = TabEditor::new(
+        testing::song(&[GUITAR_6, GUITAR_6], 3).unwrap(),
+        TrackIndex::new(0),
+    );
+    // A note in the first bar of both tracks, then a copy of that bar.
+    for track in 0..2 {
+        let position = BeatPosition {
+            track: TrackIndex::new(track),
+            ..at(0, 0)
+        };
+        e.execute_command(Command::SetFret {
+            at: position,
+            string: StringNumber::new(1).unwrap(),
+            fret: gscore_model::Fret::new(3).unwrap(),
+        })
+        .unwrap();
+    }
+    e.set_selection(Some(Selection::Measures {
+        anchor: MeasureIndex::new(0),
+        focus: MeasureIndex::new(0),
+        track: None,
+    }));
+    plain(&mut e, ActionId::Copy);
+    // Overwriting the last bar writes over it; the song keeps its length.
+    assert!(matches!(
+        e.paste_measures_overwriting(MeasureIndex::new(2)),
+        Ok(Outcome::Edited)
+    ));
+    assert_eq!(e.song().measure_count(), 3);
+    for track in 0..2 {
+        let position = BeatPosition {
+            track: TrackIndex::new(track),
+            ..at(2, 0)
+        };
+        assert_eq!(notes_at(&e, position), vec![(1, 3)], "track {track}");
+    }
+    // Overwriting past the end adds the bars it needs.
+    e.set_selection(Some(Selection::Measures {
+        anchor: MeasureIndex::new(0),
+        focus: MeasureIndex::new(1),
+        track: None,
+    }));
+    plain(&mut e, ActionId::Copy);
+    assert!(matches!(
+        e.paste_measures_overwriting(MeasureIndex::new(2)),
+        Ok(Outcome::Edited)
+    ));
+    assert_eq!(e.song().measure_count(), 4);
+    // One undo step puts the three bars back.
+    plain(&mut e, ActionId::Undo);
+    assert_eq!(e.song().measure_count(), 3);
+}
+
+#[test]
+fn pasting_bars_repeats_them_and_takes_only_the_attributes_asked_for() {
+    let mut e = editor(3);
+    // The source bar carries a 3/4 signature, a tempo, a section and a beat text.
+    e.execute_command(Command::SetTimeSignature {
+        measure: MeasureIndex::new(0),
+        numerator: 3,
+        denominator: 4,
+    })
+    .unwrap();
+    e.execute_command(Command::SetMeasureTempo {
+        measure: MeasureIndex::new(0),
+        tempo: 90,
+    })
+    .unwrap();
+    e.execute_command(Command::SetSection {
+        measure: MeasureIndex::new(0),
+        title: "Source".to_owned(),
+        color: gscore_model::Section::DEFAULT_COLOR,
+    })
+    .unwrap();
+    e.execute_command(Command::SetBeatText {
+        at: at(0, 0),
+        text: "Source text".to_owned(),
+    })
+    .unwrap();
+    e.execute_command(Command::SetFret {
+        at: at(0, 0),
+        string: StringNumber::new(1).unwrap(),
+        fret: gscore_model::Fret::new(5).unwrap(),
+    })
+    .unwrap();
+    // The target bar has a signature, tempo, section and text of its own.
+    e.execute_command(Command::SetTimeSignature {
+        measure: MeasureIndex::new(2),
+        numerator: 4,
+        denominator: 4,
+    })
+    .unwrap();
+    e.execute_command(Command::SetMeasureTempo {
+        measure: MeasureIndex::new(2),
+        tempo: 120,
+    })
+    .unwrap();
+    e.execute_command(Command::SetSection {
+        measure: MeasureIndex::new(2),
+        title: "Target".to_owned(),
+        color: gscore_model::Section::DEFAULT_COLOR,
+    })
+    .unwrap();
+    e.execute_command(Command::SetBeatText {
+        at: at(2, 0),
+        text: "Target text".to_owned(),
+    })
+    .unwrap();
+    e.set_selection(Some(Selection::Measures {
+        anchor: MeasureIndex::new(0),
+        focus: MeasureIndex::new(0),
+        track: None,
+    }));
+    plain(&mut e, ActionId::Copy);
+    // Without the attributes, only the music comes over.
+    let bare = PasteOptions {
+        time_signatures: false,
+        tempo: false,
+        sections: false,
+        texts: false,
+        ..PasteOptions::default()
+    };
+    assert!(matches!(
+        e.paste_measures_overwriting_with(MeasureIndex::new(2), bare),
+        Ok(Outcome::Edited)
+    ));
+    assert_eq!(notes_at(&e, at(2, 0)), vec![(1, 5)]);
+    let measure = e
+        .song()
+        .track(TrackIndex::new(0))
+        .and_then(|track| track.measure(MeasureIndex::new(2)))
+        .expect("the target bar");
+    assert_eq!(
+        measure
+            .time_signature()
+            .map(|signature| signature.numerator()),
+        Ok(4)
+    );
+    assert_eq!(e.song().tempo_change(MeasureIndex::new(2)), Some(120));
+    assert_eq!(
+        e.song().section(MeasureIndex::new(2)).map(|s| s.title),
+        Some("Target".to_owned())
+    );
+    // The bars are replaced, so without the texts the copied bars' texts are not taken
+    // and the old text goes with the bar it was on.
+    assert_eq!(
+        e.song().beat(at(2, 0)).map(|beat| beat.text().to_owned()),
+        Some(String::new())
+    );
+    // With them, the bar's own headers and text come too.
+    assert!(matches!(
+        e.paste_measures_overwriting_with(MeasureIndex::new(2), PasteOptions::default()),
+        Ok(Outcome::Edited)
+    ));
+    let measure = e
+        .song()
+        .track(TrackIndex::new(0))
+        .and_then(|track| track.measure(MeasureIndex::new(2)))
+        .expect("the target bar");
+    assert_eq!(
+        measure
+            .time_signature()
+            .map(|signature| signature.numerator()),
+        Ok(3)
+    );
+    assert_eq!(e.song().tempo_change(MeasureIndex::new(2)), Some(90));
+    assert_eq!(
+        e.song().section(MeasureIndex::new(2)).map(|s| s.title),
+        Some("Source".to_owned())
+    );
+    assert_eq!(
+        e.song().beat(at(2, 0)).map(|beat| beat.text().to_owned()),
+        Some("Source text".to_owned())
+    );
+    // Three copies of the bar, inserted after the second: the song grows by three.
+    e.set_selection(Some(Selection::Measures {
+        anchor: MeasureIndex::new(0),
+        focus: MeasureIndex::new(0),
+        track: None,
+    }));
+    plain(&mut e, ActionId::Copy);
+    assert!(matches!(
+        e.paste_measures_inserting_with(
+            MeasureIndex::new(1),
+            PasteOptions::default().with_copies(3)
+        ),
+        Ok(Outcome::Edited)
+    ));
+    assert_eq!(e.song().measure_count(), 6);
+    for measure in 1..=3 {
+        assert_eq!(
+            notes_at(&e, at(measure, 0)),
+            vec![(1, 5)],
+            "the copy at bar {}",
+            measure.saturating_add(1)
+        );
+    }
 }

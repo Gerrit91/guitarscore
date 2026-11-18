@@ -414,6 +414,30 @@ pub(crate) const DELETE_MEASURE: CommandInfo = CommandInfo {
     params: &[MEASURE],
 };
 
+const COUNT: ParamInfo = ParamInfo {
+    name: "count",
+    required: true,
+    default: None,
+    help: "How many measures",
+};
+
+const MEASURE_TO: ParamInfo = ParamInfo {
+    name: "to",
+    required: true,
+    default: None,
+    help: "Where the first moved measure ends up, 1-based",
+};
+
+pub(crate) const MOVE_MEASURES: CommandInfo = CommandInfo {
+    id: "move_measures",
+    aliases: &[],
+    label: "Move measures",
+    help: "Moves measures in every track to another place, each with everything it holds \
+           (notes, signatures, tempo, section, repeats, directions); `to` is the first \
+           moved measure's final 1-based position.",
+    params: &[MEASURE, COUNT, MEASURE_TO],
+};
+
 pub(crate) const INSERT_TRACK: CommandInfo = CommandInfo {
     id: "insert_track",
     aliases: &[],
@@ -1173,6 +1197,7 @@ pub const COMMANDS: &[CommandInfo] = &[
     DELETE_BEAT,
     INSERT_MEASURE,
     DELETE_MEASURE,
+    MOVE_MEASURES,
     INSERT_TRACK,
     DELETE_TRACK,
     DUPLICATE_TRACK,

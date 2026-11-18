@@ -7,7 +7,7 @@
 // then the table is exercised by its tests only.
 #![allow(dead_code)]
 
-use egui::{Align, Align2, FontId, Rect, RichText, ScrollArea, Sense, Stroke, pos2, vec2};
+use egui::{Align, Align2, FontId, Rect, RichText, Sense, Stroke, pos2, vec2};
 
 use super::style;
 use crate::settings::ChainPreset;
@@ -98,7 +98,15 @@ pub(super) fn picker(
     rows: &[PickerRow],
     state: &mut TonePickerState,
 ) -> Option<PickerChoice> {
-    picker_rows(ui, id_salt, what, rows, state, VISIBLE_ROWS, None)
+    picker_rows(
+        ui,
+        id_salt,
+        what,
+        rows,
+        state,
+        super::table::VISIBLE_ROWS,
+        None,
+    )
 }
 
 /// Shows the picker with `visible` rows at once and returns the row clicked this frame.
@@ -125,8 +133,7 @@ pub(super) fn picker_rows(
         state.seen = selected;
     }
     let tokens = style::tokens(ui);
-    let row_height = ui.spacing().interact_size.y.max(18.0);
-    let visible = row_height * visible.max(1) as f32;
+    let row_height = super::table::row_height(ui);
     // The filter is a corner icon over the table, not a row of its own.
     let top = ui.cursor().min;
     let filter_rect = Rect::from_min_size(
@@ -136,81 +143,55 @@ pub(super) fn picker_rows(
     let mut chosen = None;
     // One dark surface behind the whole table, not a dark box per row with the panel
     // showing through the gaps.
-    egui::Frame::new()
-        .fill(ui.visuals().extreme_bg_color)
-        .corner_radius(3.0)
-        .inner_margin(2)
-        .show(ui, |ui| {
-            ScrollArea::vertical()
-                .id_salt(id_salt)
-                .max_height(visible)
-                .auto_shrink([false, true])
-                .show(ui, |ui| {
-                    let width = ui.available_width();
-                    let filtering = !state.filter.trim().is_empty();
-                    let shown: Vec<&PickerRow> = rows
-                        .iter()
-                        .filter(|row| matches(row, &state.filter))
-                        .collect();
-                    if shown.is_empty() {
-                        ui.label(RichText::new("Nothing matches the filter").weak());
-                        return;
+    super::table::surface(ui, id_salt, visible, |ui| {
+        let width = ui.available_width();
+        let filtering = !state.filter.trim().is_empty();
+        let shown: Vec<&PickerRow> = rows
+            .iter()
+            .filter(|row| matches(row, &state.filter))
+            .collect();
+        if shown.is_empty() {
+            ui.label(RichText::new("Nothing matches the filter").weak());
+            return;
+        }
+        let mut index = 0;
+        while index < shown.len() {
+            let Some(first) = shown.get(index) else {
+                break;
+            };
+            let group = first.group;
+            let end = group.map_or(index.saturating_add(1), |group| {
+                shown
+                    .get(index..)
+                    .unwrap_or_default()
+                    .iter()
+                    .position(|row| row.group != Some(group))
+                    .map_or(shown.len(), |offset| index.saturating_add(offset))
+            });
+            if let Some(group) = group {
+                let open = filtering || !state.closed_groups.contains(group);
+                if group_header(ui, group, open, width, row_height, tokens) && !filtering {
+                    if open {
+                        state.closed_groups.insert(group);
+                    } else {
+                        state.closed_groups.remove(group);
                     }
-                    let mut index = 0;
-                    while index < shown.len() {
-                        let Some(first) = shown.get(index) else {
-                            break;
-                        };
-                        let group = first.group;
-                        let end = group.map_or(index.saturating_add(1), |group| {
-                            shown
-                                .get(index..)
-                                .unwrap_or_default()
-                                .iter()
-                                .position(|row| row.group != Some(group))
-                                .map_or(shown.len(), |offset| index.saturating_add(offset))
-                        });
-                        if let Some(group) = group {
-                            let open = filtering || !state.closed_groups.contains(group);
-                            if group_header(ui, group, open, width, row_height, tokens)
-                                && !filtering
-                            {
-                                if open {
-                                    state.closed_groups.insert(group);
-                                } else {
-                                    state.closed_groups.remove(group);
-                                }
-                            }
-                            if open {
-                                for row in shown.get(index..end).unwrap_or_default() {
-                                    if table_row(
-                                        ui,
-                                        row,
-                                        width,
-                                        row_height,
-                                        tokens,
-                                        state.reveal.as_deref(),
-                                    ) {
-                                        chosen = Some(row.choice.clone());
-                                    }
-                                }
-                            }
-                        } else if let Some(row) = shown.get(index)
-                            && table_row(
-                                ui,
-                                row,
-                                width,
-                                row_height,
-                                tokens,
-                                state.reveal.as_deref(),
-                            )
-                        {
+                }
+                if open {
+                    for row in shown.get(index..end).unwrap_or_default() {
+                        if table_row(ui, row, state.reveal.as_deref()) {
                             chosen = Some(row.choice.clone());
                         }
-                        index = end.max(index.saturating_add(1));
                     }
-                });
-        });
+                }
+            } else if let Some(row) = shown.get(index)
+                && table_row(ui, row, state.reveal.as_deref())
+            {
+                chosen = Some(row.choice.clone());
+            }
+            index = end.max(index.saturating_add(1));
+        }
+    });
     state.reveal = None;
     // The funnel sits over the table's top-right corner and opens the filter field.
     let filter = ui.interact(
@@ -348,68 +329,31 @@ fn group_header(
         .clicked()
 }
 
-/// One row of the table: its background (when chosen or hovered), its name, and a soft
-/// line under it. True when clicked.
-fn table_row(
-    ui: &mut egui::Ui,
-    row: &PickerRow,
-    width: f32,
-    row_height: f32,
-    tokens: &style::Tokens,
-    reveal: Option<&str>,
-) -> bool {
+/// One row of the table: the shared row of [`super::table`], revealed when it is the one
+/// a change asks for. True when clicked.
+fn table_row(ui: &mut egui::Ui, row: &PickerRow, reveal: Option<&str>) -> bool {
     let label = if row.default {
         format!("{}  ·  default", row.label)
     } else {
         row.label.clone()
     };
-    let (rect, response) = ui.allocate_exact_size(vec2(width, row_height), Sense::click());
-    ui.ctx().accesskit_node_builder(response.id, |node| {
-        node.set_role(egui::Role::Button);
-        node.set_label(&label);
-    });
-    let fill = if row.selected {
-        tokens.accent.gamma_multiply(0.35)
-    } else if response.hovered() {
-        tokens.control_hover
-    } else {
-        egui::Color32::TRANSPARENT
-    };
-    if fill != egui::Color32::TRANSPARENT {
-        ui.painter().rect_filled(rect, 3.0, fill);
-    }
-    if row.selected {
-        ui.painter().rect_filled(
-            Rect::from_min_size(rect.min, vec2(3.0, rect.height())),
-            1.0,
-            tokens.accent,
-        );
-    }
-    ui.painter()
-        .with_clip_rect(rect.shrink2(vec2(7.0, 0.0)))
-        .text(
-            pos2(rect.left() + 7.0, rect.center().y),
-            Align2::LEFT_CENTER,
-            &label,
-            FontId::proportional(12.0),
-            tokens.text,
-        );
-    let line = rect.bottom() - 0.5;
-    ui.painter().line_segment(
-        [
-            pos2(rect.left() + 7.0, line),
-            pos2(rect.right() - 7.0, line),
-        ],
-        Stroke::new(1.0, tokens.line.gamma_multiply(0.55)),
+    let (rect, response) = super::table::row(
+        ui,
+        &super::table::Row {
+            label: &label,
+            detail: None,
+            swatch: None,
+            selected: row.selected,
+            draggable: false,
+            accessible: &label,
+            hint: &row.hint,
+        },
     );
     if reveal == Some(row.choice.id().as_str()) {
         ui.scroll_to_rect(rect, Some(Align::Center));
     }
-    response.on_hover_text(&row.hint).clicked()
+    response.clicked()
 }
-
-/// How many rows the picker shows at once (about eight).
-pub(super) const VISIBLE_ROWS: usize = 8;
 
 /// The standard General MIDI families and the programs they span.
 const FAMILIES: [(&str, u8, u8); 16] = [

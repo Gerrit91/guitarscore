@@ -104,6 +104,42 @@ fn put_cursor(
 }
 
 /// The notes on a beat as (string, fret), highest string first.
+/// Selects beats `from` to `to` of `measure` in the first track's voice 1, as a drag in
+/// the score would.
+fn select_beats(
+    harness: &mut Harness<'static, GuitarScoreApp>,
+    measure: usize,
+    from: usize,
+    to: usize,
+) {
+    let spot = |beat: usize| gscore_edit::BeatSpot {
+        measure: MeasureIndex::new(measure),
+        beat: BeatIndex::new(beat),
+    };
+    harness
+        .state_mut()
+        .document_mut()
+        .unwrap()
+        .editor_mut()
+        .set_selection(Some(gscore_edit::Selection::Beats {
+            staff: gscore_model::StaffIndex::new(0),
+            track: TrackIndex::new(0),
+            voice: VoiceIndex::new(0),
+            anchor: spot(from),
+            focus: spot(to),
+        }));
+}
+
+/// Drops the selection, as a click elsewhere in the score does.
+fn deselect(harness: &mut Harness<'static, GuitarScoreApp>) {
+    harness
+        .state_mut()
+        .document_mut()
+        .unwrap()
+        .editor_mut()
+        .set_selection(None);
+}
+
 fn notes_at(
     harness: &Harness<'static, GuitarScoreApp>,
     measure: usize,
@@ -1989,17 +2025,20 @@ fn shift_h_opens_the_history() {
 #[test]
 fn ctrl_c_and_ctrl_v_copy_one_note_and_a_beat_selection() {
     let mut harness = app_with(&testdata("basic/note_lengths.gp"));
-    // A note on the cursor's string, with an effect: Copy takes it without a selection.
+    // A note with an effect: without a selection Copy takes the cursor's whole beat and
+    // Paste puts a copy after it, as in Guitar Pro.
     put_cursor(&mut harness, 0, 0, 1);
     type_char(&mut harness, "2", Modifiers::NONE);
     type_char(&mut harness, "p", Modifiers::NONE);
     harness.key_press_modifiers(Modifiers::COMMAND, Key::C);
     harness.run();
+    let next = notes_at(&harness, 0, 1);
     press(&mut harness, Key::ArrowDown);
     harness.key_press_modifiers(Modifiers::COMMAND, Key::V);
     harness.run();
     assert_eq!(harness.state().notice(), None);
-    assert_eq!(notes_at(&harness, 0, 0), vec![(6, 0), (1, 2), (2, 2)]);
+    assert_eq!(notes_at(&harness, 0, 1), notes_at(&harness, 0, 0));
+    assert_eq!(notes_at(&harness, 0, 2), next, "the next beat moved on");
     assert!(
         harness
             .state()
@@ -2011,17 +2050,18 @@ fn ctrl_c_and_ctrl_v_copy_one_note_and_a_beat_selection() {
                 track: TrackIndex::new(0),
                 measure: MeasureIndex::new(0),
                 voice: VoiceIndex::new(0),
-                beat: BeatIndex::new(0),
+                beat: BeatIndex::new(1),
             })
             .unwrap()
             .notes()
-            .find(|note| note.string().unwrap().get() == 2)
+            .find(|note| note.string().unwrap().get() == 1)
             .unwrap()
             .is_palm_muted(),
         "the copied effect came along"
     );
 
-    // Two beats selected in the score: Copy and Paste replace whole beats.
+    // Two beats selected in the score: Copy, then Paste over as many beats replaces them.
+    deselect(&mut harness);
     put_cursor(&mut harness, 1, 0, 1);
     for _ in 0..2 {
         harness.key_press_modifiers(Modifiers::SHIFT, Key::ArrowRight);
@@ -2039,6 +2079,7 @@ fn ctrl_c_and_ctrl_v_copy_one_note_and_a_beat_selection() {
     harness.key_press_modifiers(Modifiers::COMMAND, Key::C);
     harness.run();
     put_cursor(&mut harness, 4, 0, 1);
+    select_beats(&mut harness, 4, 0, 2);
     harness.key_press_modifiers(Modifiers::COMMAND, Key::V);
     harness.run();
     assert_eq!(harness.state().notice(), None);
@@ -2071,19 +2112,17 @@ fn copy_and_paste_work_as_the_desktop_sends_them() {
     harness.step();
     // The copy reaches the system clipboard, so the desktop sends the next Ctrl+V on.
     let text = copied_text(&harness).expect("Copy puts text on the system clipboard");
-    assert_eq!(text, "GuitarScore: fret 2");
+    assert_eq!(text, "GuitarScore: 1 beat");
     harness.run();
+    // Pasted with only the cursor: after the cursor's beat.
     put_cursor(&mut harness, 1, 0, 3);
     harness.event(Event::Paste(text));
     harness.run();
     assert_eq!(harness.state().notice(), None);
-    assert!(
-        notes_at(&harness, 1, 0).contains(&(3, 2)),
-        "{:?}",
-        notes_at(&harness, 1, 0)
-    );
+    assert_eq!(notes_at(&harness, 1, 1), notes_at(&harness, 0, 0));
 
     // A beat selection the same way: Copy, then Paste with the clipboard's text.
+    deselect(&mut harness);
     put_cursor(&mut harness, 1, 0, 1);
     for _ in 0..2 {
         harness.key_press_modifiers(Modifiers::SHIFT, Key::ArrowRight);
@@ -2095,6 +2134,7 @@ fn copy_and_paste_work_as_the_desktop_sends_them() {
     assert_eq!(text, "GuitarScore: 3 beats");
     harness.run();
     put_cursor(&mut harness, 4, 0, 1);
+    select_beats(&mut harness, 4, 0, 2);
     harness.event(Event::Paste(text));
     harness.run();
     assert_eq!(harness.state().notice(), None);
@@ -2109,7 +2149,7 @@ fn copy_and_paste_work_as_the_desktop_sends_them() {
     harness.step();
     assert_eq!(
         copied_text(&harness).as_deref(),
-        Some("GuitarScore: fret 2")
+        Some("GuitarScore: 1 beat")
     );
 }
 
@@ -2127,8 +2167,11 @@ fn the_edit_menu_copies_and_pastes_a_note_and_a_beat_selection() {
     harness.run();
     harness.get_by_label_contains("Paste ctrl+v").click();
     harness.run();
-    assert_eq!(notes_at(&harness, 0, 0), vec![(6, 0), (1, 3), (2, 3)]);
+    // The cursor's beat, copied whole, goes in after it.
+    assert_eq!(notes_at(&harness, 0, 1), notes_at(&harness, 0, 0));
+    assert!(notes_at(&harness, 0, 1).contains(&(1, 3)));
 
+    deselect(&mut harness);
     put_cursor(&mut harness, 1, 0, 1);
     for _ in 0..2 {
         harness.key_press_modifiers(Modifiers::SHIFT, Key::ArrowRight);
@@ -2139,6 +2182,7 @@ fn the_edit_menu_copies_and_pastes_a_note_and_a_beat_selection() {
     harness.get_by_label_contains("Copy ctrl+c").click();
     harness.run();
     put_cursor(&mut harness, 4, 0, 1);
+    select_beats(&mut harness, 4, 0, 2);
     harness.get_by_label("Edit").click();
     harness.run();
     harness.get_by_label_contains("Paste ctrl+v").click();
@@ -2175,6 +2219,7 @@ fn a_paste_that_needs_more_bars_says_so() {
         .song()
         .measure_count()
         .saturating_sub(1);
+    deselect(&mut harness);
     put_cursor(&mut harness, last, 0, 1);
     harness.key_press_modifiers(Modifiers::COMMAND, Key::V);
     harness.run();

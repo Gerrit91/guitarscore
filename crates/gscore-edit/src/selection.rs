@@ -20,6 +20,45 @@ use crate::cursor::Cursor;
 use crate::editor::EditError;
 use crate::tab_editor::{Outcome, TabEditor};
 
+/// What a paste of bars takes from the copied bars besides their notes: how many times
+/// they are pasted, and which of the bars' own attributes come along.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PasteOptions {
+    /// How many times the copied bars are pasted (1 to [`MAX_PASTE_COPIES`]).
+    pub copies: usize,
+    /// Take the copied bars' time signatures.
+    pub time_signatures: bool,
+    /// Take their tempo changes.
+    pub tempo: bool,
+    /// Take their section markers.
+    pub sections: bool,
+    /// Take their beat texts.
+    pub texts: bool,
+}
+
+/// Most times copied bars are pasted at once (a typed number is capped here).
+pub const MAX_PASTE_COPIES: usize = 64;
+
+impl Default for PasteOptions {
+    fn default() -> Self {
+        PasteOptions {
+            copies: 1,
+            time_signatures: true,
+            tempo: true,
+            sections: true,
+            texts: true,
+        }
+    }
+}
+
+impl PasteOptions {
+    /// The same options with `copies` kept within 1 to [`MAX_PASTE_COPIES`].
+    pub fn with_copies(mut self, copies: usize) -> Self {
+        self.copies = copies.clamp(1, MAX_PASTE_COPIES);
+        self
+    }
+}
+
 /// One beat of a voice, as an end of a beat selection. Spots order by measure, then beat.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct BeatSpot {

@@ -202,6 +202,97 @@ pub(super) fn restore(
     Ok(((), Moved::Inserted(at)))
 }
 
+/// Moves the `count` measures starting at `from` so that they start at `to` in the
+/// resulting order, in every staff of every track, headers included: everything a bar
+/// holds (notes, signatures, tempo change, section, repeats, endings, directions, fermatas,
+/// clefs, line breaks) travels with it.
+pub(super) fn move_block(
+    song: &mut Song,
+    from: MeasureIndex,
+    count: usize,
+    to: MeasureIndex,
+) -> Result<Change, ModelError> {
+    song.edit_structure(|inner| {
+        let moved = shift(inner, from, count, to)?;
+        let change = Change {
+            kind: ChangeKind::MeasuresMoved { from, count, to },
+        };
+        Ok((change, moved))
+    })
+}
+
+/// Reverts [`move_block`]: moves the measures back from `to` to `from`.
+pub(super) fn move_back(
+    song: &mut GpSong,
+    from: MeasureIndex,
+    count: usize,
+    to: MeasureIndex,
+) -> Result<((), Moved), ModelError> {
+    shift(song, to, count, from).map(|moved| ((), moved))
+}
+
+/// Moves `count` measures from `from` to `to` (their start in the resulting order) in the
+/// headers and every staff, after checking that every list has them.
+fn shift(
+    song: &mut GpSong,
+    from: MeasureIndex,
+    count: usize,
+    to: MeasureIndex,
+) -> Result<Moved, ModelError> {
+    let total = song.measure_headers.len();
+    let fits = |start: MeasureIndex| {
+        count > 0
+            && start
+                .get()
+                .checked_add(count)
+                .is_some_and(|end| end <= total)
+    };
+    if !fits(from) || !fits(to) {
+        return Err(ModelError::Invalid(format!(
+            "cannot move {count} measure(s) from {from} to {to}: the song has {total} \
+             measure(s)"
+        )));
+    }
+    if from == to {
+        return Err(ModelError::Invalid(format!(
+            "the measures at {from} are already there"
+        )));
+    }
+    for measures in song.tracks.iter().flat_map(gscore_gp::Track::measure_lists) {
+        if measures.len() != total {
+            return Err(ModelError::Invalid(format!(
+                "a staff has {} measure(s), the song {total}",
+                measures.len()
+            )));
+        }
+    }
+    move_in(&mut song.measure_headers, from.get(), count, to.get());
+    for measures in song
+        .tracks
+        .iter_mut()
+        .flat_map(gscore_gp::Track::measure_lists_mut)
+    {
+        move_in(measures, from.get(), count, to.get());
+    }
+    renumber(song);
+    let first = from.get().min(to.get());
+    let last = from.get().max(to.get()).saturating_add(count);
+    Ok(Moved::Touched {
+        first: MeasureIndex::new(first),
+        end: MeasureIndex::new(last),
+    })
+}
+
+/// Moves `items[from..from + count]` so it starts at `to` in the result. The caller checks
+/// both ranges fit.
+fn move_in<T>(items: &mut Vec<T>, from: usize, count: usize, to: usize) {
+    let block: Vec<T> = items
+        .drain(from..from.saturating_add(count))
+        .collect::<Vec<_>>();
+    let at = to.min(items.len());
+    items.splice(at..at, block);
+}
+
 /// Numbers measures and their track links 1, 2, 3, ... again after an insertion/removal.
 /// Callers check beforehand that the count fits a measure number (at most `u16::MAX`).
 fn renumber(song: &mut GpSong) {

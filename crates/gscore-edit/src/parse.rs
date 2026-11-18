@@ -212,6 +212,11 @@ fn build(info: &'static CommandInfo, args: &mut Args) -> Result<Command, ParseEr
         "delete_measure" => Ok(Command::DeleteMeasure {
             measure: MeasureIndex::new(required_position(args, "measure")?),
         }),
+        "move_measures" => Ok(Command::MoveMeasures {
+            from: MeasureIndex::new(required_position(args, "measure")?),
+            count: count_arg(args)?,
+            to: MeasureIndex::new(required_position(args, "to")?),
+        }),
         "insert_track" => Ok(Command::InsertTrack {
             at: TrackIndex::new(optional_position(args, "track")?.unwrap_or(0)),
         }),
@@ -770,6 +775,19 @@ fn string_count_arg(args: &mut Args) -> Result<usize, ParseError> {
         .map_err(|_| bad(args.command, "strings", &text, expected))?;
     if !(1..=MAX_STRINGS).contains(&value) {
         return Err(bad(args.command, "strings", &text, expected));
+    }
+    Ok(value)
+}
+
+/// The `count` parameter: how many measures, at least one.
+fn count_arg(args: &mut Args) -> Result<usize, ParseError> {
+    let text = args.required("count")?;
+    let expected = "a whole number of measures from 1 to 65535";
+    let value: usize = text
+        .parse()
+        .map_err(|_| bad(args.command, "count", &text, expected))?;
+    if !(1..=usize::from(u16::MAX)).contains(&value) {
+        return Err(bad(args.command, "count", &text, expected));
     }
     Ok(value)
 }
