@@ -914,3 +914,58 @@ fn the_paste_dialog_repeats_copies_and_leaves_attributes_out() {
         }
     }
 }
+
+#[test]
+fn ctrl_shift_insert_opens_the_paste_dialog_too() {
+    let mut harness = song_with_sections(false);
+    harness.get_by_label("Song tab").click();
+    harness.run();
+    harness
+        .get_by_label("Select the bars of section Verse")
+        .click();
+    harness.run();
+    harness.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::C);
+    harness.run();
+    let ctrl_shift = egui::Modifiers {
+        command: true,
+        shift: true,
+        ..egui::Modifiers::NONE
+    };
+    harness.key_press_modifiers(ctrl_shift, egui::Key::Insert);
+    harness.run();
+    harness.get_by_label("After the selection");
+}
+
+#[test]
+fn a_paste_event_with_shift_opens_the_paste_dialog() {
+    // Some platforms send Ctrl+Shift+V as a paste event rather than a key; the held
+    // Shift still asks for the dialog.
+    let mut harness = song_with_sections(false);
+    harness.get_by_label("Song tab").click();
+    harness.run();
+    harness
+        .get_by_label("Select the bars of section Verse")
+        .click();
+    harness.run();
+    harness.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::C);
+    harness.run();
+    harness
+        .input_mut()
+        .events
+        .push(egui::Event::ModifiersChanged(egui::Modifiers {
+            shift: true,
+            ..egui::Modifiers::NONE
+        }));
+    harness.run();
+    harness
+        .input_mut()
+        .events
+        .push(egui::Event::Paste("GuitarScore: 3 bars".to_owned()));
+    harness.run();
+    harness.get_by_label("After the selection");
+    harness
+        .input_mut()
+        .events
+        .push(egui::Event::ModifiersChanged(egui::Modifiers::NONE));
+    harness.run();
+}

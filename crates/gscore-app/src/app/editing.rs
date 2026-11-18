@@ -85,6 +85,9 @@ impl GuitarScoreApp {
         {
             return;
         }
+        // Some platforms turn Ctrl+Shift+V into a paste event without its key; the held
+        // Shift then says the bars dialog was meant, as on the desktop's key event.
+        let shift_paste = ctx.input(|input| input.modifiers.shift);
         let events = ctx.input_mut(|input| std::mem::take(&mut input.events));
         let mut kept = Vec::with_capacity(events.len());
         let mut actions = Vec::new();
@@ -121,7 +124,18 @@ impl GuitarScoreApp {
                     continue;
                 }
             }
-            match self.keys.combo(&event).and_then(|c| self.keymap.action(c)) {
+            let combo = match &event {
+                egui::Event::Paste(_) if shift_paste => Some(gscore_edit::KeyCombo::new(
+                    gscore_edit::Key::Char('v'),
+                    gscore_edit::Modifiers {
+                        ctrl: true,
+                        shift: true,
+                        ..gscore_edit::Modifiers::default()
+                    },
+                )),
+                _ => self.keys.combo(&event),
+            };
+            match combo.and_then(|c| self.keymap.action(c)) {
                 Some(action) if !without_song || needs_no_song(action) => actions.push(action),
                 _ => kept.push(event),
             }

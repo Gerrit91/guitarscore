@@ -71,6 +71,7 @@ ctrl+shift+c = copy_all_tracks
 ctrl+x = cut
 ctrl+v = paste
 ctrl+shift+v = paste_around
+ctrl+shift+Insert = paste_around
 ctrl+z = undo
 ctrl+y = redo
 

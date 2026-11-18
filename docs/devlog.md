@@ -6457,3 +6457,13 @@ Tests: dragging the edge widens the column and the settings keep it.
   `the_paste_dialog_repeats_copies_and_leaves_attributes_out` (two copies, sections off);
   the dialog's snapshot shows the new controls.
 
+## 2026-11-18 — Ctrl+Shift+V: a second key, and paste events from the system
+
+- Some desktops and clipboard managers take Ctrl+Shift+V before the app sees it (browsers
+  keep it for "paste as plain text"), so `paste_around` is also bound to Ctrl+Shift+Insert.
+  A platform that turns Ctrl+Shift+V into a paste event instead of a key event now opens
+  the dialog too while Shift is held; plain Ctrl+V pastes as before.
+- The Edit menu's "Paste before or after…" stays the way in if a desktop keeps both keys.
+- Tests: `ctrl_shift_insert_opens_the_paste_dialog_too`,
+  `a_paste_event_with_shift_opens_the_paste_dialog`, and the key map's second binding.
+
