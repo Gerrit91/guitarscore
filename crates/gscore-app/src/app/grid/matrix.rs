@@ -223,7 +223,7 @@ pub(super) fn matrix(
             ),
         );
         if view.stripes && row % 2 == 1 {
-            painter.rect_filled(row_rect, 0.0, visuals.faint_bg_color);
+            painter.rect_filled(row_rect, 0.0, style::tokens(ui).grid_stripe);
         }
         for measure_index in first_measure..last_measure {
             if !cells.get(measure_index).copied().unwrap_or(false) {
