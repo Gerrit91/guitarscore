@@ -253,7 +253,14 @@ fn sections(
         );
         return;
     }
+    // The row under the pointer while a row is dragged (not the dragged one), found anew
+    // every frame: off the rows the drop does nothing.
+    let mut hovered = None;
+    let mut dropped = false;
     table::surface(ui, "song_sections_table", table::VISIBLE_ROWS, |ui| {
+        // Rows scrolled out of view are still laid out; only the visible part counts.
+        let visible = ui.clip_rect();
+        let pointer = ui.input(|input| input.pointer.interact_pos());
         for line in &lines {
             let dragging = state.dragging == Some(line.start);
             let target = state.target == Some(line.start);
@@ -284,25 +291,34 @@ fn sections(
                 state.target = None;
                 actions.clear = true;
             }
-            if state.dragging.is_some()
-                && let Some(pointer) = ui.input(|input| input.pointer.interact_pos())
-                && rect.contains(pointer)
-                && state.dragging != Some(line.start)
+            if state.dragging.is_some_and(|from| from != line.start)
+                && pointer
+                    .is_some_and(|pointer| rect.contains(pointer) && visible.contains(pointer))
             {
-                state.target = Some(line.start);
+                hovered = Some(line.start);
             }
             if response.drag_stopped() {
-                if let Some(from) = state.dragging
-                    && let Some(to) = state.target
-                    && from != to
-                {
-                    actions.swap = Some((from, to));
-                }
-                state.dragging = None;
-                state.target = None;
+                dropped = true;
             }
         }
     });
+    if state.dragging.is_some() {
+        state.target = hovered;
+    }
+    if dropped {
+        if let Some(from) = state.dragging
+            && let Some(to) = state.target
+            && from != to
+        {
+            actions.swap = Some((from, to));
+        }
+        state.dragging = None;
+        state.target = None;
+    } else if state.dragging.is_some() && !ui.input(|input| input.pointer.any_down()) {
+        // The drag ended without its row seeing it (the panel changed tab): forget it.
+        state.dragging = None;
+        state.target = None;
+    }
 }
 
 /// The sections in `grid`, in order: each lasts from its bar to the bar before the next

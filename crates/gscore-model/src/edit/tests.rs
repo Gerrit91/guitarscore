@@ -546,6 +546,70 @@ fn inserted_and_removed_measures_move_the_stamps_with_them() {
     assert_unchanged(&before, &song);
 }
 
+#[test]
+fn moving_measures_moves_them_in_every_track_and_undo_moves_them_back() {
+    let bars = || {
+        vec![
+            measure((4, 4), vec![vec![rest(4)]]),
+            measure((3, 4), vec![vec![rest(4)]]),
+            measure((2, 4), vec![vec![rest(4)]]),
+        ]
+    };
+    let mut song = from_gp(test_song(vec![
+        track("Guitar", GUITAR_6, bars()),
+        track("Bass", BASS_4, bars()),
+    ]))
+    .unwrap();
+    let before = song.clone();
+    let signatures = |song: &Song| -> Vec<Vec<TimeSignature>> {
+        song.tracks()
+            .map(|track| {
+                track
+                    .measures()
+                    .map(|measure| measure.time_signature().unwrap())
+                    .collect()
+            })
+            .collect()
+    };
+    let first = stamps(&song);
+    // The last bar moves to the front, in both tracks and in the headers.
+    let change = song
+        .move_measures(MeasureIndex::new(2), 1, MeasureIndex::new(0))
+        .unwrap();
+    let moved = vec![
+        TimeSignature::new(2, 4).unwrap(),
+        TimeSignature::new(4, 4).unwrap(),
+        TimeSignature::new(3, 4).unwrap(),
+    ];
+    assert_eq!(signatures(&song), vec![moved.clone(), moved]);
+    assert_eq!(song.measure_count(), 3);
+    assert!(
+        stamps(&song).iter().all(|stamp| !first.contains(stamp)),
+        "every reordered measure is laid out again"
+    );
+    song.revert(&change).unwrap();
+    assert_unchanged(&before, &song);
+
+    // Nothing to move, a range past the end, or no move at all change nothing.
+    assert!(
+        song.move_measures(MeasureIndex::new(0), 0, MeasureIndex::new(1))
+            .is_err()
+    );
+    assert!(
+        song.move_measures(MeasureIndex::new(1), 3, MeasureIndex::new(0))
+            .is_err()
+    );
+    assert!(
+        song.move_measures(MeasureIndex::new(0), 2, MeasureIndex::new(2))
+            .is_err()
+    );
+    assert!(
+        song.move_measures(MeasureIndex::new(1), 1, MeasureIndex::new(1))
+            .is_err()
+    );
+    assert_unchanged(&before, &song);
+}
+
 /// The names of all tracks, in order.
 fn track_names(song: &Song) -> Vec<String> {
     song.tracks().map(|track| track.name().to_owned()).collect()

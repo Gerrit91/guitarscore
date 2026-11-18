@@ -10,11 +10,11 @@ use gscore_model::{
 
 use crate::info::{
     BATCH, CLEAR_NOTE, CLEAR_SECTION, CommandInfo, DELETE_BEAT, DELETE_MEASURE, DELETE_SCORE_VIEW,
-    DELETE_TRACK, DUPLICATE_TRACK, INSERT_BEAT, INSERT_MEASURE, INSERT_TRACK, MOVE_TRACK, REDO,
-    RENAME_TRACK, SET_BEAT_EFFECT, SET_BEAT_REST, SET_BEAT_TEXT, SET_BEAT_TIE, SET_CHORD_DIAGRAM,
-    SET_CLEF, SET_DEAD_NOTE, SET_DIRECTIONS, SET_DOUBLE_BAR, SET_DURATION, SET_DYNAMIC, SET_FEEL,
-    SET_FERMATA, SET_FREE_TIME, SET_FRET, SET_KEY_SIGNATURE, SET_LYRIC_LINE, SET_MASTER_PAN,
-    SET_MASTER_VOLUME, SET_MEASURE_TEMPO, SET_NOTE_EFFECT, SET_REPEAT, SET_SECTION,
+    DELETE_TRACK, DUPLICATE_TRACK, INSERT_BEAT, INSERT_MEASURE, INSERT_TRACK, MOVE_MEASURES,
+    MOVE_TRACK, REDO, RENAME_TRACK, SET_BEAT_EFFECT, SET_BEAT_REST, SET_BEAT_TEXT, SET_BEAT_TIE,
+    SET_CHORD_DIAGRAM, SET_CLEF, SET_DEAD_NOTE, SET_DIRECTIONS, SET_DOUBLE_BAR, SET_DURATION,
+    SET_DYNAMIC, SET_FEEL, SET_FERMATA, SET_FREE_TIME, SET_FRET, SET_KEY_SIGNATURE, SET_LYRIC_LINE,
+    SET_MASTER_PAN, SET_MASTER_VOLUME, SET_MEASURE_TEMPO, SET_NOTE_EFFECT, SET_REPEAT, SET_SECTION,
     SET_SIMILE_MARK, SET_SONG_SOUND, SET_SONG_TEXT, SET_TEMPO, SET_TIE, SET_TIME_SIGNATURE,
     SET_TRACK_CAPO, SET_TRACK_CHORUS, SET_TRACK_COLOR, SET_TRACK_DRUMS, SET_TRACK_MUTE,
     SET_TRACK_PAN, SET_TRACK_PROGRAM, SET_TRACK_REVERB, SET_TRACK_SOLO, SET_TRACK_SOUND,
@@ -74,6 +74,16 @@ pub enum Command {
     DeleteMeasure {
         /// The measure.
         measure: MeasureIndex,
+    },
+    /// Move `count` measures, starting at `from`, so they start at `to` in the resulting
+    /// order, in every track: each bar keeps its notes and every bar-level setting.
+    MoveMeasures {
+        /// The first measure moved.
+        from: MeasureIndex,
+        /// How many measures move.
+        count: usize,
+        /// Where the first of them ends up.
+        to: MeasureIndex,
     },
     /// Insert a new, rest-filled track before `at` (one past the last track appends).
     InsertTrack {
@@ -580,6 +590,11 @@ impl Command {
             Command::InsertMeasure { measure } | Command::DeleteMeasure { measure } => {
                 format!("{id} measure={}", one(measure.get()))
             }
+            Command::MoveMeasures { from, count, to } => format!(
+                "{id} measure={} count={count} to={}",
+                one(from.get()),
+                one(to.get())
+            ),
             Command::InsertTrack { at: track }
             | Command::DeleteTrack { track }
             | Command::DuplicateTrack { track } => format!("{id} track={}", one(track.get())),
@@ -941,6 +956,7 @@ impl Command {
             Command::DeleteBeat { .. } => &DELETE_BEAT,
             Command::InsertMeasure { .. } => &INSERT_MEASURE,
             Command::DeleteMeasure { .. } => &DELETE_MEASURE,
+            Command::MoveMeasures { .. } => &MOVE_MEASURES,
             Command::InsertTrack { .. } => &INSERT_TRACK,
             Command::DeleteTrack { .. } => &DELETE_TRACK,
             Command::DuplicateTrack { .. } => &DUPLICATE_TRACK,
@@ -1098,7 +1114,8 @@ impl Command {
             | Command::SetFreeTime { .. }
             | Command::SetSimileMark { .. }
             | Command::SetLyricLine { .. }
-            | Command::SetChordDiagram { .. } => true,
+            | Command::SetChordDiagram { .. }
+            | Command::MoveMeasures { .. } => true,
             Command::Batch { commands } => commands.iter().any(Command::changes_layout),
             _ => false,
         }
@@ -1325,6 +1342,15 @@ impl Command {
                 song.track_count() > 0
                     && song.measure_count() > 1
                     && measure.get() < song.measure_count()
+            }
+            Command::MoveMeasures { from, count, to } => {
+                let fits = |start: &MeasureIndex| {
+                    start
+                        .get()
+                        .checked_add(*count)
+                        .is_some_and(|end| end <= song.measure_count())
+                };
+                song.track_count() > 0 && *count > 0 && from != to && fits(from) && fits(to)
             }
             Command::InsertTrack { at } => {
                 song.track_count() < gscore_model::MAX_TRACKS && at.get() <= song.track_count()
@@ -1569,6 +1595,7 @@ impl Command {
             Command::DeleteBeat { at } => song.delete_beat(*at),
             Command::InsertMeasure { measure } => song.insert_measure(*measure),
             Command::DeleteMeasure { measure } => song.delete_measure(*measure),
+            Command::MoveMeasures { from, count, to } => song.move_measures(*from, *count, *to),
             Command::InsertTrack { at } => song.insert_track(*at),
             Command::DeleteTrack { track } => song.delete_track(*track),
             Command::DuplicateTrack { track } => song.duplicate_track(*track),

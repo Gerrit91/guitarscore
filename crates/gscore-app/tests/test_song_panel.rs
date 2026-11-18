@@ -660,3 +660,105 @@ fn the_paste_dialog_pastes_at_a_typed_bar_and_can_overwrite() {
         })
     );
 }
+
+#[test]
+fn a_section_row_dropped_off_the_table_or_on_itself_swaps_nothing() {
+    let mut harness = song_with_sections(false);
+    harness.get_by_label("Song tab").click();
+    harness.run();
+    let before = harness.state().document().unwrap().editor().undo_depth();
+    let from = section_row(&harness, "Chorus");
+    let over = section_row(&harness, "Verse");
+    // Over the Verse's row, then off the table (onto the score) before dropping.
+    let off = egui::pos2(200.0, 300.0);
+    // And over the Verse's row, then back onto the dragged row itself.
+    for drop in [off, from] {
+        harness.hover_at(from);
+        harness.run();
+        harness.drag_at(from);
+        harness.step();
+        harness.hover_at(from + egui::vec2(10.0, 0.0));
+        harness.step();
+        harness.hover_at(over);
+        harness.step();
+        harness.hover_at(drop);
+        harness.step();
+        harness.drop_at(drop);
+        harness.run();
+        let song = harness.state().document().unwrap().song();
+        assert_eq!(
+            song.section(MeasureIndex::new(2))
+                .map(|section| section.title),
+            Some("Verse".to_owned()),
+            "dropped at {drop:?}"
+        );
+        assert_eq!(
+            harness.state().document().unwrap().editor().undo_depth(),
+            before
+        );
+    }
+}
+
+/// Starts playback to ALSA's silent "Midi Through" port; false (test skipped) without one.
+fn start_playing(harness: &mut Harness<'static, GuitarScoreApp>) -> bool {
+    const THROUGH: &str = "Midi Through";
+    let playback = harness.state_mut().playback_mut();
+    let port = playback.refresh_ports().ok().and_then(|()| {
+        playback
+            .ports()
+            .iter()
+            .find(|p| p.contains(THROUGH))
+            .cloned()
+    });
+    let Some(port) = port else {
+        eprintln!("skipped: no \"{THROUGH}\" MIDI port");
+        return false;
+    };
+    harness.state_mut().playback_mut().choose_port(Some(port));
+    harness.get_by_label("Play").click();
+    harness.step();
+    let started = Instant::now();
+    while harness.state().playback().state() != gscore_play::PlayState::Playing {
+        assert!(started.elapsed() < Duration::from_secs(5), "did not start");
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    true
+}
+
+#[test]
+fn a_paste_from_the_paste_dialog_stops_playback_like_any_edit() {
+    let mut harness = song_with_sections(false);
+    harness.get_by_label("Song tab").click();
+    harness.run();
+    harness
+        .get_by_label("Select the bars of section Verse")
+        .click();
+    harness.run();
+    harness.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::C);
+    harness.run();
+    if !start_playing(&mut harness) {
+        return;
+    }
+    assert!(harness.state().playback().sequence().is_some());
+    let ctrl_shift = egui::Modifiers {
+        command: true,
+        shift: true,
+        ..egui::Modifiers::NONE
+    };
+    harness.key_press_modifiers(ctrl_shift, egui::Key::V);
+    harness.run();
+    harness.get_by_label("Paste").click();
+    harness.step();
+    assert_eq!(
+        harness.state().document().unwrap().song().measure_count(),
+        12
+    );
+    // The old song's sequence is gone: the next play builds the song as it is now.
+    assert!(harness.state().playback().sequence().is_none());
+    // The player stops on its own thread.
+    let stopping = Instant::now();
+    while harness.state().playback().state() == gscore_play::PlayState::Playing {
+        assert!(stopping.elapsed() < Duration::from_secs(5), "still playing");
+        std::thread::sleep(Duration::from_millis(10));
+    }
+}

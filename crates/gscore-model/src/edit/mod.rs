@@ -165,6 +165,12 @@ enum ChangeKind {
     TrackRemoved { at: TrackIndex, track: Box<GpTrack> },
     /// The track at `from` moved to `to`.
     TrackMoved { from: TrackIndex, to: TrackIndex },
+    /// `count` measures moved from `from` to start at `to`, in every track.
+    MeasuresMoved {
+        from: MeasureIndex,
+        count: usize,
+        to: MeasureIndex,
+    },
     /// A track's name changed.
     TrackRenamed { at: TrackIndex, previous: String },
     /// A track's short name changed.
@@ -440,6 +446,7 @@ impl Change {
             ChangeKind::DurationSet { .. }
             | ChangeKind::BeatInserted { .. }
             | ChangeKind::MeasureInserted { .. }
+            | ChangeKind::MeasuresMoved { .. }
             | ChangeKind::TrackVisible { .. } => 0,
             ChangeKind::BeatRemoved { beat, .. } => beat_size(beat),
             ChangeKind::MeasureRemoved { measures, .. } => {
@@ -672,6 +679,19 @@ impl Song {
         measures::delete(self, at)
     }
 
+    /// Moves the `count` measures starting at `from` so they start at `to` in the resulting
+    /// order, in every staff of every track, with their headers: each bar keeps everything
+    /// it holds (notes, signatures, tempo change, section, repeats, endings, directions,
+    /// fermatas, clefs, line breaks). Both ranges must lie inside the song.
+    pub fn move_measures(
+        &mut self,
+        from: MeasureIndex,
+        count: usize,
+        to: MeasureIndex,
+    ) -> Result<Change, ModelError> {
+        measures::move_block(self, from, count, to)
+    }
+
     /// Undoes a change returned by one of the editing methods. The editor must revert
     /// changes in the reverse order they were applied; anything else is reported as an
     /// error and leaves the song untouched.
@@ -735,6 +755,9 @@ impl Song {
                 measures,
             } => self
                 .edit_structure(|inner| measures::restore(inner, *at, header.as_ref(), measures)),
+            ChangeKind::MeasuresMoved { from, count, to } => {
+                self.edit_structure(|inner| measures::move_back(inner, *from, *count, *to))
+            }
             ChangeKind::TrackInserted { at, channel } => self.edit_tracks(|inner| {
                 if at.get() >= inner.tracks.len() {
                     return Err(ModelError::Invalid(format!(

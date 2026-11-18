@@ -965,13 +965,19 @@ impl GuitarScoreApp {
                 .swap_sections(MeasureIndex::new(from), MeasureIndex::new(to))
         });
         match swapped {
-            Some(Ok(_)) => {
-                self.sync_grid_selection();
-                self.after_edit(EditEffect::Other, true);
-            }
+            Some(Ok(_)) => self.after_bars_edit(),
             Some(Err(error)) => self.notice = Some(error.to_string()),
             None => {}
         }
+    }
+
+    /// What an edit of whole bars made outside [`Self::perform_action`] (a section swap, a
+    /// paste from the paste dialog) needs afterwards, as any edit does: the grid shows the
+    /// bars it selected, stale layouts go, and playback stops and is built again.
+    pub(super) fn after_bars_edit(&mut self) {
+        self.status = None;
+        self.sync_grid_selection();
+        self.after_edit(EditEffect::Other, true);
     }
 
     /// The grid shows the editor's measure selection: an edit can select what it wrote (a

@@ -170,7 +170,7 @@ impl GuitarScoreApp {
                 }
             });
             match pasted {
-                Some(Ok(_)) => self.sync_grid_selection(),
+                Some(Ok(_)) => self.after_bars_edit(),
                 Some(Err(error)) => self.notice = Some(error.to_string()),
                 None => {}
             }

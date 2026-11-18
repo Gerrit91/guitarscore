@@ -58,10 +58,11 @@ pub(crate) enum Clipboard {
     Beats(Vec<Vec<BeatClip>>),
     /// Copied measures, each with the track and staff it belongs to (all tracks, or only
     /// one; every staff of a track), and the bar they were copied from: pasting them with
-    /// the selection still there duplicates them after it.
+    /// the selection still there duplicates them after it. Cut bars have no source: they
+    /// are no longer there, whatever the selection now covers.
     Measures {
         staves: Vec<(TrackIndex, StaffIndex, Vec<MeasureClip>)>,
-        source: MeasureIndex,
+        source: Option<MeasureIndex>,
     },
 }
 
@@ -146,7 +147,9 @@ impl TabEditor {
 
     /// Swaps the bars of the two sections that start at `a` and at `b` (each lasting to
     /// the bar before the next section, or the song's end), in every track and staff, as
-    /// one undo step. A section's name and color travel with its bars.
+    /// one undo step. Whole bars move, so everything each bar holds goes with it: its
+    /// notes, section name and color, tempo change, signatures, repeats, endings,
+    /// directions, fermatas, clefs and line breaks.
     pub fn swap_sections(
         &mut self,
         a: MeasureIndex,
@@ -173,65 +176,49 @@ impl TabEditor {
         let (b_start, b_end) = span(b)
             .ok_or_else(|| EditError::Unsupported("that bar starts no section".to_owned()))?;
         let (first, last) = (a_start.min(b_start), a_end.max(b_end));
-        // The earlier section's bars go last, the later one's first, and the sections
-        // between them (if any) stay in the middle.
+        // The later section moves to where the earlier one starts, then the earlier one
+        // (pushed right by it) moves past the sections between them, if any. Whole bars
+        // move, so everything a bar holds goes with it: its tempo change, signatures,
+        // section, repeats, endings, directions and the rest.
         let (x0, x1, y0, y1) = if a_start < b_start {
             (a_start, a_end, b_start, b_end)
         } else {
             (b_start, b_end, a_start, a_end)
         };
-        let mut order: Vec<usize> = Vec::new();
-        order.extend(y0.saturating_sub(first)..=y1.saturating_sub(first));
-        order.extend(x1.saturating_add(1).saturating_sub(first)..y0.saturating_sub(first));
-        order.extend(x0.saturating_sub(first)..=x1.saturating_sub(first));
-        // Read the whole span from every track and staff; the section markers are part of
-        // the bars, so they move with them.
-        let Clipboard::Measures { staves, .. } = self.clipboard_from(Selection::Measures {
-            anchor: MeasureIndex::new(first),
-            focus: MeasureIndex::new(last),
-            track: None,
-        })?
-        else {
-            return Err(EditError::Unsupported(
-                "the section has no bars to swap".to_owned(),
-            ));
-        };
-        let reordered: Vec<(TrackIndex, StaffIndex, Vec<MeasureClip>)> = staves
-            .into_iter()
-            .map(|(track, staff, clips)| {
-                let clips = order
-                    .iter()
-                    .filter_map(|index| clips.get(*index).cloned())
-                    .collect();
-                (track, staff, clips)
-            })
-            .collect();
-        if reordered
-            .first()
-            .is_none_or(|(_, _, clips)| clips.len() != order.len())
-        {
-            return Err(EditError::Unsupported(
-                "the section could not be read".to_owned(),
-            ));
+        let len_x = x1.saturating_sub(x0).saturating_add(1);
+        let len_y = y1.saturating_sub(y0).saturating_add(1);
+        let mut commands = vec![Command::MoveMeasures {
+            from: MeasureIndex::new(y0),
+            count: len_y,
+            to: MeasureIndex::new(x0),
+        }];
+        let x_now = x0.saturating_add(len_y);
+        let x_final = last.saturating_add(1).saturating_sub(len_x);
+        if x_now != x_final {
+            commands.push(Command::MoveMeasures {
+                from: MeasureIndex::new(x_now),
+                count: len_x,
+                to: MeasureIndex::new(x_final),
+            });
         }
-        let commands = paste_measures(song, MeasureIndex::new(first), &reordered)?;
         let len_a = a_end.saturating_sub(a_start).saturating_add(1);
         let (start, end) = if a_start < b_start {
             (last.saturating_add(1).saturating_sub(len_a), last)
         } else {
             (first, first.saturating_add(len_a).saturating_sub(1))
         };
-        self.selection = Some(Selection::Measures {
-            anchor: MeasureIndex::new(start),
-            focus: MeasureIndex::new(end),
-            track: None,
-        });
         let cursor = Cursor {
             measure: MeasureIndex::new(start),
             beat: gscore_model::BeatIndex::new(0),
             ..self.cursor()
         };
-        self.execute(Command::Batch { commands }, cursor, false)
+        let outcome = self.execute(Command::Batch { commands }, cursor, false)?;
+        self.selection = Some(Selection::Measures {
+            anchor: MeasureIndex::new(start),
+            focus: MeasureIndex::new(end),
+            track: None,
+        });
+        Ok(outcome)
     }
 
     /// Inserts the copied bars at `at` (before the bar there; the song's end adds them at
@@ -310,6 +297,11 @@ impl TabEditor {
             return self.execute(Command::ClearNote { at, string }, self.cursor, false);
         };
         self.copy_selection()?;
+        // The cut bars leave (or lose their notes): a paste over the same selection puts
+        // them there, it does not duplicate them after it.
+        if let Clipboard::Measures { source, .. } = &mut self.clipboard {
+            *source = None;
+        }
         let commands = match selection {
             Selection::Beats { .. } => selection
                 .positions(self.song())
@@ -415,24 +407,24 @@ impl TabEditor {
                 };
                 // Copied bars pasted with the selection still on them go right after it:
                 // copying a section and pasting it again duplicates it. A moved selection
-                // or cursor pastes over the bars there, as before.
-                let on_source = self.selection.is_some_and(|selection| match selection {
-                    Selection::Measures { anchor, focus, .. } => {
-                        anchor.min(focus) == source
-                            && anchor.max(focus)
-                                == MeasureIndex::new(
-                                    source.get().saturating_add(count.saturating_sub(1)),
-                                )
+                // or cursor, or bars that were cut, paste over the bars there, as before.
+                let duplicate_at = match (self.selection, source) {
+                    (Some(Selection::Measures { anchor, focus, .. }), Some(source))
+                        if count > 0
+                            && anchor.min(focus) == source
+                            && anchor.max(focus).get()
+                                == source.get().saturating_add(count.saturating_sub(1)) =>
+                    {
+                        Some(MeasureIndex::new(source.get().saturating_add(count)))
                     }
-                    Selection::Beats { .. } => false,
-                });
-                let first = if on_source && count > 0 {
-                    MeasureIndex::new(source.get().saturating_add(count))
-                } else {
+                    _ => None,
+                };
+                let on_source = duplicate_at.is_some();
+                let first = duplicate_at.unwrap_or_else(|| {
                     self.selection
                         .map(Selection::first_measure)
                         .unwrap_or_else(|| self.cursor().measure)
-                };
+                });
                 // Bars go in before the paste when it duplicates them after the selection
                 // (the song grows), and when a paste at the end would run past the song.
                 let insert_at = on_source.then_some(first);
@@ -582,7 +574,7 @@ impl TabEditor {
                 }
                 Ok(Clipboard::Measures {
                     staves,
-                    source: MeasureIndex::new(first),
+                    source: Some(MeasureIndex::new(first)),
                 })
             }
         }

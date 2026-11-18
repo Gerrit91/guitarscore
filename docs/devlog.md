@@ -6400,3 +6400,28 @@ Tests: dragging the edge widens the column and the settings keep it.
   `the_paste_dialog_pastes_at_a_typed_bar_and_can_overwrite` (the app types bar 6 and
   overwrites); the dialog's snapshot shows the choices.
 
+
+## 2026-11-18 — Review fixes: swaps move whole bars, cut bars paste back, paste dialog and row drops
+
+- Swapping two sections now moves whole bars with a new `move_measures` command (model
+  `Song::move_measures`, text form `move_measures measure=5 count=3 to=1`): every staff's
+  bar and the bar's header move together, so each bar keeps everything it holds (notes,
+  section, tempo change, time and key signature, repeats, endings, directions, fermatas,
+  clefs, line breaks). Before, the swap pasted copies over the span, which carried only
+  the notes, signature, section and a tempo change that existed: a tempo change stayed
+  behind where the moved section had started, and key changes and repeats stayed put. A
+  swap is one or two moves in one undo step; undo moves the bars back.
+- Bars that were cut no longer count as "still under the selection": Ctrl+V right after
+  cutting bars pastes them at the selection instead of duplicating them after it (the
+  selection then covers the bars that followed the cut ones).
+- A paste from the "Paste bars" dialog now has an edit's usual effects (playback stops
+  and is built again, stale layouts go), as a section swap already had.
+- Dropping a dragged section row of the Song tab off the table, or back on itself, swaps
+  nothing: the drop target is found again every frame instead of keeping the last row the
+  pointer passed. A drag the table never saw end (the panel changed tab) is forgotten.
+- Tests: `moving_measures_moves_them_in_every_track_and_undo_moves_them_back`,
+  `swapping_sections_carries_every_bar_setting_with_the_bars`,
+  `cut_bars_pasted_over_the_same_selection_go_there_and_are_not_duplicated`,
+  `a_section_row_dropped_off_the_table_or_on_itself_swaps_nothing`,
+  `a_paste_from_the_paste_dialog_stops_playback_like_any_edit` (skipped without ALSA's
+  "Midi Through" port), and the parse round trips for `move_measures`.
