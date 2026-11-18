@@ -64,12 +64,15 @@ fn mark_name(kind: ScoreMarkKind) -> String {
 }
 
 /// How the view scrolls to the cursor's column `column` when `visible` is shown. When it
-/// `turn`s (playing, or a bar clicked in the song grid), nothing moves until the column
-/// leaves the view; then the view turns over like a page: the column's line goes to the
-/// top (with `headroom` points above it), so what follows fills the screen. Otherwise the
-/// view scrolls just enough to show the column.
+/// `turn`s (playing, or a bar clicked in the song grid), nothing moves while the column and
+/// the line after it (`next`, the next system's staves) are both in view; once the next
+/// line is not, the view turns over like a page: the column's line goes to the top (with
+/// `headroom` points above it), so what follows fills the screen. As in Guitar Pro, the
+/// line coming next can so always be read ahead before it is played. Otherwise the view
+/// scrolls just enough to show the column.
 fn cursor_scroll(
     column: Rect,
+    next: Option<Rect>,
     visible: Rect,
     turn: bool,
     headroom: f32,
@@ -77,7 +80,10 @@ fn cursor_scroll(
     if !turn {
         return Some((column, None));
     }
-    if visible.contains_rect(column) {
+    let next_in_view = next.is_none_or(|next| {
+        visible.y_range().contains(next.top()) && visible.y_range().contains(next.bottom())
+    });
+    if visible.contains_rect(column) && next_in_view {
         return None;
     }
     // The alignment applies to both axes: across, the view stays where it is unless the
@@ -91,6 +97,25 @@ fn cursor_scroll(
     };
     let line = Rect::from_x_y_ranges(across, (column.top() - headroom)..=column.bottom());
     Some((line, Some(Align::TOP)))
+}
+
+/// The staves of the system after the one `measure` is on (from its top staff to its tab's
+/// bottom line), or `None` on the last system.
+fn next_line_rect(places: &Places, measure: MeasureIndex) -> Option<gscore_layout::Rect> {
+    let index = places.measure(measure)?.system.checked_add(1)?;
+    let next = places.systems.get(index)?;
+    let top = next.top - 1.0;
+    let first = places.measures.iter().find(|place| place.system == index)?;
+    let last = places
+        .measures
+        .iter()
+        .rev()
+        .find(|place| place.system == index)?;
+    Some(gscore_layout::Rect {
+        origin: Point::new(first.left, top),
+        width: last.right - first.left,
+        height: next.tab_bottom() + 1.0 - top,
+    })
 }
 
 /// How the horizontal screen (one endless line) turns over while playing: nothing moves
@@ -489,6 +514,8 @@ impl GuitarScoreApp {
             let column = places
                 .column_rect(cursor.measure, cursor.voice, cursor.beat)
                 .map(to_screen);
+            // The line after the cursor's, for the view to turn over before it runs out.
+            let next_line = next_line_rect(places, cursor.measure).map(to_screen);
             let string = places
                 .cursor_rect(cursor.measure, cursor.voice, cursor.beat, cursor.string)
                 .map(to_screen);
@@ -540,9 +567,13 @@ impl GuitarScoreApp {
                         {
                             ui.scroll_to_rect(target, align);
                         }
-                    } else if let Some((target, align)) =
-                        cursor_scroll(column, ui.clip_rect(), turn_pages, TURN_HEADROOM * scale)
-                    {
+                    } else if let Some((target, align)) = cursor_scroll(
+                        column,
+                        next_line,
+                        ui.clip_rect(),
+                        turn_pages,
+                        TURN_HEADROOM * scale,
+                    ) {
                         ui.scroll_to_rect(target, align);
                     }
                 }
@@ -1032,22 +1063,53 @@ mod tests {
         let column = |top: f32| Rect::from_min_size(egui::pos2(100.0, top), egui::vec2(4.0, 80.0));
         // Editing: always just make the column visible.
         assert_eq!(
-            cursor_scroll(column(300.0), visible, false, 30.0),
+            cursor_scroll(column(300.0), None, visible, false, 30.0),
             Some((column(300.0), None))
         );
         // Playing on a visible line: the view stays.
-        assert_eq!(cursor_scroll(column(300.0), visible, true, 30.0), None);
+        assert_eq!(
+            cursor_scroll(column(300.0), None, visible, true, 30.0),
+            None
+        );
         // The playing line runs off the bottom: it goes to the top, headroom above it.
-        let (target, align) = cursor_scroll(column(560.0), visible, true, 30.0).unwrap();
+        let (target, align) = cursor_scroll(column(560.0), None, visible, true, 30.0).unwrap();
         assert_eq!(align, Some(egui::Align::TOP));
         assert!((target.top() - 530.0).abs() < 1e-3);
         // Only down: the column is in view across, so the view does not move sideways.
         assert_eq!(target.x_range(), visible.x_range());
         assert!((target.bottom() - column(560.0).bottom()).abs() < 1e-3);
         // A repeat jumps back above the view: the same, that line to the top.
-        let (target, align) = cursor_scroll(column(-400.0), visible, true, 30.0).unwrap();
+        let (target, align) = cursor_scroll(column(-400.0), None, visible, true, 30.0).unwrap();
         assert!((target.top() + 430.0).abs() < 1e-3);
         assert_eq!(align, Some(egui::Align::TOP));
+    }
+
+    #[test]
+    fn playback_turns_the_view_over_once_the_next_line_is_not_in_view() {
+        let visible = Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(800.0, 600.0));
+        let column = |top: f32| Rect::from_min_size(egui::pos2(100.0, top), egui::vec2(4.0, 80.0));
+        let line = |top: f32| Rect::from_min_size(egui::pos2(40.0, top), egui::vec2(700.0, 80.0));
+        // The next line is in view: the view stays.
+        assert_eq!(
+            cursor_scroll(column(300.0), Some(line(420.0)), visible, true, 30.0),
+            None
+        );
+        // The playing line is the last whole one: the next is cut off at the bottom, so the
+        // playing line goes to the top and what follows comes into view.
+        let (target, align) =
+            cursor_scroll(column(420.0), Some(line(540.0)), visible, true, 30.0).unwrap();
+        assert_eq!(align, Some(egui::Align::TOP));
+        assert!((target.top() - 390.0).abs() < 1e-3);
+        // On the last line there is nothing after it: as before, only once it leaves.
+        assert_eq!(
+            cursor_scroll(column(500.0), None, visible, true, 30.0),
+            None
+        );
+        // Editing is unchanged: just show the column.
+        assert_eq!(
+            cursor_scroll(column(420.0), Some(line(540.0)), visible, false, 30.0),
+            Some((column(420.0), None))
+        );
     }
 
     #[test]
