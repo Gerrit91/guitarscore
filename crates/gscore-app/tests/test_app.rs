@@ -4287,6 +4287,33 @@ fn the_speed_trainer_button_left_of_the_speed_opens_its_settings() {
 }
 
 #[test]
+fn the_arrow_beside_the_count_in_switch_sets_its_length_and_loops() {
+    let mut harness = app_with(Some(testdata("basic/note_lengths.gp")));
+    let switch = harness.get_by_label("Count-in").rect();
+    let arrow = harness.get_by_label("Count-in options").rect();
+    assert!(
+        switch.right() <= arrow.left(),
+        "the arrow sits right of the switch"
+    );
+    harness.get_by_label("Count-in options").click();
+    settle(&mut harness);
+    harness.get_by_label("3 bars").click();
+    settle(&mut harness);
+    assert_eq!(harness.state().playback().count_in_bars(), 3);
+    // The menu stays open for the next choice.
+    harness
+        .get_by_label("Count in again each time a loop starts over")
+        .click();
+    settle(&mut harness);
+    assert!(harness.state().playback().count_in_loops());
+    // The arrow leaves the switch itself alone, and the choices are kept in the settings.
+    assert!(!harness.state().playback().count_in());
+    let settings = harness.state().settings();
+    assert_eq!(settings.count_in_bars, 3);
+    assert!(settings.count_in_loops);
+}
+
+#[test]
 fn file_keys_work_in_the_empty_workspace() {
     let mut harness = app_with(None);
     harness.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::N);
