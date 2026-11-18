@@ -6248,6 +6248,16 @@ Tests: dragging the edge widens the column and the settings keep it.
 - Test: `a_section_scrolled_off_the_left_edge_still_marks_the_master_row` (scrolls a
   60-bar grid to its end, checks the section's line and title pixels in the master row).
 
+## 2026-11-18 — A speed other than the written tempo shows in blue
+
+- The playback speed in the toolbar now turns blue while it is anything but 100 % (the
+  owner's request): the number and the arrow beside it take the theme's accent color, so
+  a slowed-down or sped-up song is visible at a glance and not only by reading the number.
+  The knob is the number as shown (whole percent): 99.9 % still shows and reads as 100 %
+  and stays plain, so the color always matches what the control says.
+- `off_tempo` (unit test `a_speed_off_the_written_tempo_is_marked`); checked by hand on a
+  snapshot at 50 % (toolbar screenshot) and at 100 %.
+
 ## 2026-11-18 — A flaky audio test skips when the output cannot be heard
 
 - `a_jump_while_playing_is_where_stop_goes_back_to` failed in CI (one of 107) at "did not
