@@ -6547,3 +6547,15 @@ Tests: dragging the edge widens the column and the settings keep it.
   ("Scroll a page back") and `scroll_page_down` ("Scroll a page on"), rebindable in the
   shortcut editor; the app handles them like the zoom actions, before the editor.
 - Tests: `page_down_and_page_up_scroll_the_score_by_a_view_and_leave_the_cursor`.
+
+## 2026-11-18 — Playback turns the view over before the next line runs out
+
+- Found by the owner while practising: the view turned over only once the playing line
+  left it, so the line coming next was never seen before it was played. As in Guitar
+  Pro, the vertical views (pages, endless screen) now turn over as soon as the line after
+  the playing one is not fully in view; the playing line goes to the top as before. The
+  song's last line has none after it and turns as before. Side-by-side pages and the
+  horizontal line are unchanged.
+- `cursor_scroll` takes the next line's rectangle (`next_line_rect`: the next system of
+  the cursor's staff).
+- Tests: `playback_turns_the_view_over_once_the_next_line_is_not_in_view`.
