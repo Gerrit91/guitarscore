@@ -23,10 +23,11 @@ name: Release
 
 on:
   release:
-    # Only pre-releases build; promoting one to a full release keeps its assets.
-    types: 
+    # Only pre-releases build; promoting one to a full release keeps its assets. Not
+    # `released`: it also fires on that promotion and would rebuild and replace the
+    # checked assets (and their SHA256SUMS).
+    types:
       - prereleased
-      - released
 
 permissions:
   contents: write
