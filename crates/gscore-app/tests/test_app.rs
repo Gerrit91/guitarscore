@@ -4799,3 +4799,34 @@ fn a_bar_clicked_in_the_song_grid_turns_the_score_to_its_line() {
     left_click_at(&mut harness, cell(bar));
     assert_eq!(page_top(&harness), turned);
 }
+
+#[test]
+fn page_down_and_page_up_scroll_the_score_by_a_view_and_leave_the_cursor() {
+    let mut harness = app_with(Some(testdata("basic/staff.gp")));
+    let page_top = |harness: &Harness<'static, GuitarScoreApp>| {
+        harness.get_by_label("Score page").rect().top()
+    };
+    let cursor = |harness: &Harness<'static, GuitarScoreApp>| {
+        harness.state().document().unwrap().editor().cursor()
+    };
+    let (start, at) = (page_top(&harness), cursor(&harness));
+    let press = |harness: &mut Harness<'static, GuitarScoreApp>, key: egui::Key| {
+        harness.key_press(key);
+        // The scroll animates over a few frames.
+        harness.run_steps(30);
+    };
+    press(&mut harness, egui::Key::PageDown);
+    let down = page_top(&harness);
+    assert!(
+        start - down > 200.0,
+        "the page moved up by most of a view: {start} to {down}"
+    );
+    assert_eq!(cursor(&harness), at, "the cursor stays");
+    press(&mut harness, egui::Key::PageUp);
+    assert!(
+        (page_top(&harness) - start).abs() < 1.0,
+        "back at the start: {}",
+        page_top(&harness)
+    );
+    assert_eq!(cursor(&harness), at);
+}

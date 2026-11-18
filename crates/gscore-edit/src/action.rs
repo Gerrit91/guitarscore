@@ -246,6 +246,12 @@ pub enum ActionId {
     ToggleFullscreen,
     /// Show the mixer in the bottom panel instead of the measure grid, and back.
     ToggleMixer,
+    /// Scroll the score back by one view (up, or left in the horizontal views); the cursor
+    /// stays.
+    ScrollPageUp,
+    /// Scroll the score on by one view (down, or right in the horizontal views); the
+    /// cursor stays.
+    ScrollPageDown,
     /// Play the song a semitone higher (the written notes stay).
     TransposeUpSemitone,
     /// Play the song a semitone lower (the written notes stay).
@@ -674,6 +680,16 @@ pub const ACTIONS: &[ActionInfo] = &[
     info(ActionId::ZoomOut, "zoom_out", "Zoom out"),
     info(ActionId::ZoomReset, "zoom_reset", "Actual size"),
     info(
+        ActionId::ScrollPageUp,
+        "scroll_page_up",
+        "Scroll a page back",
+    ),
+    info(
+        ActionId::ScrollPageDown,
+        "scroll_page_down",
+        "Scroll a page on",
+    ),
+    info(
         ActionId::ToggleFullscreen,
         "toggle_fullscreen",
         "Full screen",
@@ -791,6 +807,6 @@ mod tests {
             );
         }
         assert_eq!(ActionId::from_id("no_such_action"), None);
-        assert_eq!(ACTIONS.len(), 129, "one entry per ActionId variant");
+        assert_eq!(ACTIONS.len(), 131, "one entry per ActionId variant");
     }
 }

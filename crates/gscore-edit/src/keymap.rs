@@ -124,6 +124,8 @@ ctrl+= = zoom_in
 ctrl++ = zoom_in
 ctrl+- = zoom_out
 ctrl+0 = zoom_reset
+PageUp = scroll_page_up
+PageDown = scroll_page_down
 F11 = toggle_fullscreen
 F3 = toggle_mixer
 ";

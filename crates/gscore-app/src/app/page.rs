@@ -20,6 +20,8 @@ use crate::state::ScoreView;
 /// How strongly the selection color is laid over the page: the shade the cursor's band and
 /// the selection made together, used for the whole selection.
 pub(super) const SELECTION_ALPHA: f32 = 0.32;
+/// How much of the view Page Up and Page Down scroll.
+const PAGE_SCROLL: f32 = 0.9;
 
 /// Space around the page inside the view, in points.
 const PAGE_MARGIN: f32 = 32.0;
@@ -139,6 +141,7 @@ fn page_scroll(
 impl GuitarScoreApp {
     /// The page, scrollable, centered horizontally.
     pub(super) fn page_view(&mut self, ui: &mut egui::Ui) {
+        let page_key = self.page_scroll.take();
         if self.tabs.get(self.active).is_none() {
             self.empty_workspace(ui);
             return;
@@ -291,6 +294,20 @@ impl GuitarScoreApp {
         };
         let scroll_to_cursor = grid_jump || tab.shown_cursor != Some((cursor, revision));
         ScrollArea::both().auto_shrink(false).show(ui, |ui| {
+            // Page Up/Down: by one view, less a little so the last line seen stays in view;
+            // sideways where the score runs to the right.
+            if let Some(direction) = page_key {
+                let view = ui.clip_rect();
+                let delta = if matches!(
+                    score_view,
+                    ScoreView::ScreenHorizontal | ScoreView::PageHorizontal
+                ) {
+                    Vec2::new(-direction * view.width() * PAGE_SCROLL, 0.0)
+                } else {
+                    Vec2::new(0.0, -direction * view.height() * PAGE_SCROLL)
+                };
+                ui.scroll_with_delta(delta);
+            }
             let available = ui.available_width();
             let arrangement = match score_view {
                 ScoreView::PageHorizontal => Arrangement::new(&layout, layout.pages.len()),

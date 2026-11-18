@@ -384,6 +384,8 @@ impl TabEditor {
             ActionId::ZoomIn
             | ActionId::ZoomOut
             | ActionId::ZoomReset
+            | ActionId::ScrollPageUp
+            | ActionId::ScrollPageDown
             | ActionId::ToggleFullscreen
             | ActionId::ToggleMixer
             | ActionId::ToggleMultitrack

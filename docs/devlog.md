@@ -6538,3 +6538,12 @@ Tests: dragging the edge widens the column and the settings keep it.
   `grid_with_stripes` replaces `grid_without_stripes`); the section tests click and drag
   in the ruler (`section_band`), `a_section_scrolled_off_the_left_edge_still_marks_the_ruler`;
   snapshots updated.
+
+## 2026-11-18 — Page Up and Page Down scroll the score
+
+- Page Up and Page Down were bound to nothing in the score. They now scroll it by 90 % of
+  the view (so the last line seen stays in view), sideways in the horizontal views
+  (endless line, pages side by side); the cursor stays. New actions `scroll_page_up`
+  ("Scroll a page back") and `scroll_page_down` ("Scroll a page on"), rebindable in the
+  shortcut editor; the app handles them like the zoom actions, before the editor.
+- Tests: `page_down_and_page_up_scroll_the_score_by_a_view_and_leave_the_cursor`.

@@ -113,6 +113,8 @@ pub struct GuitarScoreApp {
     /// A message for the user (an error), shown in the notice bar and the status bar and
     /// dismissed by itself after a while (or at once with its button).
     notice: Option<String>,
+    /// Page Up (-1) or Page Down (1) pressed: the score scrolls by one view next frame.
+    page_scroll: Option<f32>,
     /// The notice last shown, so a new one starts its own time.
     notice_shown: Option<String>,
     /// The egui time (seconds) when the current notice appeared.
@@ -320,6 +322,7 @@ impl GuitarScoreApp {
             active: 0,
             tasks: Tasks::default(),
             notice: None,
+            page_scroll: None,
             notice_shown: None,
             notice_since: 0.0,
             status: None,

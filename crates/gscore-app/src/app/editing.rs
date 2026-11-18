@@ -222,6 +222,15 @@ impl GuitarScoreApp {
                     ctx.request_repaint();
                     return;
                 }
+                ActionId::ScrollPageUp | ActionId::ScrollPageDown => {
+                    self.page_scroll = Some(if id == ActionId::ScrollPageUp {
+                        -1.0
+                    } else {
+                        1.0
+                    });
+                    ctx.request_repaint();
+                    return;
+                }
                 ActionId::ToggleFullscreen => {
                     let fullscreen =
                         ctx.input(|input| input.viewport().fullscreen.unwrap_or(false));
