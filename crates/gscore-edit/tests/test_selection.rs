@@ -857,6 +857,38 @@ fn copying_every_track_takes_the_whole_bars_a_beat_selection_touches() {
 }
 
 #[test]
+fn copied_bars_of_one_track_pasted_on_their_selection_overwrite_them() {
+    // A bar selection in one track (as the score makes it) is pasted over, not after.
+    let mut e = editor(3);
+    e.execute_command(Command::SetFret {
+        at: at(0, 0),
+        string: StringNumber::new(1).unwrap(),
+        fret: gscore_model::Fret::new(3).unwrap(),
+    })
+    .unwrap();
+    let one_track = Selection::Measures {
+        anchor: MeasureIndex::new(0),
+        focus: MeasureIndex::new(0),
+        track: Some(TrackIndex::new(0)),
+    };
+    e.set_selection(Some(one_track));
+    plain(&mut e, ActionId::Copy);
+    assert_eq!(plain(&mut e, ActionId::Paste), Outcome::Edited);
+    assert_eq!(e.song().measure_count(), 3, "no bar was added");
+    assert_eq!(notes_at(&e, at(0, 0)), vec![(1, 3)]);
+    assert!(notes_at(&e, at(1, 0)).is_empty());
+    // Moved to another bar, the paste writes over that one.
+    e.set_selection(Some(Selection::Measures {
+        anchor: MeasureIndex::new(2),
+        focus: MeasureIndex::new(2),
+        track: Some(TrackIndex::new(0)),
+    }));
+    plain(&mut e, ActionId::Paste);
+    assert_eq!(e.song().measure_count(), 3);
+    assert_eq!(notes_at(&e, at(2, 0)), vec![(1, 3)]);
+}
+
+#[test]
 fn pasting_over_bars_replaces_them_and_only_grows_the_song_at_its_end() {
     let mut e = TabEditor::new(
         testing::song(&[GUITAR_6, GUITAR_6], 3).unwrap(),

@@ -6484,3 +6484,12 @@ Tests: dragging the edge widens the column and the settings keep it.
 - Tests: `ctrl_shift_c_on_a_score_selection_copies_its_bars_for_the_paste_dialog`,
   `the_paste_dialog_key_with_beats_copied_says_how_to_copy_bars_and_changes_nothing`,
   `copying_every_track_takes_the_whole_bars_a_beat_selection_touches`.
+
+## 2026-11-18 — Ctrl+V on a one-track bar selection overwrites
+
+- Copied bars pasted with their selection still on them are added after it only when the
+  selection covers every track (the grid's ruler or master row, a Song-tab section). A
+  bar selection of one track, which the score makes (or one row of the grid), is pasted
+  over, as any moved selection is; adding copies there goes through the Paste bars
+  dialog. Beats pasted in the score already overwrote from the cursor.
+- Tests: `copied_bars_of_one_track_pasted_on_their_selection_overwrite_them`.

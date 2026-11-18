@@ -464,15 +464,22 @@ impl TabEditor {
                     [(track, _, _)] => Some(*track),
                     _ => None,
                 };
-                // Copied bars pasted with the selection still on them go right after it:
-                // copying a section and pasting it again duplicates it. A moved selection
-                // or cursor, or bars that were cut, paste over the bars there, as before.
+                // Copied bars pasted with a selection of every track still on them go right
+                // after it: copying a section and pasting it again duplicates it. A bar
+                // selection of one track (made in the score, or in one row of the grid)
+                // pastes over its bars, as a moved selection or cursor and cut bars do.
                 let duplicate_at = match (self.selection, source) {
-                    (Some(Selection::Measures { anchor, focus, .. }), Some(source))
-                        if count > 0
-                            && anchor.min(focus) == source
-                            && anchor.max(focus).get()
-                                == source.get().saturating_add(count.saturating_sub(1)) =>
+                    (
+                        Some(Selection::Measures {
+                            anchor,
+                            focus,
+                            track: None,
+                        }),
+                        Some(source),
+                    ) if count > 0
+                        && anchor.min(focus) == source
+                        && anchor.max(focus).get()
+                            == source.get().saturating_add(count.saturating_sub(1)) =>
                     {
                         Some(MeasureIndex::new(source.get().saturating_add(count)))
                     }
