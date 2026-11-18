@@ -6425,3 +6425,18 @@ Tests: dragging the edge widens the column and the settings keep it.
   `a_section_row_dropped_off_the_table_or_on_itself_swaps_nothing`,
   `a_paste_from_the_paste_dialog_stops_playback_like_any_edit` (skipped without ALSA's
   "Midi Through" port), and the parse round trips for `move_measures`.
+
+## 2026-11-18 — Drag the grid's bar selection to move the bars
+
+- Pressing on a selected bar in the song grid and dragging moves the selection's bars by
+  as many bars as the pointer moves; dropping moves them there, in every track (bar
+  settings are shared by all tracks, so a selection in one track's row moves the whole
+  bars too), with everything each bar holds, through `move_measures`. The bars between
+  close the gap. It is one undo step; the moved bars stay selected where they went and
+  the cursor goes to the first.
+- While dragging, an outline over every track and a line at its left edge show where the
+  bars would land; over a selected bar the pointer is a grab hand, and the tooltip says
+  what a drag does. A drag that starts outside the selection still selects bars, so a
+  new selection that starts inside the old one takes a click first.
+- Tests: `dragging_the_selected_bars_moves_them_by_as_many_bars` (notes, sections,
+  selection, undo) and `a_drag_that_starts_outside_the_selection_still_selects`.

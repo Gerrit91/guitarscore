@@ -2530,6 +2530,8 @@ fn dragging_in_the_song_grid_selects_one_track_or_all() {
     ));
 
     // Leaving the row on to another track makes it every track; coming back makes it one.
+    // (A drag pressed on the selection moves its bars: a click drops the selection first.)
+    left_click_at(&mut harness, cell(5, 0));
     harness.hover_at(cell(1, 0));
     harness.drag_at(cell(1, 0));
     harness.run();
@@ -2584,7 +2586,9 @@ fn a_grid_drag_keeps_the_bar_it_was_pressed_on() {
     assert_eq!(selected(&harness), (2, 6));
 
     // Pressed at a bar's right edge, the first movement crossing into the next bar: the
-    // selection starts at the pressed bar.
+    // selection starts at the pressed bar. (A drag pressed on the selection moves its
+    // bars: a click drops the selection first.)
+    left_click_at(&mut harness, cell(8));
     let edge = cell(3) + egui::vec2(10.0, 0.0);
     harness.hover_at(edge);
     harness.drag_at(edge);

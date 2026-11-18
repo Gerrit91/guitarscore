@@ -762,3 +762,101 @@ fn a_paste_from_the_paste_dialog_stops_playback_like_any_edit() {
         std::thread::sleep(Duration::from_millis(10));
     }
 }
+
+/// A spot in the one track's row of the grid on `measure` (1-based, as the ruler counts).
+fn track_row(harness: &Harness<'static, GuitarScoreApp>, measure: usize) -> egui::Pos2 {
+    let grid = harness.get_by_label("Song grid").rect();
+    grid.left_top() + egui::vec2(24.0 * (measure - 1) as f32 + 12.0, 12.0)
+}
+
+/// Drags in the grid from `from` to `to`, a frame per step as a hand would.
+fn drag_in_grid(harness: &mut Harness<'static, GuitarScoreApp>, from: egui::Pos2, to: egui::Pos2) {
+    harness.hover_at(from);
+    harness.run();
+    harness.drag_at(from);
+    harness.step();
+    harness.hover_at(from + egui::vec2(6.0, 0.0));
+    harness.step();
+    harness.hover_at(to);
+    harness.step();
+    harness.drop_at(to);
+    harness.run();
+}
+
+#[test]
+fn dragging_the_selected_bars_moves_them_by_as_many_bars() {
+    let mut harness = song_with_sections(false);
+    let bars: Vec<Vec<(u8, u8)>> = (0..9)
+        .map(|measure| notes_in(&harness, 0, measure))
+        .collect();
+    // Select bars 2-3 by dragging over them.
+    let (two, three) = (track_row(&harness, 2), track_row(&harness, 3));
+    drag_in_grid(&mut harness, two, three);
+    assert_eq!(
+        harness.state().selection(),
+        Some(MeasureSelection {
+            anchor: 1,
+            focus: 2,
+            track: Some(0),
+        })
+    );
+    // Grab them at bar 3 and drop four bars to the right: they now start at bar 6.
+    let seven = track_row(&harness, 7);
+    drag_in_grid(&mut harness, three, seven);
+    let song = harness.state().document().unwrap().song();
+    assert_eq!(song.measure_count(), 9, "bars move, none are added");
+    // Bars 4-7 moved left by two; the dragged ones follow them.
+    let order = [0, 3, 4, 5, 6, 1, 2, 7, 8];
+    for (index, &was) in order.iter().enumerate() {
+        assert_eq!(notes_in(&harness, 0, index), bars[was], "bar {}", index + 1);
+    }
+    // The moved bars stay selected where they went, and the section names moved with
+    // their bars: the Verse (bar 3) is at bar 7 now, the Chorus (bar 6) at bar 4.
+    assert_eq!(
+        harness.state().selection(),
+        Some(MeasureSelection {
+            anchor: 5,
+            focus: 6,
+            track: Some(0),
+        })
+    );
+    assert_eq!(
+        song.section(MeasureIndex::new(6))
+            .map(|section| section.title),
+        Some("Verse".to_owned())
+    );
+    assert_eq!(
+        song.section(MeasureIndex::new(3))
+            .map(|section| section.title),
+        Some("Chorus".to_owned())
+    );
+    // One undo step puts them back.
+    harness.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::Z);
+    harness.run();
+    for (measure, notes) in bars.iter().enumerate() {
+        assert_eq!(&notes_in(&harness, 0, measure), notes);
+    }
+}
+
+#[test]
+fn a_drag_that_starts_outside_the_selection_still_selects() {
+    let mut harness = song_with_sections(false);
+    let (two, three) = (track_row(&harness, 2), track_row(&harness, 3));
+    drag_in_grid(&mut harness, two, three);
+    let depth = harness.state().document().unwrap().editor().undo_depth();
+    let (five, seven) = (track_row(&harness, 5), track_row(&harness, 7));
+    drag_in_grid(&mut harness, five, seven);
+    assert_eq!(
+        harness.state().selection(),
+        Some(MeasureSelection {
+            anchor: 4,
+            focus: 6,
+            track: Some(0),
+        })
+    );
+    assert_eq!(
+        harness.state().document().unwrap().editor().undo_depth(),
+        depth,
+        "nothing moved"
+    );
+}

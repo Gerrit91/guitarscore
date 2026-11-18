@@ -971,6 +971,21 @@ impl GuitarScoreApp {
         }
     }
 
+    /// Moves the `count` bars starting at `from` so they start at `to`, in every track
+    /// (dragging the grid's bar selection), with the effects a structural edit has.
+    pub(super) fn move_bars(&mut self, from: usize, count: usize, to: usize) {
+        let moved = self.document_mut().map(|document| {
+            document
+                .editor_mut()
+                .move_bars(MeasureIndex::new(from), count, MeasureIndex::new(to))
+        });
+        match moved {
+            Some(Ok(_)) => self.after_bars_edit(),
+            Some(Err(error)) => self.notice = Some(error.to_string()),
+            None => {}
+        }
+    }
+
     /// What an edit of whole bars made outside [`Self::perform_action`] (a section swap, a
     /// paste from the paste dialog) needs afterwards, as any edit does: the grid shows the
     /// bars it selected, stale layouts go, and playback stops and is built again.

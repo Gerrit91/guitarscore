@@ -357,6 +357,32 @@ pub(super) fn matrix(
         }
     }
 
+    // While the selected bars are dragged, where they would go: an outline over every
+    // track (all of them move) and a line where the first of them lands.
+    if let Some(drag) = BarsDrag::get(ui)
+        && drag.to != drag.start
+    {
+        let left = rect.left() + drag.to as f32 * mw;
+        let area = Rect::from_min_max(
+            pos2(left, rect.top()),
+            pos2(
+                left + drag.count as f32 * mw,
+                rect.top() + rows.len() as f32 * ROW_HEIGHT,
+            ),
+        );
+        painter.rect_filled(area, 0.0, view.selection_color.gamma_multiply(0.18));
+        painter.rect_stroke(
+            area,
+            0.0,
+            Stroke::new(1.5, view.selection_color),
+            egui::StrokeKind::Inside,
+        );
+        painter.line_segment(
+            [pos2(left, rect.top()), pos2(left, area.bottom())],
+            Stroke::new(3.0, view.selection_color),
+        );
+    }
+
     // Section titles in the master row, below every track: there they have the whole
     // width of their section and no measure number or repeat sign to collide with.
     let master_top = rect.top() + rows.len() as f32 * ROW_HEIGHT;
@@ -431,6 +457,128 @@ pub(super) fn matrix(
         response.clone().on_hover_text(text);
     }
     handle_matrix_clicks(ui, &response, rect, grid, view, cell, rows.len(), actions);
+}
+
+/// The selected bars being dragged in the grid: the selection's first bar and length, the
+/// bar it was grabbed at, and where its first bar would go now.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct BarsDrag {
+    start: usize,
+    count: usize,
+    grab: usize,
+    to: usize,
+}
+
+impl BarsDrag {
+    fn id(ui: &egui::Ui) -> egui::Id {
+        ui.make_persistent_id("bars_drag")
+    }
+
+    /// The drag in progress, if any.
+    fn get(ui: &egui::Ui) -> Option<BarsDrag> {
+        ui.ctx()
+            .data(|data| data.get_temp::<(usize, usize, usize, usize)>(Self::id(ui)))
+            .map(|(start, count, grab, to)| BarsDrag {
+                start,
+                count,
+                grab,
+                to,
+            })
+    }
+
+    fn store(self, ui: &egui::Ui) {
+        ui.ctx().data_mut(|data| {
+            data.insert_temp(Self::id(ui), (self.start, self.count, self.grab, self.to));
+        });
+    }
+
+    fn clear(ui: &egui::Ui) {
+        ui.ctx()
+            .data_mut(|data| data.remove_temp::<(usize, usize, usize, usize)>(Self::id(ui)));
+    }
+}
+
+/// Dragging the bar selection (pressed on one of its bars) moves those bars, in every
+/// track, by as many bars as the pointer moves; dropping it there moves them. Returns
+/// whether such a drag is going on (then the drag selects nothing).
+#[allow(clippy::too_many_arguments)]
+fn drag_selected_bars(
+    ui: &egui::Ui,
+    response: &Response,
+    rect: Rect,
+    view: GridView,
+    track_count: usize,
+    at: Option<usize>,
+    at_x: &dyn Fn(f32) -> Option<usize>,
+    actions: &mut Vec<GridAction>,
+) -> bool {
+    let on_selection = |pos: egui::Pos2| {
+        let Some(selection) = view.selection else {
+            return false;
+        };
+        cell_at(pos, rect, view.measure_count, track_count, view.zoom).is_some_and(
+            |(track, measure)| {
+                (selection.start()..=selection.end()).contains(&measure)
+                    && selection.track.is_none_or(|selected| selected == track)
+            },
+        )
+    };
+    if response.drag_started()
+        && let Some(origin) = ui.input(|input| input.pointer.press_origin())
+        && on_selection(origin)
+        && let Some(selection) = view.selection
+        && let Some(grab) = at_x(origin.x)
+    {
+        let start = selection.start();
+        BarsDrag {
+            start,
+            count: selection.end().saturating_sub(start).saturating_add(1),
+            grab,
+            to: start,
+        }
+        .store(ui);
+    }
+    let Some(mut drag) = BarsDrag::get(ui) else {
+        if !response.dragged() && response.hover_pos().is_some_and(on_selection) {
+            ui.ctx().set_cursor_icon(egui::CursorIcon::Grab);
+            response
+                .clone()
+                .on_hover_text("Drag the selected bars to move them (in every track)");
+        }
+        return false;
+    };
+    if response.dragged() {
+        if let Some(measure) = at {
+            let last_start = view.measure_count.saturating_sub(drag.count);
+            let shifted = drag
+                .start
+                .saturating_add(measure)
+                .saturating_sub(drag.grab)
+                .min(last_start);
+            // Left of where it was grabbed: as far as the song's first bar.
+            drag.to = if measure < drag.grab {
+                drag.start.saturating_sub(drag.grab.saturating_sub(measure))
+            } else {
+                shifted
+            };
+            drag.store(ui);
+        }
+        ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
+    }
+    if response.drag_stopped() {
+        if drag.to != drag.start {
+            actions.push(GridAction::MoveBars {
+                from: drag.start,
+                count: drag.count,
+                to: drag.to,
+            });
+        }
+        BarsDrag::clear(ui);
+    } else if !response.dragged() && !ui.input(|input| input.pointer.any_down()) {
+        // The drag ended without the grid seeing it: forget it.
+        BarsDrag::clear(ui);
+    }
+    true
 }
 
 /// The section whose bars include `measure`: the bar its name starts at and the bar before
@@ -612,6 +760,9 @@ fn handle_matrix_clicks(
         }
     }
     if pressed_in_master {
+        return;
+    }
+    if drag_selected_bars(ui, response, rect, view, track_count, at, &at_x, actions) {
         return;
     }
     // A drag starts once the pointer has moved a little: at the bar and row it was

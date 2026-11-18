@@ -221,6 +221,37 @@ impl TabEditor {
         Ok(outcome)
     }
 
+    /// Moves the `count` bars starting at `from` so they start at `to`, in every track and
+    /// staff, with everything each bar holds, as one undo step (dragging a bar selection in
+    /// the song grid). The moved bars are selected where they went, in the track the
+    /// selection was in (or every track), and the cursor goes to the first of them.
+    pub fn move_bars(
+        &mut self,
+        from: MeasureIndex,
+        count: usize,
+        to: MeasureIndex,
+    ) -> Result<Outcome, EditError> {
+        let track = match self.selection {
+            Some(Selection::Measures { track, .. }) => track,
+            _ => None,
+        };
+        let mut cursor = Cursor {
+            measure: to,
+            beat: gscore_model::BeatIndex::new(0),
+            ..self.cursor()
+        };
+        if let Some(track) = track {
+            cursor.track = track;
+        }
+        let outcome = self.execute(Command::MoveMeasures { from, count, to }, cursor, false)?;
+        self.selection = Some(Selection::Measures {
+            anchor: to,
+            focus: MeasureIndex::new(to.get().saturating_add(count.saturating_sub(1))),
+            track,
+        });
+        Ok(outcome)
+    }
+
     /// Inserts the copied bars at `at` (before the bar there; the song's end adds them at
     /// the end), in every track, as one undo step. The pasted bars are selected.
     pub fn paste_measures_inserting(&mut self, at: MeasureIndex) -> Result<Outcome, EditError> {

@@ -82,6 +82,13 @@ pub(super) enum GridAction {
     /// Swap the bars of the sections that start at `from` and `at` (dragging a section's
     /// name in the master row onto another section).
     SwapSections { from: usize, to: usize },
+    /// Move the `count` bars starting at `from` so they start at `to`, in every track
+    /// (dragging the bar selection).
+    MoveBars {
+        from: usize,
+        count: usize,
+        to: usize,
+    },
     /// Open the rename window for a track.
     Rename { track: usize },
     /// Show the track in the score's current view, or leave it out (the row's eye).
@@ -447,6 +454,7 @@ impl GuitarScoreApp {
                 }
             }
             GridAction::SwapSections { from, to } => self.swap_sections(from, to),
+            GridAction::MoveBars { from, count, to } => self.move_bars(from, count, to),
             GridAction::ClearSelection => {
                 let Some(tab) = self.tabs.get_mut(self.active) else {
                     return;
