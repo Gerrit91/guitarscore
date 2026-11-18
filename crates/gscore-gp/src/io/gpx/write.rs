@@ -171,9 +171,12 @@ pub(crate) fn write_gp_bytes(song: &crate::io::Song) -> GpResult<Vec<u8>> {
     use std::io::Write as _;
     use zip::write::SimpleFileOptions;
 
-    let xml = song.write_gpif_xml()?;
+    let xml = gp7_gpif(&song.write_gpif_xml()?)?;
     let mut zip = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
     let options = SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
+    // GuitarScore addition: the `Content/` folder entry, as Guitar Pro's own archives have.
+    zip.add_directory("Content/", options)
+        .map_err(|e| format!("Zip write error: {e}"))?;
     zip.start_file("Content/score.gpif", options)
         .map_err(|e| format!("Zip write error: {e}"))?;
     zip.write_all(xml.as_bytes())
@@ -198,6 +201,84 @@ pub(crate) fn write_gp_bytes(song: &crate::io::Song) -> GpResult<Vec<u8>> {
         zip.write_all(&super::stylesheet::write(&sheet))
             .map_err(|e| format!("Zip data write error: {e}"))?;
     }
+    // GuitarScore addition: the container's version. Guitar Pro refuses an archive without
+    // it ("Failed to open file"), whatever the score inside (checked with Guitar Pro 7,
+    // 2026-11-18).
+    zip.start_file(GP_VERSION_FILE, options)
+        .map_err(|e| format!("Zip write error: {e}"))?;
+    zip.write_all(GP_VERSION.as_bytes())
+        .map_err(|e| format!("Zip data write error: {e}"))?;
     let cursor = zip.finish().map_err(|e| format!("Zip finish error: {e}"))?;
     Ok(cursor.into_inner())
+}
+
+/// GuitarScore addition: the score as Guitar Pro 7 writes it into a `.gp` archive: the
+/// version header (`GPVersion`, `GPRevision`, `Encoding`) first, and the (empty) audio
+/// tracks before the tracks. Without the header Guitar Pro 7 reads the score as an older
+/// one and crashes on a song with a drum kit (testdata/basic/multi_staff.gp, checked by
+/// the owner, 2026-11-18). The `.gpx` writer keeps the GP6 score without them.
+fn gp7_gpif(xml: &str) -> GpResult<String> {
+    let header = format!(
+        "<GPVersion>{GP7_GPIF_VERSION}</GPVersion>\
+         <GPRevision required=\"12021\" recommended=\"12023\">12025</GPRevision>\
+         <Encoding><EncodingDescription>GP7</EncodingDescription></Encoding>"
+    );
+    let (Some(root), Some(tracks)) = (xml.find("<GPIF>"), xml.find("<Tracks>")) else {
+        return Err("the score has no <GPIF> or <Tracks> element"
+            .to_owned()
+            .into());
+    };
+    let after_root = root.saturating_add("<GPIF>".len());
+    let mut out = String::with_capacity(xml.len().saturating_add(header.len()).saturating_add(32));
+    out.push_str(xml.get(..after_root).unwrap_or_default());
+    out.push_str(&header);
+    out.push_str(xml.get(after_root..tracks).unwrap_or_default());
+    out.push_str("<AudioTracks></AudioTracks>");
+    out.push_str(xml.get(tracks..).unwrap_or_default());
+    Ok(out)
+}
+
+/// GuitarScore addition: the score version in Guitar Pro 7's own files (testdata).
+const GP7_GPIF_VERSION: &str = "7.6.0";
+
+/// GuitarScore addition: the entry holding a `.gp` archive's container version.
+const GP_VERSION_FILE: &str = "VERSION";
+/// GuitarScore addition: the container version Guitar Pro 7 writes.
+const GP_VERSION: &str = "7.0";
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::unwrap_used)]
+
+    use std::io::Read as _;
+
+    use super::*;
+
+    #[test]
+    fn a_gp_archive_has_the_version_and_folder_entries_guitar_pro_needs() {
+        let bytes = write_gp_bytes(&crate::io::Song::default()).unwrap();
+        let mut zip = zip::ZipArchive::new(std::io::Cursor::new(bytes)).unwrap();
+        let mut version = String::new();
+        zip.by_name("VERSION")
+            .unwrap()
+            .read_to_string(&mut version)
+            .unwrap();
+        assert_eq!(version, "7.0");
+        assert!(zip.by_name("Content/").unwrap().is_dir());
+        // The score starts with Guitar Pro 7's version header, and has its audio tracks.
+        let mut score = String::new();
+        zip.by_name("Content/score.gpif")
+            .unwrap()
+            .read_to_string(&mut score)
+            .unwrap();
+        let header = score
+            .find("<GPIF><GPVersion>7.6.0</GPVersion><GPRevision ")
+            .unwrap();
+        let encoding = score
+            .find("<EncodingDescription>GP7</EncodingDescription>")
+            .unwrap();
+        let score_at = score.find("<Score>").unwrap();
+        assert!(header < encoding && encoding < score_at);
+        assert!(score.find("<AudioTracks></AudioTracks><Tracks>").is_some());
+    }
 }
