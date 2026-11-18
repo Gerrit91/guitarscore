@@ -233,7 +233,14 @@ fn a_selection_over_a_bar_line_copies_and_pastes_bar_by_bar() {
     }));
     plain(&mut e, ActionId::Copy);
 
-    go(&mut e, 2, 3);
+    // Pasted over the same two beats further on, they replace them one for one.
+    e.set_selection(Some(Selection::Beats {
+        staff: gscore_model::StaffIndex::new(0),
+        track: TrackIndex::new(0),
+        voice: VoiceIndex::new(0),
+        anchor: spot(2, 3),
+        focus: spot(3, 0),
+    }));
     let before = e.song().clone();
     assert_eq!(plain(&mut e, ActionId::Paste), Outcome::Edited);
     let string = StringNumber::new(1).unwrap().get();
@@ -248,7 +255,13 @@ fn a_selection_over_a_bar_line_copies_and_pastes_bar_by_bar() {
     assert!(differences(&before, e.song()).is_empty());
 
     // In the last measure there is no next one for the second bar: nothing changes.
-    go(&mut e, 3, 0);
+    e.set_selection(Some(Selection::Beats {
+        staff: gscore_model::StaffIndex::new(0),
+        track: TrackIndex::new(0),
+        voice: VoiceIndex::new(0),
+        anchor: spot(3, 0),
+        focus: spot(3, 0),
+    }));
     assert!(e.perform(Action::Plain(ActionId::Paste), 0).is_err());
     assert!(differences(&before, e.song()).is_empty());
 }
@@ -279,7 +292,13 @@ fn pasted_notes_keep_their_dynamic() {
         focus: spot(0, 0),
     }));
     plain(&mut e, ActionId::Copy);
-    go(&mut e, 1, 2);
+    e.set_selection(Some(Selection::Beats {
+        staff: gscore_model::StaffIndex::new(0),
+        track: TrackIndex::new(0),
+        voice: VoiceIndex::new(0),
+        anchor: spot(1, 2),
+        focus: spot(1, 2),
+    }));
     assert_eq!(plain(&mut e, ActionId::Paste), Outcome::Edited);
     let dynamic =
         |e: &TabEditor, measure, beat| e.song().beat(at(measure, beat)).unwrap().dynamic();
@@ -290,61 +309,131 @@ fn pasted_notes_keep_their_dynamic() {
     );
 }
 
+/// How many beats the first voice of `measure` has.
+fn beat_count(e: &TabEditor, measure: usize) -> usize {
+    e.song()
+        .track(TrackIndex::new(0))
+        .unwrap()
+        .measure(MeasureIndex::new(measure))
+        .unwrap()
+        .voice(VoiceIndex::new(0))
+        .unwrap()
+        .beats()
+        .len()
+}
+
 #[test]
-fn copy_with_the_cursor_on_a_note_pastes_that_note_on_another_string() {
+fn copy_with_only_the_cursor_takes_its_beat_and_paste_inserts_it_after() {
+    // As Guitar Pro: with no selection Ctrl+C copies the cursor's whole beat and Ctrl+V
+    // puts a copy after it; nothing is overwritten.
     let mut e = editor(1);
     let string = |string: u8| StringNumber::new(string).unwrap();
-    let set = |e: &mut TabEditor, beat: usize, string_number: u8, fret: u8| {
+    for (string_number, fret) in [(1, 2), (2, 4)] {
         e.execute_command(Command::SetFret {
-            at: at(0, beat),
+            at: at(0, 0),
             string: string(string_number),
             fret: gscore_model::Fret::new(fret).unwrap(),
         })
         .unwrap();
-    };
-    set(&mut e, 0, 1, 2);
+    }
     e.execute_command(Command::SetNoteEffect {
         at: at(0, 0),
         string: string(1),
         effect: NoteEffect::PalmMute(true),
     })
     .unwrap();
-    // The target beat already has notes on both strings; the second one is a ghost note
-    // that the paste must replace.
-    set(&mut e, 1, 1, 7);
-    set(&mut e, 1, 2, 9);
-    e.execute_command(Command::SetNoteEffect {
+    e.execute_command(Command::SetFret {
         at: at(0, 1),
-        string: string(2),
-        effect: NoteEffect::Ghost(true),
+        string: string(1),
+        fret: gscore_model::Fret::new(7).unwrap(),
     })
     .unwrap();
-
-    // The cursor is on the note; nothing is selected.
     assert_eq!(e.selection(), None);
     go(&mut e, 0, 0);
     assert_eq!(plain(&mut e, ActionId::Copy), Outcome::Nothing);
-    go(&mut e, 0, 1);
-    e.set_cursor(Cursor {
-        string: 2,
-        ..e.cursor()
-    });
     let before = e.song().clone();
+    let beats = beat_count(&e, 0);
     let depth = e.undo_depth();
     assert_eq!(plain(&mut e, ActionId::Paste), Outcome::Edited);
-    assert_eq!(notes_at(&e, at(0, 1)), vec![(1, 7), (2, 2)]);
-    let pasted = e
-        .song()
-        .beat(at(0, 1))
-        .unwrap()
-        .notes()
-        .find(|n| n.string().unwrap().get() == 2)
-        .unwrap();
-    assert!(pasted.is_palm_muted(), "the note effect came along");
-    assert!(!pasted.is_ghost(), "the target note's effect was replaced");
+    assert_eq!(beat_count(&e, 0), beats + 1, "a beat was added");
+    assert_eq!(
+        notes_at(&e, at(0, 1)),
+        vec![(1, 2), (2, 4)],
+        "the copy, whole"
+    );
+    assert!(
+        e.song()
+            .beat(at(0, 1))
+            .unwrap()
+            .notes()
+            .find(|n| n.string().unwrap().get() == 1)
+            .unwrap()
+            .is_palm_muted(),
+        "the note effect came along"
+    );
+    assert_eq!(
+        notes_at(&e, at(0, 2)),
+        vec![(1, 7)],
+        "the next beat moved on"
+    );
+    assert_eq!(selected(&e), vec![(0, 1)], "the pasted beat is selected");
     assert_eq!(e.undo_depth(), depth + 1, "one undo step");
     plain(&mut e, ActionId::Undo);
     assert!(differences(&before, e.song()).is_empty());
+}
+
+#[test]
+fn pasted_beats_replace_the_selection_whatever_its_size() {
+    // Guitar Pro's rule: the copied beats take the selection's place. As many as were
+    // copied: nothing changes; fewer selected: the rest are added; more: they go.
+    let mut e = editor(2);
+    for (beat, fret) in [(0, 1), (1, 2), (2, 3), (3, 4)] {
+        go(&mut e, 0, beat);
+        e.perform(Action::Digit(fret), 0).unwrap();
+    }
+    let frets = |e: &TabEditor| -> Vec<Vec<(u8, u8)>> {
+        (0..beat_count(e, 0))
+            .map(|beat| notes_at(e, at(0, beat)))
+            .collect()
+    };
+    let select = |e: &mut TabEditor, from: usize, to: usize| {
+        e.set_selection(Some(Selection::Beats {
+            staff: gscore_model::StaffIndex::new(0),
+            track: TrackIndex::new(0),
+            voice: VoiceIndex::new(0),
+            anchor: spot(0, from),
+            focus: spot(0, to),
+        }));
+    };
+    // Beats 2 and 3 copied.
+    select(&mut e, 1, 2);
+    plain(&mut e, ActionId::Copy);
+    let original = frets(&e);
+    // Pasted on the same selection: nothing changes.
+    plain(&mut e, ActionId::Paste);
+    assert_eq!(frets(&e), original);
+    // Over one beat (the 4th): it is replaced and the second copied beat added.
+    select(&mut e, 3, 3);
+    plain(&mut e, ActionId::Paste);
+    assert_eq!(
+        frets(&e),
+        vec![
+            vec![(1, 1)],
+            vec![(1, 2)],
+            vec![(1, 3)],
+            vec![(1, 2)],
+            vec![(1, 3)]
+        ]
+    );
+    assert_eq!(selected(&e), vec![(0, 3), (0, 4)]);
+    // Over four beats (the 1st to 4th): two take their place, the other two go.
+    select(&mut e, 0, 3);
+    plain(&mut e, ActionId::Paste);
+    assert_eq!(frets(&e), vec![vec![(1, 2)], vec![(1, 3)], vec![(1, 3)]]);
+    // Each paste is one undo step.
+    plain(&mut e, ActionId::Undo);
+    plain(&mut e, ActionId::Undo);
+    assert_eq!(frets(&e), original);
 }
 
 #[test]
@@ -382,7 +471,13 @@ fn a_selection_over_a_bar_line_replaces_existing_beats_whole() {
     e.perform(Action::Digit(7), 0).unwrap();
     let before = e.song().clone();
     let depth = e.undo_depth();
-    go(&mut e, 1, 2);
+    e.set_selection(Some(Selection::Beats {
+        staff: gscore_model::StaffIndex::new(0),
+        track: TrackIndex::new(0),
+        voice: VoiceIndex::new(0),
+        anchor: spot(1, 2),
+        focus: spot(1, 3),
+    }));
     assert_eq!(plain(&mut e, ActionId::Paste), Outcome::Edited);
     let first = e.song().beat(at(1, 2)).unwrap();
     assert_eq!(first.note_value().unwrap().value(), 8, "the copied length");

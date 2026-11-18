@@ -6493,3 +6493,21 @@ Tests: dragging the edge widens the column and the settings keep it.
   over, as any moved selection is; adding copies there goes through the Paste bars
   dialog. Beats pasted in the score already overwrote from the cursor.
 - Tests: `copied_bars_of_one_track_pasted_on_their_selection_overwrite_them`.
+
+## 2026-11-18 — Beats paste as in Guitar Pro
+
+- Checked against Guitar Pro by the owner: pasted beats take the selection's place,
+  whatever its size. Pasted over as many beats as were copied, nothing changes; over
+  fewer, the copied beats that do not fit are added (nothing after them is overwritten);
+  over more, the selected beats beyond the copy are removed. A bar can so end up longer
+  or shorter than its time signature, as in Guitar Pro.
+- With only the cursor (no selection), Ctrl+C copies the cursor's whole beat and Ctrl+V
+  inserts the copied beats after the cursor's beat; Ctrl+X copies the beat and makes it
+  a rest. This replaces copying one note to paste it on another string (2026-11-07).
+- Before, copied beats were written over the beats from the cursor on.
+- `paste_beats` became `replace_beats` (the selected beats are deleted, the copy is
+  inserted, each group into its own bar as before); `Clipboard::Note` is gone.
+- Tests: `pasted_beats_replace_the_selection_whatever_its_size` (same size, smaller,
+  larger, undo) and `copy_with_only_the_cursor_takes_its_beat_and_paste_inserts_it_after`;
+  the copy/paste tests in `test_selection`, `test_tab_editor`, `test_staves` and
+  `test_editing` now select the beats they paste over, or expect the copy after the cursor.

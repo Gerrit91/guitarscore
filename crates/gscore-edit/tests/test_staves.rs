@@ -196,7 +196,15 @@ fn a_selection_on_the_second_staff_covers_its_beats_only() {
     let before = notes(e.song());
     assert_eq!(before.1, [(1, 5)]);
     plain(&mut e, ActionId::Copy);
+    // Pasted over the treble staff's beat there.
     e.set_cursor(on_staff(0, 1));
+    e.set_selection(Some(Selection::Beats {
+        track: TrackIndex::new(0),
+        staff: StaffIndex::new(0),
+        voice: VoiceIndex::new(0),
+        anchor: spot,
+        focus: spot,
+    }));
     plain(&mut e, ActionId::Paste);
     let after = notes(e.song());
     assert_eq!(after.1, before.1, "the bass staff keeps its notes");
