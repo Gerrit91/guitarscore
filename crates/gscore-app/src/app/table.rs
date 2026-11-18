@@ -20,6 +20,9 @@ pub(super) struct Row<'a> {
     pub swatch: Option<Color32>,
     /// Whether this is the current choice.
     pub selected: bool,
+    /// Whether a row can be dragged (the song's sections, which swap when one is dropped
+    /// on another).
+    pub draggable: bool,
     /// The accessible name, when the text alone does not say what a click does.
     pub accessible: &'a str,
     /// The hover text.
@@ -62,8 +65,13 @@ pub(super) fn surface<R>(
 /// into view) and its response.
 pub(super) fn row(ui: &mut egui::Ui, row: &Row<'_>) -> (Rect, Response) {
     let tokens = style::tokens(ui);
+    let sense = if row.draggable {
+        Sense::click_and_drag()
+    } else {
+        Sense::click()
+    };
     let (rect, response) =
-        ui.allocate_exact_size(vec2(ui.available_width(), row_height(ui)), Sense::click());
+        ui.allocate_exact_size(vec2(ui.available_width(), row_height(ui)), sense);
     ui.ctx().accesskit_node_builder(response.id, |node| {
         node.set_role(egui::Role::Button);
         node.set_label(row.accessible);

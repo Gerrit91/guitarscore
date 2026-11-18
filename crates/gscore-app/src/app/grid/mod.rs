@@ -77,6 +77,11 @@ pub(super) enum GridAction {
     Place { track: usize, measure: usize },
     /// Replace the selected measures.
     Select(MeasureSelection),
+    /// Drop the selection (a section drag starts: only the dragged section is marked).
+    ClearSelection,
+    /// Swap the bars of the sections that start at `from` and `at` (dragging a section's
+    /// name in the master row onto another section).
+    SwapSections { from: usize, to: usize },
     /// Open the rename window for a track.
     Rename { track: usize },
     /// Show the track in the score's current view, or leave it out (the row's eye).
@@ -441,6 +446,18 @@ impl GuitarScoreApp {
                     self.jump_playback_to(track, selection.start());
                 }
             }
+            GridAction::SwapSections { from, to } => self.swap_sections(from, to),
+            GridAction::ClearSelection => {
+                let Some(tab) = self.tabs.get_mut(self.active) else {
+                    return;
+                };
+                if tab.has_loop_selection() {
+                    self.playback.set_loop_selection(false);
+                }
+                tab.selection = None;
+                tab.had_loop_selection = false;
+                tab.document.editor_mut().set_selection(None);
+            }
             GridAction::ToggleShown { track } => self.toggle_track_shown(track),
             GridAction::Rename { track } => {
                 let (name, short_name) = self
@@ -587,6 +604,22 @@ impl GuitarScoreApp {
         let current = tab
             .selection
             .unwrap_or_else(|| MeasureSelection::on(cursor.track.get(), cursor.measure.get()));
+        // A selection of every track has nothing to take in: the key narrows it to the
+        // cursor's track (the other direction then takes in every track again). Without
+        // this, a section's selection (every track) would not answer the keys at all.
+        if matches!(action, ActionId::SelectLineUp | ActionId::SelectLineDown)
+            && current.track.is_none()
+        {
+            let narrowed = MeasureSelection {
+                track: Some(cursor.track.get()),
+                ..current
+            };
+            self.apply_grid_action(GridAction::Select(narrowed));
+            if let Some(tab) = self.tabs.get_mut(self.active) {
+                tab.grid_rows = Some((cursor.track.get(), 0));
+            }
+            return true;
+        }
         // The track the selection started in and which way the keys left it: -1 up, 1
         // down, 0 still on it (from a pointer's selection of every track: its cursor's
         // track, as if on it).

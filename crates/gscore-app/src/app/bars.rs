@@ -145,7 +145,9 @@ impl GuitarScoreApp {
                 for action in [
                     ActionId::Cut,
                     ActionId::Copy,
+                    ActionId::CopyAllTracks,
                     ActionId::Paste,
+                    ActionId::PasteAround,
                     ActionId::SelectAll,
                 ] {
                     if self.action_button(ui, action, has_document) {

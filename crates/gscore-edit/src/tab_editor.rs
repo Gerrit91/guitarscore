@@ -44,6 +44,8 @@ pub enum Request {
     Stop,
     /// Save the file.
     Save,
+    /// Paste the copied bars before or after the selection: the app asks which.
+    PasteAround,
     /// Extend the beat selection to the line above (`down` false) or below: the beat at
     /// the same place on the neighbouring system of the page, which only the app's layout
     /// knows. It answers with [`TabEditor::extend_selection_to_spot`].
@@ -369,8 +371,10 @@ impl TabEditor {
             ActionId::TransposeDownOctave => self.transpose(-12),
             ActionId::ToggleTransposition => self.toggle_transposition(),
             ActionId::Copy => self.copy_selection(),
+            ActionId::CopyAllTracks => self.copy_selection_all_tracks(),
             ActionId::Cut => self.cut_selection(),
             ActionId::Paste => self.paste_clipboard(),
+            ActionId::PasteAround => Ok(Outcome::Request(Request::PasteAround)),
             ActionId::Undo => self.undo(),
             ActionId::Redo => self.redo(),
             ActionId::PlayPause => Ok(Outcome::Request(Request::PlayPause)),

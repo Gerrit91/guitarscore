@@ -3528,6 +3528,17 @@ fn a_looped_note_selection_starts_at_its_first_bar() {
     harness.state_mut().playback_mut().stop().unwrap();
 }
 
+/// Clicks the Copy action's "Change" button in the shortcut editor: the filter "Copy"
+/// also lists "Copy every track's bars", so the first row is the one.
+fn click_change_for_copy(harness: &mut Harness<'static, GuitarScoreApp>) {
+    harness
+        .query_all_by_label("Change")
+        .next()
+        .expect("the Copy row")
+        .click();
+    harness.run();
+}
+
 #[test]
 fn shortcuts_can_be_changed_and_reverted_from_the_editor() {
     let mut harness = app_with(Some(testdata("basic/note_lengths.gp")));
@@ -3544,8 +3555,7 @@ fn shortcuts_can_be_changed_and_reverted_from_the_editor() {
     harness.get_by_label("Filter shortcuts").click();
     harness.get_by_label("Filter shortcuts").type_text("Copy");
     harness.run();
-    harness.get_by_label("Change").click();
-    harness.run();
+    click_change_for_copy(&mut harness);
     harness.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::K);
     harness.run();
     assert_eq!(
@@ -3567,8 +3577,7 @@ fn shortcuts_can_be_changed_and_reverted_from_the_editor() {
     );
 
     // A key another action uses is reported and can replace it.
-    harness.get_by_label("Change").click();
-    harness.run();
+    click_change_for_copy(&mut harness);
     harness.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::X);
     harness.run();
     harness.get_by_label_contains("is already used by");

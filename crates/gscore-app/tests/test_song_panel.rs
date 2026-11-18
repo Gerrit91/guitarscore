@@ -161,3 +161,502 @@ fn the_song_tab_matches_its_snapshot() {
     harness.run();
     harness.snapshot("song_panel");
 }
+
+/// Clicks at `pos` with `modifiers` held for the click (the modifiers stay held until the
+/// frame has run, so the widget sees them).
+fn click_at(
+    harness: &mut Harness<'static, GuitarScoreApp>,
+    pos: egui::Pos2,
+    modifiers: egui::Modifiers,
+) {
+    harness
+        .input_mut()
+        .events
+        .push(egui::Event::ModifiersChanged(modifiers));
+    harness.hover_at(pos);
+    for pressed in [true, false] {
+        harness.input_mut().events.push(egui::Event::PointerButton {
+            pos,
+            button: egui::PointerButton::Primary,
+            pressed,
+            modifiers,
+        });
+    }
+    harness.run();
+    if modifiers != egui::Modifiers::NONE {
+        harness
+            .input_mut()
+            .events
+            .push(egui::Event::ModifiersChanged(egui::Modifiers::NONE));
+        harness.run();
+    }
+}
+
+/// A spot in the grid's master row (under the one track) on `measure`.
+fn master_row(harness: &Harness<'static, GuitarScoreApp>, measure: usize) -> egui::Pos2 {
+    let grid = harness.get_by_label("Song grid").rect();
+    grid.left_top() + egui::vec2(24.0 * measure as f32 + 12.0, 24.0 + 12.0)
+}
+
+#[test]
+fn a_click_on_a_section_in_the_grid_master_row_selects_all_its_bars() {
+    let mut harness = song_with_sections(false);
+    // A click on the Verse's name (bar 4, between its start at 3 and the Chorus) selects
+    // the whole section, in every track, and puts the cursor on its first bar.
+    let pos = master_row(&harness, 3);
+    click_at(&mut harness, pos, egui::Modifiers::NONE);
+    assert_eq!(
+        harness.state().selection(),
+        Some(MeasureSelection {
+            anchor: 2,
+            focus: 4,
+            track: None,
+        })
+    );
+    assert_eq!(
+        harness
+            .state()
+            .document()
+            .unwrap()
+            .editor()
+            .cursor()
+            .measure,
+        MeasureIndex::new(2)
+    );
+    // A shift click on the Chorus's name extends the selection to it.
+    let pos = master_row(&harness, 6);
+    click_at(&mut harness, pos, egui::Modifiers::SHIFT);
+    assert_eq!(
+        harness.state().selection(),
+        Some(MeasureSelection {
+            anchor: 2,
+            focus: 6,
+            track: None,
+        })
+    );
+}
+
+#[test]
+fn shift_up_and_down_narrow_a_sections_selection_to_the_cursor_track() {
+    let mut harness = song_with_sections(false);
+    harness.get_by_label("Song tab").click();
+    harness.run();
+    harness
+        .get_by_label("Select the bars of section Verse")
+        .click();
+    harness.run();
+    assert_eq!(
+        harness
+            .state()
+            .selection()
+            .and_then(|selection| selection.track),
+        None
+    );
+    // Every track is selected already: the key narrows the selection to the cursor's
+    // track, and the other direction takes in every track again.
+    harness.key_press_modifiers(egui::Modifiers::SHIFT, egui::Key::ArrowUp);
+    harness.run();
+    assert_eq!(
+        harness
+            .state()
+            .selection()
+            .and_then(|selection| selection.track),
+        Some(0)
+    );
+    harness.key_press_modifiers(egui::Modifiers::SHIFT, egui::Key::ArrowDown);
+    harness.run();
+    assert_eq!(
+        harness
+            .state()
+            .selection()
+            .and_then(|selection| selection.track),
+        None
+    );
+}
+
+/// The notes of `track`'s `measure` (string and fret).
+fn notes_in(
+    harness: &Harness<'static, GuitarScoreApp>,
+    track: usize,
+    measure: usize,
+) -> Vec<(u8, u8)> {
+    let song = harness.state().document().unwrap().song();
+    let position = gscore_model::BeatPosition {
+        track: gscore_model::TrackIndex::new(track),
+        staff: gscore_model::StaffIndex::new(0),
+        measure: MeasureIndex::new(measure),
+        voice: gscore_model::VoiceIndex::new(0),
+        beat: gscore_model::BeatIndex::new(0),
+    };
+    let Some(measure) = song.measure_at(position) else {
+        return Vec::new();
+    };
+    measure
+        .voices()
+        .flat_map(|voice| voice.beats())
+        .flat_map(|beat| beat.notes())
+        .map(|note| {
+            (
+                note.string().map(|string| string.get()).unwrap_or(0),
+                note.fret().map(|fret| fret.get()).unwrap_or(0),
+            )
+        })
+        .collect()
+}
+
+#[test]
+fn a_section_copies_and_pastes_its_bars_after_itself_in_every_track() {
+    let mut harness = song_with_sections(false);
+    // A second track, so the copy proves it takes every track.
+    {
+        let editor = harness
+            .state_mut()
+            .document_mut()
+            .expect("a document")
+            .editor_mut();
+        editor
+            .execute_command(Command::DuplicateTrack {
+                track: gscore_model::TrackIndex::new(0),
+            })
+            .expect("the track is duplicated");
+    }
+    harness.run();
+    harness.get_by_label("Song tab").click();
+    harness.run();
+    harness
+        .get_by_label("Select the bars of section Verse")
+        .click();
+    harness.run();
+    harness.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::C);
+    harness.run();
+    assert_eq!(
+        harness
+            .state()
+            .document()
+            .unwrap()
+            .editor()
+            .clipboard_text()
+            .as_deref(),
+        Some("GuitarScore: 3 bars of 2 tracks")
+    );
+    // Pasting with the selection still on the section puts a copy right after it.
+    harness.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::V);
+    harness.run();
+    let song = harness.state().document().unwrap().song();
+    assert_eq!(song.measure_count(), 12);
+    for track in 0..2 {
+        assert_eq!(
+            notes_in(&harness, track, 5),
+            notes_in(&harness, track, 2),
+            "track {track}'s copy"
+        );
+        assert_eq!(notes_in(&harness, track, 7), notes_in(&harness, track, 4));
+    }
+    assert_eq!(
+        harness.state().selection(),
+        Some(MeasureSelection {
+            anchor: 5,
+            focus: 7,
+            track: None,
+        })
+    );
+}
+
+#[test]
+fn ctrl_shift_c_and_v_copy_every_track_and_ask_where_to_paste() {
+    let mut harness = song_with_sections(false);
+    // A second track, to prove that copying one track's bars takes every track.
+    {
+        let editor = harness
+            .state_mut()
+            .document_mut()
+            .expect("a document")
+            .editor_mut();
+        editor
+            .execute_command(Command::DuplicateTrack {
+                track: gscore_model::TrackIndex::new(0),
+            })
+            .expect("the track is duplicated");
+    }
+    harness.run();
+    let grid = harness.get_by_label("Song grid").rect();
+    let cell = |measure: usize| grid.left_top() + egui::vec2(24.0 * measure as f32 + 12.0, 12.0);
+    // A bar selection in the first track only: bar 3, shift-clicked to bar 4.
+    click_at(&mut harness, cell(2), egui::Modifiers::NONE);
+    click_at(&mut harness, cell(3), egui::Modifiers::SHIFT);
+    assert_eq!(
+        harness
+            .state()
+            .selection()
+            .and_then(|selection| selection.track),
+        Some(0)
+    );
+    let ctrl_shift = egui::Modifiers {
+        command: true,
+        shift: true,
+        ..egui::Modifiers::NONE
+    };
+    harness.key_press_modifiers(ctrl_shift, egui::Key::C);
+    harness.run();
+    assert_eq!(
+        harness
+            .state()
+            .document()
+            .unwrap()
+            .editor()
+            .clipboard_text()
+            .as_deref(),
+        Some("GuitarScore: 2 bars of 2 tracks")
+    );
+    harness.key_press_modifiers(ctrl_shift, egui::Key::V);
+    harness.run();
+    // The dialog asks where the bars go.
+    harness.get_by_label("Before the selection");
+    harness.get_by_label("After the selection");
+    harness.get_by_label("After the selection").click();
+    harness.run();
+    harness.get_by_label("Paste").click();
+    harness.run();
+    let song = harness.state().document().unwrap().song();
+    assert_eq!(song.measure_count(), 11);
+    for track in 0..2 {
+        assert_eq!(
+            notes_in(&harness, track, 4),
+            notes_in(&harness, track, 2),
+            "track {track}'s pasted bar"
+        );
+        assert_eq!(notes_in(&harness, track, 5), notes_in(&harness, track, 3));
+    }
+}
+
+#[test]
+fn dragging_a_section_name_onto_another_swaps_their_bars() {
+    let mut harness = song_with_sections(false);
+    // The Verse's bars (3-5) and the Chorus's (6-9), as they are now.
+    let verse: Vec<Vec<(u8, u8)>> = (2..=4)
+        .map(|measure| notes_in(&harness, 0, measure))
+        .collect();
+    let chorus: Vec<Vec<(u8, u8)>> = (5..=8)
+        .map(|measure| notes_in(&harness, 0, measure))
+        .collect();
+    // Drag the Verse's name in the master row onto the Chorus's.
+    let from = master_row(&harness, 3);
+    let to = master_row(&harness, 6);
+    harness.hover_at(from);
+    harness.run();
+    harness.drag_at(from);
+    harness.step();
+    harness.hover_at(from + egui::vec2(10.0, 0.0));
+    harness.step();
+    harness.hover_at(to);
+    harness.step();
+    harness.drop_at(to);
+    harness.run();
+    // The two sections trade places, bars and names with them.
+    let song = harness.state().document().unwrap().song();
+    assert_eq!(
+        song.section(MeasureIndex::new(2))
+            .map(|section| section.title),
+        Some("Chorus".to_owned())
+    );
+    assert_eq!(
+        song.section(MeasureIndex::new(6))
+            .map(|section| section.title),
+        Some("Verse".to_owned())
+    );
+    for (index, notes) in chorus.iter().enumerate() {
+        assert_eq!(
+            &notes_in(&harness, 0, 2 + index),
+            notes,
+            "the Chorus's bar {index} moved"
+        );
+    }
+    for (index, notes) in verse.iter().enumerate() {
+        assert_eq!(
+            &notes_in(&harness, 0, 6 + index),
+            notes,
+            "the Verse's bar {index} moved"
+        );
+    }
+    // The dragged section (the Verse) is selected where it went.
+    assert_eq!(
+        harness.state().selection(),
+        Some(MeasureSelection {
+            anchor: 6,
+            focus: 8,
+            track: None,
+        })
+    );
+}
+
+#[test]
+fn the_paste_dialog_matches_its_snapshot() {
+    let _gpu = common::lock_gpu();
+    let mut harness = song_with_sections(true);
+    harness.get_by_label("Song tab").click();
+    harness.run();
+    harness
+        .get_by_label("Select the bars of section Verse")
+        .click();
+    harness.run();
+    harness.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::C);
+    harness.run();
+    let ctrl_shift = egui::Modifiers {
+        command: true,
+        shift: true,
+        ..egui::Modifiers::NONE
+    };
+    harness.key_press_modifiers(ctrl_shift, egui::Key::V);
+    harness.run();
+    harness.snapshot("paste_around");
+}
+
+/// The center of a section's row in the Song tab's table.
+fn section_row(harness: &Harness<'static, GuitarScoreApp>, title: &str) -> egui::Pos2 {
+    harness
+        .get_by_label(&format!("Select the bars of section {title}"))
+        .rect()
+        .center()
+}
+
+#[test]
+fn dragging_a_section_row_in_the_song_tab_swaps_the_sections() {
+    let mut harness = song_with_sections(false);
+    harness.get_by_label("Song tab").click();
+    harness.run();
+    // Selecting the Verse first shows the drag dropping that selection.
+    harness
+        .get_by_label("Select the bars of section Verse")
+        .click();
+    harness.run();
+    assert!(harness.state().selection().is_some());
+    // Drag the Chorus's row onto the Verse's.
+    let from = section_row(&harness, "Chorus");
+    let to = section_row(&harness, "Verse");
+    harness.hover_at(from);
+    harness.run();
+    harness.drag_at(from);
+    harness.step();
+    harness.hover_at(from + egui::vec2(10.0, 0.0));
+    harness.step();
+    // While dragging, the old selection is gone: only the dragged section is marked.
+    assert_eq!(harness.state().selection(), None);
+    harness.hover_at(to);
+    harness.step();
+    harness.drop_at(to);
+    harness.run();
+    // The Chorus's bars now start where the Verse did, and the Verse's after them.
+    let song = harness.state().document().unwrap().song();
+    assert_eq!(
+        song.section(MeasureIndex::new(2))
+            .map(|section| section.title),
+        Some("Chorus".to_owned())
+    );
+    assert_eq!(
+        song.section(MeasureIndex::new(6))
+            .map(|section| section.title),
+        Some("Verse".to_owned())
+    );
+    assert_eq!(
+        harness.state().selection(),
+        Some(MeasureSelection {
+            anchor: 2,
+            focus: 5,
+            track: None,
+        })
+    );
+}
+
+#[test]
+fn starting_a_section_drag_in_the_master_row_drops_the_selection() {
+    let mut harness = song_with_sections(false);
+    // Select the Verse from the master row, then drag the Chorus.
+    let verse = master_row(&harness, 3);
+    click_at(&mut harness, verse, egui::Modifiers::NONE);
+    assert_eq!(
+        harness.state().selection(),
+        Some(MeasureSelection {
+            anchor: 2,
+            focus: 4,
+            track: None,
+        })
+    );
+    let from = master_row(&harness, 6);
+    let to = master_row(&harness, 3);
+    harness.hover_at(from);
+    harness.run();
+    harness.drag_at(from);
+    harness.step();
+    harness.hover_at(from + egui::vec2(10.0, 0.0));
+    harness.step();
+    // Only the dragged section is marked while it moves.
+    assert_eq!(harness.state().selection(), None);
+    harness.hover_at(to);
+    harness.step();
+    harness.drop_at(to);
+    harness.run();
+    // The Chorus was dropped on the Verse, so their bars trade places.
+    let song = harness.state().document().unwrap().song();
+    assert_eq!(
+        song.section(MeasureIndex::new(2))
+            .map(|section| section.title),
+        Some("Chorus".to_owned())
+    );
+    assert_eq!(
+        song.section(MeasureIndex::new(6))
+            .map(|section| section.title),
+        Some("Verse".to_owned())
+    );
+}
+
+#[test]
+fn the_paste_dialog_pastes_at_a_typed_bar_and_can_overwrite() {
+    let mut harness = song_with_sections(false);
+    harness.get_by_label("Song tab").click();
+    harness.run();
+    harness
+        .get_by_label("Select the bars of section Verse")
+        .click();
+    harness.run();
+    let verse: Vec<Vec<(u8, u8)>> = (2..=4)
+        .map(|measure| notes_in(&harness, 0, measure))
+        .collect();
+    harness.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::C);
+    harness.run();
+    let ctrl_shift = egui::Modifiers {
+        command: true,
+        shift: true,
+        ..egui::Modifiers::NONE
+    };
+    harness.key_press_modifiers(ctrl_shift, egui::Key::V);
+    harness.run();
+    // At bar 6, writing over the bars there: the song keeps its nine bars.
+    harness.get_by_label("At bar").click();
+    harness.get_by_label("Paste bar").click();
+    harness.run();
+    harness.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::A);
+    harness.get_by_label("Paste bar").type_text("6");
+    harness.run();
+    harness.key_press(egui::Key::Enter);
+    harness.run();
+    harness
+        .get_by_label_contains("Overwrite the bars there")
+        .click();
+    harness.run();
+    harness.get_by_label("Paste").click();
+    harness.run();
+    let song = harness.state().document().unwrap().song();
+    assert_eq!(song.measure_count(), 9);
+    for (index, notes) in verse.iter().enumerate() {
+        assert_eq!(&notes_in(&harness, 0, 5 + index), notes);
+    }
+    // One track, so the paste selects that track's row.
+    assert_eq!(
+        harness.state().selection(),
+        Some(MeasureSelection {
+            anchor: 5,
+            focus: 7,
+            track: Some(0),
+        })
+    );
+}

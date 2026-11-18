@@ -37,6 +37,10 @@ pub(in crate::app) struct SongPanelState {
     draft: Vec<String>,
     /// The song's values the draft was synced from, to notice outside edits (undo).
     base: Vec<String>,
+    /// The section being dragged in the list (the bar its name starts at) and the one the
+    /// pointer is over, which it would swap with.
+    dragging: Option<usize>,
+    target: Option<usize>,
 }
 
 impl SongPanelState {
@@ -78,7 +82,7 @@ impl GuitarScoreApp {
         state.sync(&info);
         let mut commands: Vec<Command> = Vec::new();
         let mut break_merge = false;
-        let mut select = None;
+        let mut actions = SectionActions::default();
         egui::ScrollArea::vertical()
             .auto_shrink([false, false])
             .show(ui, |ui| {
@@ -91,7 +95,7 @@ impl GuitarScoreApp {
                     }
                 });
                 style::section(ui, "song_sections", "Sections", |ui| {
-                    sections(ui, &grid, measure_count, selection, &mut select);
+                    sections(ui, &grid, measure_count, selection, state, &mut actions);
                 });
             });
         if break_merge && let Some(tab) = self.tabs.get_mut(self.active) {
@@ -106,7 +110,14 @@ impl GuitarScoreApp {
         if let (Some(info), Some(tab)) = (&info, self.tabs.get_mut(self.active)) {
             tab.track_panel.song.sync(info);
         }
-        if let Some(selection) = select {
+        // A drag starts by dropping the selection, so only the dragged section is marked.
+        if actions.clear {
+            self.apply_grid_action(GridAction::ClearSelection);
+        }
+        if let Some((from, to)) = actions.swap {
+            self.swap_sections(from, to);
+        }
+        if let Some(selection) = actions.select {
             self.apply_grid_action(GridAction::Select(selection));
             // The score follows to the section's first bar; the selection itself covers
             // every track, as the grid ruler's does.
@@ -182,14 +193,27 @@ struct SectionLine {
     chosen: bool,
 }
 
+/// What the section rows asked for this frame.
+#[derive(Debug, Default)]
+struct SectionActions {
+    /// A row was clicked: select its bars.
+    select: Option<MeasureSelection>,
+    /// A row's drag began: drop the selection, so only the dragged section is marked.
+    clear: bool,
+    /// A row was dragged onto another: swap the two sections' bars.
+    swap: Option<(usize, usize)>,
+}
+
 /// The Sections category: a table like the track's tone presets, one row per section with
-/// its color, its name and its bars; a click selects those bars in every track.
+/// its color, its name and its bars; a click selects those bars in every track, and
+/// dragging a row onto another swaps the two sections' bars.
 fn sections(
     ui: &mut egui::Ui,
     grid: &GridData,
     measure_count: usize,
     selection: Option<MeasureSelection>,
-    select: &mut Option<MeasureSelection>,
+    state: &mut SongPanelState,
+    actions: &mut SectionActions,
 ) {
     let lines: Vec<SectionLine> = section_rows(grid, measure_count)
         .into_iter()
@@ -229,34 +253,56 @@ fn sections(
         );
         return;
     }
-    let mut clicked = None;
     table::surface(ui, "song_sections_table", table::VISIBLE_ROWS, |ui| {
-        for (index, line) in lines.iter().enumerate() {
+        for line in &lines {
+            let dragging = state.dragging == Some(line.start);
+            let target = state.target == Some(line.start);
+            let selected = line.chosen || dragging || target;
             let accessible = format!("Select the bars of section {}", line.title);
             let hint = format!("Select {} of \"{}\" in every track", line.bars, line.title);
-            let (_, response) = table::row(
+            let (rect, response) = table::row(
                 ui,
                 &table::Row {
                     label: &line.title,
                     detail: Some(&line.bars),
                     swatch: Some(line.color),
-                    selected: line.chosen,
+                    selected,
+                    draggable: true,
                     accessible: &accessible,
                     hint: &hint,
                 },
             );
             if response.clicked() {
-                clicked = Some(index);
+                actions.select = Some(MeasureSelection {
+                    anchor: line.start,
+                    focus: line.end,
+                    track: None,
+                });
+            }
+            if response.drag_started() {
+                state.dragging = Some(line.start);
+                state.target = None;
+                actions.clear = true;
+            }
+            if state.dragging.is_some()
+                && let Some(pointer) = ui.input(|input| input.pointer.interact_pos())
+                && rect.contains(pointer)
+                && state.dragging != Some(line.start)
+            {
+                state.target = Some(line.start);
+            }
+            if response.drag_stopped() {
+                if let Some(from) = state.dragging
+                    && let Some(to) = state.target
+                    && from != to
+                {
+                    actions.swap = Some((from, to));
+                }
+                state.dragging = None;
+                state.target = None;
             }
         }
     });
-    if let Some(line) = clicked.and_then(|index| lines.get(index)) {
-        *select = Some(MeasureSelection {
-            anchor: line.start,
-            focus: line.end,
-            track: None,
-        });
-    }
 }
 
 /// The sections in `grid`, in order: each lasts from its bar to the bar before the next

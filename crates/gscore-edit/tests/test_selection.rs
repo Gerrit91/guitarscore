@@ -538,3 +538,227 @@ fn shift_up_and_down_ask_the_page_for_the_neighbouring_line() {
     assert_eq!(e.extend_selection_to_spot(spot(9, 0)), Outcome::Nothing);
     assert_eq!(e.cursor().measure, MeasureIndex::new(1));
 }
+
+#[test]
+fn pasting_copied_bars_without_moving_the_selection_duplicates_them_after_it() {
+    let mut e = TabEditor::new(
+        testing::song(&[GUITAR_6, GUITAR_6], 2).unwrap(),
+        TrackIndex::new(0),
+    );
+    // A note in the first bar of both tracks.
+    for track in 0..2 {
+        let position = BeatPosition {
+            track: TrackIndex::new(track),
+            ..at(0, 0)
+        };
+        e.execute_command(Command::SetFret {
+            at: position,
+            string: StringNumber::new(1).unwrap(),
+            fret: gscore_model::Fret::new(3).unwrap(),
+        })
+        .unwrap();
+    }
+    e.set_selection(Some(Selection::Measures {
+        anchor: MeasureIndex::new(0),
+        focus: MeasureIndex::new(0),
+        track: None,
+    }));
+    plain(&mut e, ActionId::Copy);
+    // Pasting without moving the selection puts a copy of the bar right after it, in every
+    // track, and the song grows.
+    assert_eq!(plain(&mut e, ActionId::Paste), Outcome::Edited);
+    assert_eq!(e.song().measure_count(), 3);
+    for track in 0..2 {
+        let position = BeatPosition {
+            track: TrackIndex::new(track),
+            ..at(1, 0)
+        };
+        assert_eq!(notes_at(&e, position), vec![(1, 3)], "track {track}");
+    }
+    assert!(matches!(
+        e.selection(),
+        Some(Selection::Measures { anchor, focus, .. })
+            if anchor == MeasureIndex::new(1) && focus == MeasureIndex::new(1)
+    ));
+    // The last bar can be duplicated past the song's end too.
+    e.set_selection(Some(Selection::Measures {
+        anchor: MeasureIndex::new(2),
+        focus: MeasureIndex::new(2),
+        track: None,
+    }));
+    plain(&mut e, ActionId::Copy);
+    assert_eq!(plain(&mut e, ActionId::Paste), Outcome::Edited);
+    assert_eq!(e.song().measure_count(), 4);
+    // Each paste is one undo step.
+    plain(&mut e, ActionId::Undo);
+    assert_eq!(e.song().measure_count(), 3);
+}
+
+#[test]
+fn copying_all_tracks_from_a_one_track_selection_and_inserting_the_bars() {
+    let mut e = TabEditor::new(
+        testing::song(&[GUITAR_6, GUITAR_6], 2).unwrap(),
+        TrackIndex::new(0),
+    );
+    // A note in each track's first bar; only track 1 has one in the second bar.
+    for track in 0..2 {
+        let position = BeatPosition {
+            track: TrackIndex::new(track),
+            ..at(0, 0)
+        };
+        e.execute_command(Command::SetFret {
+            at: position,
+            string: StringNumber::new(1).unwrap(),
+            fret: gscore_model::Fret::new(3).unwrap(),
+        })
+        .unwrap();
+    }
+    // Copying bar 1 of track 1 only, but from every track.
+    e.set_selection(Some(Selection::Measures {
+        anchor: MeasureIndex::new(0),
+        focus: MeasureIndex::new(0),
+        track: Some(TrackIndex::new(0)),
+    }));
+    plain(&mut e, ActionId::CopyAllTracks);
+    assert_eq!(e.clipboard_bars(), Some(1));
+    // Inserting the copied bars after that bar grows the song by one, both tracks.
+    assert!(matches!(
+        e.paste_measures_inserting(MeasureIndex::new(1)),
+        Ok(Outcome::Edited)
+    ));
+    assert_eq!(e.song().measure_count(), 3);
+    for track in 0..2 {
+        let position = BeatPosition {
+            track: TrackIndex::new(track),
+            ..at(1, 0)
+        };
+        assert_eq!(notes_at(&e, position), vec![(1, 3)], "track {track}");
+    }
+    // Inserting before the first bar shifts it and the copy to bars 2 and 3.
+    e.set_selection(None);
+    assert!(matches!(
+        e.paste_measures_inserting(MeasureIndex::new(0)),
+        Ok(Outcome::Edited)
+    ));
+    assert_eq!(e.song().measure_count(), 4);
+    for track in 0..2 {
+        let first = BeatPosition {
+            track: TrackIndex::new(track),
+            ..at(0, 0)
+        };
+        let third = BeatPosition {
+            track: TrackIndex::new(track),
+            ..at(2, 0)
+        };
+        assert_eq!(notes_at(&e, first), vec![(1, 3)], "track {track}");
+        assert_eq!(notes_at(&e, third), vec![(1, 3)], "track {track}");
+    }
+    // One undo step per insert.
+    plain(&mut e, ActionId::Undo);
+    assert_eq!(e.song().measure_count(), 3);
+}
+
+#[test]
+fn swapping_two_sections_swaps_their_bars_and_names() {
+    // Six bars: section A at bar 1 (bars 1-3) and B at bar 4 (bars 4-6).
+    let mut e = editor(6);
+    for (measure, title) in [(0, "A"), (3, "B")] {
+        e.execute_command(Command::SetSection {
+            measure: MeasureIndex::new(measure),
+            title: title.to_owned(),
+            color: gscore_model::Section::DEFAULT_COLOR,
+        })
+        .unwrap();
+    }
+    for (measure, fret) in [(0, 3), (3, 7)] {
+        e.execute_command(Command::SetFret {
+            at: at(measure, 0),
+            string: StringNumber::new(1).unwrap(),
+            fret: gscore_model::Fret::new(fret).unwrap(),
+        })
+        .unwrap();
+    }
+    // Dragging A onto B swaps the two blocks: B's bars come first, A's last.
+    assert!(matches!(
+        e.swap_sections(MeasureIndex::new(0), MeasureIndex::new(3)),
+        Ok(Outcome::Edited)
+    ));
+    assert_eq!(
+        e.song().section(MeasureIndex::new(0)).map(|s| s.title),
+        Some("B".to_owned())
+    );
+    assert_eq!(
+        e.song().section(MeasureIndex::new(3)).map(|s| s.title),
+        Some("A".to_owned())
+    );
+    assert_eq!(notes_at(&e, at(0, 0)), vec![(1, 7)], "B's note came along");
+    assert_eq!(notes_at(&e, at(3, 0)), vec![(1, 3)], "A's note came along");
+    // The dragged section (A) is selected where it went: bars 4-6.
+    assert!(matches!(
+        e.selection(),
+        Some(Selection::Measures { anchor, focus, .. })
+            if anchor == MeasureIndex::new(3) && focus == MeasureIndex::new(5)
+    ));
+    // One undo step puts both sections back.
+    plain(&mut e, ActionId::Undo);
+    assert_eq!(
+        e.song().section(MeasureIndex::new(0)).map(|s| s.title),
+        Some("A".to_owned())
+    );
+    assert_eq!(notes_at(&e, at(0, 0)), vec![(1, 3)]);
+}
+
+#[test]
+fn pasting_over_bars_replaces_them_and_only_grows_the_song_at_its_end() {
+    let mut e = TabEditor::new(
+        testing::song(&[GUITAR_6, GUITAR_6], 3).unwrap(),
+        TrackIndex::new(0),
+    );
+    // A note in the first bar of both tracks, then a copy of that bar.
+    for track in 0..2 {
+        let position = BeatPosition {
+            track: TrackIndex::new(track),
+            ..at(0, 0)
+        };
+        e.execute_command(Command::SetFret {
+            at: position,
+            string: StringNumber::new(1).unwrap(),
+            fret: gscore_model::Fret::new(3).unwrap(),
+        })
+        .unwrap();
+    }
+    e.set_selection(Some(Selection::Measures {
+        anchor: MeasureIndex::new(0),
+        focus: MeasureIndex::new(0),
+        track: None,
+    }));
+    plain(&mut e, ActionId::Copy);
+    // Overwriting the last bar writes over it; the song keeps its length.
+    assert!(matches!(
+        e.paste_measures_overwriting(MeasureIndex::new(2)),
+        Ok(Outcome::Edited)
+    ));
+    assert_eq!(e.song().measure_count(), 3);
+    for track in 0..2 {
+        let position = BeatPosition {
+            track: TrackIndex::new(track),
+            ..at(2, 0)
+        };
+        assert_eq!(notes_at(&e, position), vec![(1, 3)], "track {track}");
+    }
+    // Overwriting past the end adds the bars it needs.
+    e.set_selection(Some(Selection::Measures {
+        anchor: MeasureIndex::new(0),
+        focus: MeasureIndex::new(1),
+        track: None,
+    }));
+    plain(&mut e, ActionId::Copy);
+    assert!(matches!(
+        e.paste_measures_overwriting(MeasureIndex::new(2)),
+        Ok(Outcome::Edited)
+    ));
+    assert_eq!(e.song().measure_count(), 4);
+    // One undo step puts the three bars back.
+    plain(&mut e, ActionId::Undo);
+    assert_eq!(e.song().measure_count(), 3);
+}

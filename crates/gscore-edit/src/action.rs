@@ -59,10 +59,14 @@ pub enum ActionId {
     DeleteMeasure,
     /// Copy the selection.
     Copy,
+    /// Copy the selected bars from every track, whatever track the selection is in.
+    CopyAllTracks,
     /// Cut the selection.
     Cut,
     /// Paste at the cursor.
     Paste,
+    /// Paste the copied bars before or after the selection, asking which first.
+    PasteAround,
     /// Undo the last edit.
     Undo,
     /// Redo the last undone edit.
@@ -414,8 +418,18 @@ pub const ACTIONS: &[ActionInfo] = &[
     info(ActionId::InsertMeasure, "insert_measure", "Insert measure"),
     info(ActionId::DeleteMeasure, "delete_measure", "Delete measure"),
     info(ActionId::Copy, "copy", "Copy"),
+    info(
+        ActionId::CopyAllTracks,
+        "copy_all_tracks",
+        "Copy every track's bars",
+    ),
     info(ActionId::Cut, "cut", "Cut"),
     info(ActionId::Paste, "paste", "Paste"),
+    info(
+        ActionId::PasteAround,
+        "paste_around",
+        "Paste before or after…",
+    ),
     info(ActionId::Undo, "undo", "Undo"),
     info(ActionId::Redo, "redo", "Redo"),
     info(ActionId::PlayPause, "play_pause", "Play/pause"),
@@ -777,6 +791,6 @@ mod tests {
             );
         }
         assert_eq!(ActionId::from_id("no_such_action"), None);
-        assert_eq!(ACTIONS.len(), 127, "one entry per ActionId variant");
+        assert_eq!(ACTIONS.len(), 129, "one entry per ActionId variant");
     }
 }

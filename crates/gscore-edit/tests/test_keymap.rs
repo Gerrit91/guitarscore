@@ -46,6 +46,14 @@ fn the_built_in_keymap_parses_and_has_the_owners_keys() {
         bound("ctrl+Insert"),
         Some(Action::Plain(ActionId::InsertMeasure))
     );
+    assert_eq!(
+        bound("ctrl+shift+c"),
+        Some(Action::Plain(ActionId::CopyAllTracks))
+    );
+    assert_eq!(
+        bound("ctrl+shift+v"),
+        Some(Action::Plain(ActionId::PasteAround))
+    );
     assert_eq!(bound("ctrl+z"), Some(Action::Plain(ActionId::Undo)));
     assert_eq!(bound("ctrl+y"), Some(Action::Plain(ActionId::Redo)));
     assert_eq!(bound("ctrl+w"), Some(Action::Plain(ActionId::CloseTab)));

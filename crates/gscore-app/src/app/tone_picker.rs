@@ -344,6 +344,7 @@ fn table_row(ui: &mut egui::Ui, row: &PickerRow, reveal: Option<&str>) -> bool {
             detail: None,
             swatch: None,
             selected: row.selected,
+            draggable: false,
             accessible: &label,
             hint: &row.hint,
         },

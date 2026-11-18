@@ -67,8 +67,10 @@ ctrl+Delete = delete_measure
 
 ctrl+a = select_all
 ctrl+c = copy
+ctrl+shift+c = copy_all_tracks
 ctrl+x = cut
 ctrl+v = paste
+ctrl+shift+v = paste_around
 ctrl+z = undo
 ctrl+y = redo
 

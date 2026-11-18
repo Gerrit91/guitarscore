@@ -6350,3 +6350,53 @@ Tests: dragging the edge widens the column and the settings keep it.
 - Tests: `a_single_click_on_a_track_name_in_the_grid_does_not_open_the_rename_window` and
   `a_double_click_on_a_track_name_in_the_grid_opens_the_rename_window` (renames through
   the window's field); no snapshot changes.
+
+## 2026-11-18 — Sections: click to select, drag to swap, and bars copied across tracks
+
+- A click on a section's name in the song grid's master row selects all its bars in every
+  track and puts the cursor on the first, like the track panel's section rows do; a
+  shift-click extends the selection to that section.
+- Dragging a section's name onto another section swaps the two sections' bars, every track
+  and staff, with their names and colors: the earlier block goes last, the later first,
+  and sections between them stay in the middle. It is one undo step, and the dragged
+  section is selected where it went. While dragging, both sections are marked in the
+  master row.
+- Shift+Up/Down after a section's selection (every track) narrows it to the cursor's
+  track; the other direction takes in every track again. Before, both keys did nothing
+  because there is nothing above or below every track.
+- Ctrl+C then Ctrl+V with the selection still on the copied bars duplicates them right
+  after it, adding bars at the song's end when needed, and selects the copy. A moved
+  selection or cursor still pastes over the bars there.
+- New `copy_all_tracks` (Ctrl+Shift+C) copies the selected bars from every track even when
+  the selection is one track's (the score's bar selections are one track's).
+  `paste_around` (Ctrl+Shift+V) asks in a small dialog whether the copied bars go before
+  or after the selection, inserting them as bars; with notes or beats on the clipboard it
+  pastes as before.
+- Both are in the Edit menu, and the grid shows the editor's measure selection after a
+  paste (the pasted bars stay selected).
+- Tests: the master-row click and shift-click, the drag swap (editor and through the
+  grid), Shift+Up/Down narrowing, duplicate-on-paste (editor and app, two tracks),
+  copy-all-tracks and the paste dialog (editor and app, with a snapshot of the dialog),
+  the key map's new bindings.
+
+## 2026-11-18 — Section drags clear the selection, and work in the Song tab too
+
+- Starting a drag of a section in the grid's master row drops the selection first, so the
+  old selection is not marked alongside the section being dragged; the dragged section
+  (and the one it is over) stay marked while it moves.
+- The Song tab's section table takes the same drag: dragging a row onto another swaps the
+  two sections' bars, exactly as in the grid, and clears any selection while dragging.
+  The rows are click-and-drag now; the tone presets' rows keep their click-only sense.
+- Tests: `starting_a_section_drag_in_the_master_row_drops_the_selection` and
+  `dragging_a_section_row_in_the_song_tab_swaps_the_sections`.
+
+## 2026-11-18 — The paste dialog takes a bar number and can overwrite
+
+- Ctrl+Shift+V's dialog now asks *where* the copied bars go (before the selection, after
+  it, or at a bar typed in) and *how*: add bars (the song moves right) or overwrite the
+  bars at that place. Overwriting still adds the bars a paste past the song's end needs;
+  every case is one undo step, and the pasted bars end up selected.
+- Tests: `pasting_over_bars_replaces_them_and_only_grows_the_song_at_its_end` (editor) and
+  `the_paste_dialog_pastes_at_a_typed_bar_and_can_overwrite` (the app types bar 6 and
+  overwrites); the dialog's snapshot shows the choices.
+
