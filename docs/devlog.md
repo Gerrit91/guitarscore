@@ -6287,3 +6287,14 @@ Tests: dragging the edge widens the column and the settings keep it.
 - Reproduced in a `rust:1.99.1` container with lavapipe: without the lock one of three
   runs segfaulted, with it twelve of twelve passed. The crash surfaced on the
   `speed-accent` branch but is unrelated to its toolbar change.
+
+## 2026-11-18 — Ctrl+W closes the active tab
+
+- A new action `close_tab` (File menu, Ctrl+W) closes the active tab the way its close
+  icon does: a tab with unsaved changes asks first (Save / Discard changes / Cancel), and
+  closing the last tab leaves the empty workspace. It works without a song too, like the
+  other file actions. The built-in keymap now carries `ctrl+w = close_tab`.
+- Note: browsers reserve Ctrl+W for closing their own tab, so the web build never sees
+  the key; the File menu entry works there.
+- Test: `ctrl_w_closes_the_active_tab_after_asking_about_changes` in `test_editing`, plus
+  the built-in-keymap check in `test_keymap`.
