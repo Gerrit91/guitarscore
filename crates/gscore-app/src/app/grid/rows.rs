@@ -181,9 +181,6 @@ fn track_header(
     });
     let painter = ui.painter().clone();
     let visuals = ui.visuals().clone();
-    if index % 2 == 1 {
-        painter.rect_filled(rect, 0.0, visuals.faint_bg_color);
-    }
     if index == view.shown_track {
         painter.rect_filled(rect, 3.0, visuals.selection.bg_fill.gamma_multiply(0.18));
     }
