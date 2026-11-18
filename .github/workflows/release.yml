@@ -234,7 +234,7 @@ jobs:
   build-macos:
     name: Build macOS (universal)
     needs: soundfont
-    runs-on: macos-latest
+    runs-on: macos-26
     steps:
       - uses: actions/checkout@v7
 
