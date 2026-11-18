@@ -264,6 +264,8 @@ pub enum ActionId {
     SaveAs,
     /// Open the settings window.
     OpenSettings,
+    /// Close the active tab (asking about unsaved changes first).
+    CloseTab,
     /// Quit the app (asking about unsaved changes first).
     Quit,
 }
@@ -698,6 +700,7 @@ pub const ACTIONS: &[ActionInfo] = &[
     info(ActionId::OpenFile, "open_file", "Open…"),
     info(ActionId::SaveAs, "save_as", "Save As…"),
     info(ActionId::OpenSettings, "open_settings", "Settings…"),
+    info(ActionId::CloseTab, "close_tab", "Close tab"),
     info(ActionId::Quit, "quit", "Quit"),
 ];
 
@@ -774,6 +777,6 @@ mod tests {
             );
         }
         assert_eq!(ActionId::from_id("no_such_action"), None);
-        assert_eq!(ACTIONS.len(), 126, "one entry per ActionId variant");
+        assert_eq!(ACTIONS.len(), 127, "one entry per ActionId variant");
     }
 }

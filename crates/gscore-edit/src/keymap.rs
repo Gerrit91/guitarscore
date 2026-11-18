@@ -78,6 +78,7 @@ ctrl+shift+s = save_as
 ctrl+n = new_song
 ctrl+o = open_file
 ctrl+, = open_settings
+ctrl+w = close_tab
 ctrl+q = quit
 H = show_history
 

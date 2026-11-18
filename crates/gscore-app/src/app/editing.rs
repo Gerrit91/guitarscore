@@ -243,6 +243,13 @@ impl GuitarScoreApp {
                     ctx.request_repaint();
                     return;
                 }
+                // Like the tab's close icon: unsaved changes are asked about first, and
+                // closing the last tab leaves an empty workspace.
+                ActionId::CloseTab => {
+                    self.close_tab(self.active);
+                    ctx.request_repaint();
+                    return;
+                }
                 // Like the window's close button: unsaved changes are asked about first.
                 // A browser tab is closed by the browser.
                 ActionId::Quit => {
@@ -1098,6 +1105,7 @@ fn needs_no_song(action: Action) -> bool {
             ActionId::NewSong
                 | ActionId::OpenFile
                 | ActionId::OpenSettings
+                | ActionId::CloseTab
                 | ActionId::ShowHistory
                 | ActionId::Quit
                 | ActionId::ZoomIn

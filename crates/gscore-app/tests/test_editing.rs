@@ -209,6 +209,31 @@ fn plus_typed_with_or_without_shift_shortens_the_note() {
 }
 
 #[test]
+fn ctrl_w_closes_the_active_tab_after_asking_about_changes() {
+    let (dir, file) = scratch_copy("note_lengths.gp", "close_tab");
+    let mut harness = app_with(&file);
+    // A change: ctrl+w asks first, and Cancel keeps the tab open.
+    type_char(&mut harness, "3", Modifiers::NONE);
+    assert!(harness.state().document().unwrap().is_dirty());
+    harness.key_press_modifiers(Modifiers::COMMAND, Key::W);
+    harness.run();
+    assert!(harness.state().has_dialog());
+    assert_eq!(harness.state().tab_count(), 1);
+    harness.get_by_label("Cancel").click();
+    harness.run();
+    assert_eq!(harness.state().tab_count(), 1);
+
+    // Discarding the change closes the tab, leaving an empty workspace.
+    harness.key_press_modifiers(Modifiers::COMMAND, Key::W);
+    harness.run();
+    harness.get_by_label("Discard changes").click();
+    harness.run();
+    assert_eq!(harness.state().tab_count(), 0);
+    assert!(harness.state().document().is_none());
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
 fn ctrl_s_saves_a_gp_file_in_place_with_a_backup() {
     let (dir, file) = scratch_copy("steel_guitar_dadgad.gp", "save");
     let mut harness = app_with(&file);
