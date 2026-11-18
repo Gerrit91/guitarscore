@@ -222,6 +222,7 @@ This is the heart of the project. List the actions you do constantly in Guitar P
 | `clear_note` | remove the note on the cursor's string | | unbound |
 | `previous_measure` / `next_measure` | cursor to the first beat of the previous/next bar | Ctrl+Left / Ctrl+Right | |
 | `save` | save the file | ctrl+s | |
+| `close_tab` | close the active tab (asking about unsaved changes) | ctrl+w | Leaves an empty workspace when the last tab closes |
 | `edit_beat_text` | text written above the current beat | t | the dialog's text field takes the keyboard at once (Guitar Pro's shortcut) |
 
 ## 8. Sound plan

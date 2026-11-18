@@ -118,6 +118,11 @@ impl GuitarScoreApp {
                     self.open_settings_window();
                     ui.close();
                 }
+                if self.action_button(ui, ActionId::CloseTab, self.tabs.get(self.active).is_some())
+                {
+                    self.close_tab(self.active);
+                    ui.close();
+                }
                 // A browser tab is closed by the browser, not from the page.
                 if cfg!(not(target_arch = "wasm32")) {
                     ui.separator();
