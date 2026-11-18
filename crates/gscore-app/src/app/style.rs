@@ -43,6 +43,9 @@ pub(crate) struct Tokens {
     pub grid: Color32,
     /// Every other row of the song grid, when its stripes are on.
     pub grid_stripe: Color32,
+    /// The lines between the song grid's tiles: darker than the tiles, as in Guitar Pro,
+    /// so every bar and row reads as a tile of its own.
+    pub grid_line: Color32,
 }
 
 /// The app's tokens. The chrome is always dark (a soft charcoal, white icons and text),
@@ -61,8 +64,9 @@ pub(crate) const TOKENS: Tokens = Tokens {
     on_accent: Color32::WHITE,
     mute: Color32::from_rgb(0xE0, 0x4A, 0x45),
     solo: Color32::from_rgb(0xE9, 0xA8, 0x2E),
-    grid: Color32::from_rgb(0x37, 0x3A, 0x3F),
-    grid_stripe: Color32::from_rgb(0x41, 0x44, 0x4A),
+    grid: Color32::from_rgb(0x4A, 0x4D, 0x55),
+    grid_stripe: Color32::from_rgb(0x53, 0x56, 0x5F),
+    grid_line: Color32::from_rgb(0x2A, 0x2C, 0x31),
 };
 
 /// The red behind a window's or tab's close button while it is hovered.

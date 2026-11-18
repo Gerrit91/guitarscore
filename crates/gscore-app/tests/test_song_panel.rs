@@ -192,18 +192,18 @@ fn click_at(
     }
 }
 
-/// A spot in the grid's master row (under the one track) on `measure`.
-fn master_row(harness: &Harness<'static, GuitarScoreApp>, measure: usize) -> egui::Pos2 {
-    let grid = harness.get_by_label("Song grid").rect();
-    grid.left_top() + egui::vec2(24.0 * measure as f32 + 12.0, 24.0 + 12.0)
+/// A spot on the sections in the grid's ruler (under the measure numbers) on `measure`.
+fn section_band(harness: &Harness<'static, GuitarScoreApp>, measure: usize) -> egui::Pos2 {
+    let ruler = harness.get_by_label("Measure ruler").rect();
+    ruler.left_top() + egui::vec2(24.0 * measure as f32 + 12.0, 21.0)
 }
 
 #[test]
-fn a_click_on_a_section_in_the_grid_master_row_selects_all_its_bars() {
+fn a_click_on_a_section_in_the_grid_ruler_selects_all_its_bars() {
     let mut harness = song_with_sections(false);
     // A click on the Verse's name (bar 4, between its start at 3 and the Chorus) selects
     // the whole section, in every track, and puts the cursor on its first bar.
-    let pos = master_row(&harness, 3);
+    let pos = section_band(&harness, 3);
     click_at(&mut harness, pos, egui::Modifiers::NONE);
     assert_eq!(
         harness.state().selection(),
@@ -223,14 +223,15 @@ fn a_click_on_a_section_in_the_grid_master_row_selects_all_its_bars() {
             .measure,
         MeasureIndex::new(2)
     );
-    // A shift click on the Chorus's name extends the selection to it.
-    let pos = master_row(&harness, 6);
+    // A shift click on the Chorus's name extends the selection over the whole Chorus
+    // (bars 6-9).
+    let pos = section_band(&harness, 6);
     click_at(&mut harness, pos, egui::Modifiers::SHIFT);
     assert_eq!(
         harness.state().selection(),
         Some(MeasureSelection {
             anchor: 2,
-            focus: 6,
+            focus: 8,
             track: None,
         })
     );
@@ -439,9 +440,9 @@ fn dragging_a_section_name_onto_another_swaps_their_bars() {
     let chorus: Vec<Vec<(u8, u8)>> = (5..=8)
         .map(|measure| notes_in(&harness, 0, measure))
         .collect();
-    // Drag the Verse's name in the master row onto the Chorus's.
-    let from = master_row(&harness, 3);
-    let to = master_row(&harness, 6);
+    // Drag the Verse's name in the ruler onto the Chorus's.
+    let from = section_band(&harness, 3);
+    let to = section_band(&harness, 6);
     harness.hover_at(from);
     harness.run();
     harness.drag_at(from);
@@ -568,10 +569,10 @@ fn dragging_a_section_row_in_the_song_tab_swaps_the_sections() {
 }
 
 #[test]
-fn starting_a_section_drag_in_the_master_row_drops_the_selection() {
+fn starting_a_section_drag_in_the_ruler_drops_the_selection() {
     let mut harness = song_with_sections(false);
-    // Select the Verse from the master row, then drag the Chorus.
-    let verse = master_row(&harness, 3);
+    // Select the Verse from the ruler, then drag the Chorus.
+    let verse = section_band(&harness, 3);
     click_at(&mut harness, verse, egui::Modifiers::NONE);
     assert_eq!(
         harness.state().selection(),
@@ -581,8 +582,8 @@ fn starting_a_section_drag_in_the_master_row_drops_the_selection() {
             track: None,
         })
     );
-    let from = master_row(&harness, 6);
-    let to = master_row(&harness, 3);
+    let from = section_band(&harness, 6);
+    let to = section_band(&harness, 3);
     harness.hover_at(from);
     harness.run();
     harness.drag_at(from);
@@ -835,6 +836,49 @@ fn dragging_the_selected_bars_moves_them_by_as_many_bars() {
     harness.run();
     for (measure, notes) in bars.iter().enumerate() {
         assert_eq!(&notes_in(&harness, 0, measure), notes);
+    }
+}
+
+#[test]
+fn while_playing_the_hidden_grid_selection_cannot_be_dragged() {
+    // Plays a sine-wave SoundFont on the default audio device; skipped where there is none.
+    let dir = std::env::temp_dir().join(format!("gscore-grid-playing-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("sine.sf2");
+    std::fs::write(&path, gscore_audio::testing::sine_soundfont("Sine")).unwrap();
+    let mut harness = song_with_sections(false);
+    harness.state_mut().playback_mut().use_soundfont(path);
+    let bars: Vec<Vec<(u8, u8)>> = (0..9)
+        .map(|measure| notes_in(&harness, 0, measure))
+        .collect();
+    let (two, three) = (track_row(&harness, 2), track_row(&harness, 3));
+    drag_in_grid(&mut harness, two, three);
+    assert!(harness.state().selection().is_some());
+
+    harness.state_mut().play_pause();
+    let started = Instant::now();
+    while harness.state().playback().state() != gscore_play::PlayState::Playing {
+        if let Some(notice) = harness.state().notice() {
+            eprintln!("skipped: no usable audio device ({notice})");
+            return;
+        }
+        assert!(started.elapsed() < Duration::from_secs(10), "did not start");
+        harness.step();
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    // The selection stays (a loop plays it) but is not shown, so a drag from its bars
+    // does not move them, as the score hides its selection while playing.
+    let seven = track_row(&harness, 7);
+    drag_in_grid(&mut harness, three, seven);
+    harness.state_mut().play_pause();
+    harness.run();
+    for (measure, notes) in bars.iter().enumerate() {
+        assert_eq!(
+            &notes_in(&harness, 0, measure),
+            notes,
+            "bar {}",
+            measure + 1
+        );
     }
 }
 
