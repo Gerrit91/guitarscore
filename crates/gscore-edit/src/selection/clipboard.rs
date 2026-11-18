@@ -8,7 +8,7 @@ use gscore_model::{
 };
 
 use super::paste::{paste_beats, paste_measures};
-use super::{BeatSpot, Selection};
+use super::{BeatSpot, MAX_PASTE_COPIES, PasteOptions, Selection};
 use crate::command::Command;
 use crate::cursor::Cursor;
 use crate::editor::EditError;
@@ -35,6 +35,8 @@ pub(crate) struct BeatClip {
     pub(super) notes: Vec<NoteClip>,
     pub(super) effects: Vec<BeatEffect>,
     pub(super) dynamic: Option<Dynamic>,
+    /// The text written above the beat.
+    pub(super) text: String,
 }
 
 /// One copied measure across every voice of one track.
@@ -255,20 +257,44 @@ impl TabEditor {
     /// Inserts the copied bars at `at` (before the bar there; the song's end adds them at
     /// the end), in every track, as one undo step. The pasted bars are selected.
     pub fn paste_measures_inserting(&mut self, at: MeasureIndex) -> Result<Outcome, EditError> {
-        self.paste_measures_at(at, true)
+        self.paste_measures_inserting_with(at, PasteOptions::default())
+    }
+
+    /// [`TabEditor::paste_measures_inserting`] with `options`: how many times the bars are
+    /// pasted, and which of their attributes come along.
+    pub fn paste_measures_inserting_with(
+        &mut self,
+        at: MeasureIndex,
+        options: PasteOptions,
+    ) -> Result<Outcome, EditError> {
+        self.paste_measures_at(at, true, options)
     }
 
     /// Puts the copied bars at `at` over the bars already there (the song grows only when
     /// the paste runs past its end), in every track, as one undo step. The pasted bars are
     /// selected.
     pub fn paste_measures_overwriting(&mut self, at: MeasureIndex) -> Result<Outcome, EditError> {
-        self.paste_measures_at(at, false)
+        self.paste_measures_overwriting_with(at, PasteOptions::default())
     }
 
-    /// [`TabEditor::paste_measures_inserting`] or
-    /// [`TabEditor::paste_measures_overwriting`]: bars are added at `at` (shifting the
+    /// [`TabEditor::paste_measures_overwriting`] with `options`.
+    pub fn paste_measures_overwriting_with(
+        &mut self,
+        at: MeasureIndex,
+        options: PasteOptions,
+    ) -> Result<Outcome, EditError> {
+        self.paste_measures_at(at, false, options)
+    }
+
+    /// [`TabEditor::paste_measures_inserting_with`] or
+    /// [`TabEditor::paste_measures_overwriting_with`]: bars are added at `at` (shifting the
     /// rest) when `insert`, else written over the bars there.
-    fn paste_measures_at(&mut self, at: MeasureIndex, insert: bool) -> Result<Outcome, EditError> {
+    fn paste_measures_at(
+        &mut self,
+        at: MeasureIndex,
+        insert: bool,
+        options: PasteOptions,
+    ) -> Result<Outcome, EditError> {
         let Clipboard::Measures { staves, .. } = self.clipboard.clone() else {
             return Err(EditError::NothingToPaste);
         };
@@ -276,11 +302,13 @@ impl TabEditor {
         if count == 0 {
             return Err(EditError::NothingToPaste);
         }
+        let options = options.with_copies(options.copies.clamp(1, MAX_PASTE_COPIES));
+        let total = count.saturating_mul(options.copies);
         let at = MeasureIndex::new(at.get().min(self.song().measure_count()));
         let mut commands = Vec::new();
         let mut target = self.song().clone();
         if insert {
-            for offset in 0..count {
+            for offset in 0..total {
                 let insert = Command::InsertMeasure {
                     measure: MeasureIndex::new(at.get().saturating_add(offset)),
                 };
@@ -289,7 +317,7 @@ impl TabEditor {
             }
         } else {
             // Overwriting still adds the bars a paste past the end needs.
-            while target.measure_count() < at.get().saturating_add(count) {
+            while target.measure_count() < at.get().saturating_add(total) {
                 let insert = Command::InsertMeasure {
                     measure: MeasureIndex::new(target.measure_count()),
                 };
@@ -297,7 +325,7 @@ impl TabEditor {
                 commands.push(insert);
             }
         }
-        commands.extend(paste_measures(&target, at, &staves)?);
+        commands.extend(paste_measures(&target, at, &staves, options)?);
         let track = match staves.as_slice() {
             [(track, _, _)] => Some(*track),
             _ => None,
@@ -312,7 +340,7 @@ impl TabEditor {
         }
         self.selection = Some(Selection::Measures {
             anchor: at,
-            focus: MeasureIndex::new(at.get().saturating_add(count.saturating_sub(1))),
+            focus: MeasureIndex::new(at.get().saturating_add(total.saturating_sub(1))),
             track,
         });
         self.execute(Command::Batch { commands }, cursor, false)
@@ -474,7 +502,12 @@ impl TabEditor {
                     let _ = insert.apply(&mut target).map_err(EditError::Model)?;
                     commands.push(insert);
                 }
-                commands.extend(paste_measures(&target, first, &staves)?);
+                commands.extend(paste_measures(
+                    &target,
+                    first,
+                    &staves,
+                    PasteOptions::default(),
+                )?);
                 let mut cursor = Cursor {
                     measure: first,
                     beat: gscore_model::BeatIndex::new(0),
@@ -654,6 +687,7 @@ fn beat_clip(beat: &BeatView<'_>) -> Result<Option<BeatClip>, EditError> {
         notes,
         effects: beat_effects(beat),
         dynamic: beat.dynamic(),
+        text: beat.text().to_owned(),
     }))
 }
 

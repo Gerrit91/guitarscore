@@ -2,7 +2,7 @@
 //! at a bar typed in — either adding bars or overwriting the ones there.
 
 use egui::{Margin, RichText, vec2};
-use gscore_edit::{Action, ActionId};
+use gscore_edit::{Action, ActionId, MAX_PASTE_COPIES, PasteOptions};
 use gscore_model::MeasureIndex;
 
 use super::GuitarScoreApp;
@@ -36,6 +36,16 @@ pub(super) struct PasteAround {
     bar: usize,
     /// Write the bars over the ones at the place instead of adding them.
     overwrite: bool,
+    /// How many times the copied bars are pasted.
+    copies: usize,
+    /// Take the copied bars' time signatures.
+    time_signatures: bool,
+    /// Take their tempo changes.
+    tempo: bool,
+    /// Take their section markers.
+    sections: bool,
+    /// Take their beat texts.
+    texts: bool,
     /// Where the window is, remembered while it is open.
     pos: Option<egui::Pos2>,
 }
@@ -72,6 +82,11 @@ impl GuitarScoreApp {
             place: Place::After,
             bar: end.saturating_add(2).min(measure_count.max(1)),
             overwrite: false,
+            copies: 1,
+            time_signatures: true,
+            tempo: true,
+            sections: true,
+            texts: true,
             pos: None,
         });
     }
@@ -83,7 +98,7 @@ impl GuitarScoreApp {
         };
         let title = "Paste bars";
         let width = 400.0;
-        let size = vec2(width + 32.0, 300.0);
+        let size = vec2(width + 32.0, 390.0);
         let pos = *dialog
             .pos
             .get_or_insert_with(|| style::centered_window_pos(ctx, size));
@@ -138,6 +153,35 @@ impl GuitarScoreApp {
                         "Write the copied bars over the bars at that place, in every track; \
                          off, bars are added and the rest of the song moves right",
                     );
+                    ui.add_space(6.0);
+                    ui.horizontal(|ui| {
+                        ui.label("Copies");
+                        let response = ui.add(
+                            egui::DragValue::new(&mut dialog.copies)
+                                .range(1..=MAX_PASTE_COPIES)
+                                .speed(0.2),
+                        );
+                        ui.ctx().accesskit_node_builder(response.id, |node| {
+                            node.set_label("Paste copies");
+                        });
+                        ui.label(
+                            RichText::new(format!(
+                                "({} bars)",
+                                dialog.count.saturating_mul(dialog.copies)
+                            ))
+                            .weak(),
+                        );
+                    });
+                    ui.add_space(4.0);
+                    ui.label(RichText::new("Include").weak());
+                    ui.horizontal(|ui| {
+                        ui.checkbox(&mut dialog.time_signatures, "Time signatures");
+                        ui.checkbox(&mut dialog.tempo, "Tempo");
+                    });
+                    ui.horizontal(|ui| {
+                        ui.checkbox(&mut dialog.sections, "Sections");
+                        ui.checkbox(&mut dialog.texts, "Texts");
+                    });
                     ui.add_space(8.0);
                     ui.horizontal(|ui| {
                         let tokens = style::tokens(ui);
@@ -161,12 +205,19 @@ impl GuitarScoreApp {
                 Place::AtBar => dialog.bar.saturating_sub(1),
             };
             let at = MeasureIndex::new(at.min(dialog.measure_count));
+            let options = PasteOptions {
+                copies: dialog.copies,
+                time_signatures: dialog.time_signatures,
+                tempo: dialog.tempo,
+                sections: dialog.sections,
+                texts: dialog.texts,
+            };
             let pasted = self.document_mut().map(|document| {
                 let editor = document.editor_mut();
                 if dialog.overwrite {
-                    editor.paste_measures_overwriting(at)
+                    editor.paste_measures_overwriting_with(at, options)
                 } else {
-                    editor.paste_measures_inserting(at)
+                    editor.paste_measures_inserting_with(at, options)
                 }
             });
             match pasted {

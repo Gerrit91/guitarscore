@@ -6,7 +6,8 @@
 #![allow(unused_crate_dependencies)]
 
 use gscore_edit::{
-    Action, ActionId, BeatSpot, Command, Cursor, Keymap, Outcome, Request, Selection, TabEditor,
+    Action, ActionId, BeatSpot, Command, Cursor, Keymap, Outcome, PasteOptions, Request, Selection,
+    TabEditor,
 };
 use gscore_model::testing::{self, GUITAR_6};
 use gscore_model::{
@@ -882,4 +883,150 @@ fn pasting_over_bars_replaces_them_and_only_grows_the_song_at_its_end() {
     // One undo step puts the three bars back.
     plain(&mut e, ActionId::Undo);
     assert_eq!(e.song().measure_count(), 3);
+}
+
+#[test]
+fn pasting_bars_repeats_them_and_takes_only_the_attributes_asked_for() {
+    let mut e = editor(3);
+    // The source bar carries a 3/4 signature, a tempo, a section and a beat text.
+    e.execute_command(Command::SetTimeSignature {
+        measure: MeasureIndex::new(0),
+        numerator: 3,
+        denominator: 4,
+    })
+    .unwrap();
+    e.execute_command(Command::SetMeasureTempo {
+        measure: MeasureIndex::new(0),
+        tempo: 90,
+    })
+    .unwrap();
+    e.execute_command(Command::SetSection {
+        measure: MeasureIndex::new(0),
+        title: "Source".to_owned(),
+        color: gscore_model::Section::DEFAULT_COLOR,
+    })
+    .unwrap();
+    e.execute_command(Command::SetBeatText {
+        at: at(0, 0),
+        text: "Source text".to_owned(),
+    })
+    .unwrap();
+    e.execute_command(Command::SetFret {
+        at: at(0, 0),
+        string: StringNumber::new(1).unwrap(),
+        fret: gscore_model::Fret::new(5).unwrap(),
+    })
+    .unwrap();
+    // The target bar has a signature, tempo, section and text of its own.
+    e.execute_command(Command::SetTimeSignature {
+        measure: MeasureIndex::new(2),
+        numerator: 4,
+        denominator: 4,
+    })
+    .unwrap();
+    e.execute_command(Command::SetMeasureTempo {
+        measure: MeasureIndex::new(2),
+        tempo: 120,
+    })
+    .unwrap();
+    e.execute_command(Command::SetSection {
+        measure: MeasureIndex::new(2),
+        title: "Target".to_owned(),
+        color: gscore_model::Section::DEFAULT_COLOR,
+    })
+    .unwrap();
+    e.execute_command(Command::SetBeatText {
+        at: at(2, 0),
+        text: "Target text".to_owned(),
+    })
+    .unwrap();
+    e.set_selection(Some(Selection::Measures {
+        anchor: MeasureIndex::new(0),
+        focus: MeasureIndex::new(0),
+        track: None,
+    }));
+    plain(&mut e, ActionId::Copy);
+    // Without the attributes, only the music comes over.
+    let bare = PasteOptions {
+        time_signatures: false,
+        tempo: false,
+        sections: false,
+        texts: false,
+        ..PasteOptions::default()
+    };
+    assert!(matches!(
+        e.paste_measures_overwriting_with(MeasureIndex::new(2), bare),
+        Ok(Outcome::Edited)
+    ));
+    assert_eq!(notes_at(&e, at(2, 0)), vec![(1, 5)]);
+    let measure = e
+        .song()
+        .track(TrackIndex::new(0))
+        .and_then(|track| track.measure(MeasureIndex::new(2)))
+        .expect("the target bar");
+    assert_eq!(
+        measure
+            .time_signature()
+            .map(|signature| signature.numerator()),
+        Ok(4)
+    );
+    assert_eq!(e.song().tempo_change(MeasureIndex::new(2)), Some(120));
+    assert_eq!(
+        e.song().section(MeasureIndex::new(2)).map(|s| s.title),
+        Some("Target".to_owned())
+    );
+    // The bars are replaced, so without the texts the copied bars' texts are not taken
+    // and the old text goes with the bar it was on.
+    assert_eq!(
+        e.song().beat(at(2, 0)).map(|beat| beat.text().to_owned()),
+        Some(String::new())
+    );
+    // With them, the bar's own headers and text come too.
+    assert!(matches!(
+        e.paste_measures_overwriting_with(MeasureIndex::new(2), PasteOptions::default()),
+        Ok(Outcome::Edited)
+    ));
+    let measure = e
+        .song()
+        .track(TrackIndex::new(0))
+        .and_then(|track| track.measure(MeasureIndex::new(2)))
+        .expect("the target bar");
+    assert_eq!(
+        measure
+            .time_signature()
+            .map(|signature| signature.numerator()),
+        Ok(3)
+    );
+    assert_eq!(e.song().tempo_change(MeasureIndex::new(2)), Some(90));
+    assert_eq!(
+        e.song().section(MeasureIndex::new(2)).map(|s| s.title),
+        Some("Source".to_owned())
+    );
+    assert_eq!(
+        e.song().beat(at(2, 0)).map(|beat| beat.text().to_owned()),
+        Some("Source text".to_owned())
+    );
+    // Three copies of the bar, inserted after the second: the song grows by three.
+    e.set_selection(Some(Selection::Measures {
+        anchor: MeasureIndex::new(0),
+        focus: MeasureIndex::new(0),
+        track: None,
+    }));
+    plain(&mut e, ActionId::Copy);
+    assert!(matches!(
+        e.paste_measures_inserting_with(
+            MeasureIndex::new(1),
+            PasteOptions::default().with_copies(3)
+        ),
+        Ok(Outcome::Edited)
+    ));
+    assert_eq!(e.song().measure_count(), 6);
+    for measure in 1..=3 {
+        assert_eq!(
+            notes_at(&e, at(measure, 0)),
+            vec![(1, 5)],
+            "the copy at bar {}",
+            measure.saturating_add(1)
+        );
+    }
 }

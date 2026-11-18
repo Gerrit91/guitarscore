@@ -6,8 +6,8 @@ use gscore_model::{
     VoiceIndex,
 };
 
-use super::BeatSpot;
 use super::clipboard::{BeatClip, MeasureClip};
+use super::{BeatSpot, MAX_PASTE_COPIES, PasteOptions};
 use crate::command::Command;
 use crate::editor::EditError;
 
@@ -55,7 +55,15 @@ fn beat_effect_is_off(effect: &BeatEffect) -> bool {
 
 /// Commands that make the beat at `at` match `clip`. `inserted` says the beat was just
 /// inserted (a rest of the right length without effects); otherwise it is overwritten.
-fn write_beat(at: BeatPosition, clip: &BeatClip, inserted: bool, commands: &mut Vec<Command>) {
+/// `text` says the beat's text comes along (bars pasted without their texts keep the
+/// target's).
+fn write_beat(
+    at: BeatPosition,
+    clip: &BeatClip,
+    inserted: bool,
+    text: bool,
+    commands: &mut Vec<Command>,
+) {
     if !inserted {
         commands.push(Command::SetDuration {
             at,
@@ -99,6 +107,13 @@ fn write_beat(at: BeatPosition, clip: &BeatClip, inserted: bool, commands: &mut 
         && !clip.notes.is_empty()
     {
         commands.push(Command::SetDynamic { at, dynamic });
+    }
+    // The text above the beat; an inserted beat has none to clear.
+    if text && (!inserted || !clip.text.is_empty()) {
+        commands.push(Command::SetBeatText {
+            at,
+            text: clip.text.clone(),
+        });
     }
     // An overwritten beat keeps its own effects unless every one is set.
     for effect in clip
@@ -158,7 +173,7 @@ pub(super) fn paste_beats(
                 });
                 existing = index.saturating_add(1);
             }
-            write_beat(target, clip, inserted, &mut commands);
+            write_beat(target, clip, inserted, true, &mut commands);
             last = BeatSpot {
                 measure,
                 beat: target.beat,
@@ -178,48 +193,58 @@ pub(super) fn paste_measures(
     song: &Song,
     start: MeasureIndex,
     staves: &[(TrackIndex, StaffIndex, Vec<MeasureClip>)],
+    options: PasteOptions,
 ) -> Result<Vec<Command>, EditError> {
     let count = staves.first().map_or(0, |(_, _, measures)| measures.len());
     if count == 0 {
         return Err(EditError::NothingToPaste);
     }
-    let end = start.get().saturating_add(count);
+    let copies = options.copies.clamp(1, MAX_PASTE_COPIES);
+    let total = count.saturating_mul(copies);
+    let end = start.get().saturating_add(total);
     if end > song.measure_count() {
         return Err(EditError::Unsupported(
             "paste measures inside the song; insert empty measures first".to_owned(),
         ));
     }
     let mut commands = Vec::new();
-    // The header data is the same in every track's and staff's copy: take the first's.
+    // The header data is the same in every track's and staff's copy: take the first's. The
+    // copied bars repeat `copies` times.
     for (offset, clip) in staves
         .first()
         .into_iter()
-        .flat_map(|(_, _, measures)| measures)
+        .flat_map(|(_, _, measures)| measures.iter().cycle().take(total))
         .enumerate()
     {
         let measure = MeasureIndex::new(start.get().saturating_add(offset));
-        commands.push(Command::SetTimeSignature {
-            measure,
-            numerator: clip.time_signature.numerator(),
-            denominator: clip.time_signature.denominator(),
-        });
-        if let Some(tempo) = clip.tempo {
+        if options.time_signatures {
+            commands.push(Command::SetTimeSignature {
+                measure,
+                numerator: clip.time_signature.numerator(),
+                denominator: clip.time_signature.denominator(),
+            });
+        }
+        if options.tempo
+            && let Some(tempo) = clip.tempo
+        {
             commands.push(Command::SetMeasureTempo { measure, tempo });
         }
-        match &clip.section {
-            Some(section) => commands.push(Command::SetSection {
-                measure,
-                title: section.title.clone(),
-                color: section.color,
-            }),
-            None => commands.push(Command::ClearSection { measure }),
+        if options.sections {
+            match &clip.section {
+                Some(section) => commands.push(Command::SetSection {
+                    measure,
+                    title: section.title.clone(),
+                    color: section.color,
+                }),
+                None => commands.push(Command::ClearSection { measure }),
+            }
         }
     }
     for (track_at, staff_at, measures) in staves {
         let Some(staff) = song.staff(*track_at, *staff_at) else {
             continue;
         };
-        for (offset, clip) in measures.iter().enumerate() {
+        for (offset, clip) in measures.iter().cycle().take(total).enumerate() {
             let measure = MeasureIndex::new(start.get().saturating_add(offset));
             let Some(target) = staff.measure(measure) else {
                 continue;
@@ -255,7 +280,7 @@ pub(super) fn paste_measures(
                         at,
                         duration: clip.duration,
                     });
-                    write_beat(at, clip, true, &mut commands);
+                    write_beat(at, clip, true, options.texts, &mut commands);
                 }
             }
         }

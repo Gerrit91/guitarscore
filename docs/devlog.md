@@ -6440,3 +6440,20 @@ Tests: dragging the edge widens the column and the settings keep it.
   new selection that starts inside the old one takes a click first.
 - Tests: `dragging_the_selected_bars_moves_them_by_as_many_bars` (notes, sections,
   selection, undo) and `a_drag_that_starts_outside_the_selection_still_selects`.
+
+## 2026-11-18 — Pasting bars several times, and choosing what comes along
+
+- The "Paste bars" dialog now takes a number of copies (1–64) and four "Include"
+  switches: time signatures, tempo changes, section markers and beat texts. A switch that
+  is off means that attribute is not taken from the copied bars: the target bars keep
+  their own time signature, tempo and section, and the copied beats bring no texts (the
+  target bars' beats are replaced, so their own texts go with them).
+- The editor has `PasteOptions` and `paste_measures_inserting_with` /
+  `paste_measures_overwriting_with`; the plain Ctrl+V and the other paste paths use the
+  defaults (one copy, everything). Beat texts are part of `BeatClip` now, so beat
+  copy/paste and bar paste carry them, and copies repeat per track and staff.
+- Tests: `pasting_bars_repeats_them_and_takes_only_the_attributes_asked_for` (signature,
+  tempo, section and text, then three copies) and
+  `the_paste_dialog_repeats_copies_and_leaves_attributes_out` (two copies, sections off);
+  the dialog's snapshot shows the new controls.
+

@@ -860,3 +860,57 @@ fn a_drag_that_starts_outside_the_selection_still_selects() {
         "nothing moved"
     );
 }
+
+#[test]
+fn the_paste_dialog_repeats_copies_and_leaves_attributes_out() {
+    let mut harness = song_with_sections(false);
+    harness.get_by_label("Song tab").click();
+    harness.run();
+    harness
+        .get_by_label("Select the bars of section Verse")
+        .click();
+    harness.run();
+    let verse: Vec<Vec<(u8, u8)>> = (2..=4)
+        .map(|measure| notes_in(&harness, 0, measure))
+        .collect();
+    harness.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::C);
+    harness.run();
+    let ctrl_shift = egui::Modifiers {
+        command: true,
+        shift: true,
+        ..egui::Modifiers::NONE
+    };
+    harness.key_press_modifiers(ctrl_shift, egui::Key::V);
+    harness.run();
+    // Two copies, without their section markers, after the selection (bars 6-8).
+    harness.get_by_label("Paste copies").click();
+    harness.run();
+    harness.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::A);
+    harness.get_by_label("Paste copies").type_text("2");
+    harness.run();
+    harness.key_press(egui::Key::Enter);
+    harness.run();
+    harness.get_by_label("Sections").click();
+    harness.run();
+    harness.get_by_label("Paste").click();
+    harness.run();
+    let song = harness.state().document().unwrap().song();
+    assert_eq!(
+        song.measure_count(),
+        15,
+        "nine bars and two copies of three"
+    );
+    // The copies carry no section marker; the Chorus moved right with its own.
+    assert!(song.section(MeasureIndex::new(5)).is_none());
+    assert_eq!(
+        song.section(MeasureIndex::new(11))
+            .map(|section| section.title),
+        Some("Chorus".to_owned())
+    );
+    for copy in 0..2 {
+        for (index, notes) in verse.iter().enumerate() {
+            let measure = 5 + copy * verse.len() + index;
+            assert_eq!(&notes_in(&harness, 0, measure), notes, "bar {measure}");
+        }
+    }
+}
