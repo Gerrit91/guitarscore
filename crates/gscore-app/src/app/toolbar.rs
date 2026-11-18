@@ -32,8 +32,28 @@ const TIME_WIDTH: f32 = 96.0;
 const MEASURE_WIDTH: f32 = 46.0;
 const TEMPO_WIDTH: f32 = 54.0;
 /// About the width of the transport's own buttons (navigation, play, metronome, count-in,
-/// loop), which come before the readout.
-const TRANSPORT_BUTTONS: f32 = 255.0;
+/// loop, and the count-in's options arrow), which come before the readout.
+const TRANSPORT_BUTTONS: f32 = 271.0;
+
+/// A slim arrow `height` high that opens a list beside the control left of it.
+fn dropdown_arrow(ui: &mut egui::Ui, height: f32) -> egui::Response {
+    let (rect, response) = ui.allocate_exact_size(vec2(16.0, height), Sense::click());
+    let visuals = ui.style().interact(&response);
+    if response.hovered() {
+        ui.painter().rect_filled(rect, 2.0, visuals.bg_fill);
+    }
+    let c = rect.center();
+    ui.painter().add(egui::Shape::convex_polygon(
+        vec![
+            egui::pos2(c.x - 4.0, c.y - 2.0),
+            egui::pos2(c.x + 4.0, c.y - 2.0),
+            egui::pos2(c.x, c.y + 3.0),
+        ],
+        visuals.fg_stroke.color,
+        egui::Stroke::NONE,
+    ));
+    response
+}
 
 /// How the score is zoomed without the toolbar. A trackpad pinch reaches the app only on
 /// macOS (winit reports the gesture on no other desktop), so it is named only there.
@@ -449,18 +469,27 @@ impl GuitarScoreApp {
             if metronome_clicked {
                 toggle_metronome = true;
             }
+            // The count-in switch, with a slim arrow beside it for its length and whether
+            // a loop is counted in again.
             let count_in_clicked = ui
-                .add_enabled_ui(has_song, |ui| {
-                    icons::toggle_button(
-                        ui,
-                        Icon::CountIn,
-                        "Count-in",
-                        "Clicks before playback starts (length in Settings › Metronome)",
-                        count_in,
-                    )
+                .scope(|ui| {
+                    ui.spacing_mut().item_spacing.x = 0.0;
+                    let clicked = ui
+                        .add_enabled_ui(has_song, |ui| {
+                            icons::toggle_button(
+                                ui,
+                                Icon::CountIn,
+                                "Count-in",
+                                "Clicks before playback starts",
+                                count_in,
+                            )
+                        })
+                        .inner
+                        .clicked();
+                    self.count_in_options(ui);
+                    clicked
                 })
-                .inner
-                .clicked();
+                .inner;
             if count_in_clicked {
                 toggle_count_in = true;
             }
@@ -533,6 +562,39 @@ impl GuitarScoreApp {
         ui.min_rect().right() - start
     }
 
+    /// The slim arrow beside the count-in switch and the menu it opens: the count-in's
+    /// length and whether a loop is counted in again (the same as Settings › Metronome).
+    fn count_in_options(&mut self, ui: &mut egui::Ui) {
+        let height = icons::BUTTON.y;
+        let arrow = dropdown_arrow(ui, height);
+        ui.ctx()
+            .accesskit_node_builder(arrow.id, |node| node.set_label("Count-in options"));
+        let arrow = arrow.on_hover_text("Count-in length, and counting in a loop again");
+        let mut bars = self.playback.count_in_bars();
+        let mut loops = self.playback.count_in_loops();
+        egui::Popup::menu(&arrow)
+            .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
+            .show(|ui| {
+                ui.set_min_width(200.0);
+                ui.label(RichText::new("Count-in length").weak());
+                for choice in 1..=gscore_play::MAX_COUNT_IN_BARS {
+                    ui.selectable_value(
+                        &mut bars,
+                        choice,
+                        super::settings_window::bars_label(choice),
+                    );
+                }
+                ui.separator();
+                ui.checkbox(&mut loops, "Count in again each time a loop starts over");
+            });
+        if bars != self.playback.count_in_bars() {
+            self.playback.set_count_in_bars(bars);
+        }
+        if loops != self.playback.count_in_loops() {
+            self.playback.set_count_in_loops(loops);
+        }
+    }
+
     /// The speed trainer's button, left of the speed: highlighted while the trainer is
     /// on; a click opens its settings.
     fn speed_trainer_button(&mut self, ui: &mut egui::Ui) {
@@ -571,22 +633,7 @@ impl GuitarScoreApp {
                 ui.spacing_mut().interact_size.x = 46.0;
                 let typed = ui.add(percent_value(&mut speed));
                 // A slim arrow beside the number opens the list of steps.
-                let height = ui.spacing().interact_size.y;
-                let (rect, list) = ui.allocate_exact_size(vec2(16.0, height), Sense::click());
-                let visuals = ui.style().interact(&list);
-                if list.hovered() {
-                    ui.painter().rect_filled(rect, 2.0, visuals.bg_fill);
-                }
-                let c = rect.center();
-                ui.painter().add(egui::Shape::convex_polygon(
-                    vec![
-                        egui::pos2(c.x - 4.0, c.y - 2.0),
-                        egui::pos2(c.x + 4.0, c.y - 2.0),
-                        egui::pos2(c.x, c.y + 3.0),
-                    ],
-                    visuals.fg_stroke.color,
-                    egui::Stroke::NONE,
-                ));
+                let list = dropdown_arrow(ui, ui.spacing().interact_size.y);
                 egui::Popup::menu(&list).show(|ui| {
                     for choice in crate::playback::SPEED_CHOICES {
                         if ui

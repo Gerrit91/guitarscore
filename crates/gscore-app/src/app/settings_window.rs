@@ -797,7 +797,7 @@ fn song_tab(ui: &mut Ui, window: &mut SettingsWindow, apply: &mut bool, close: &
 
 /// The autosave choices, as the combo box shows them.
 /// "1 bar", "2 bars", ...
-fn bars_label(bars: u8) -> String {
+pub(super) fn bars_label(bars: u8) -> String {
     if bars == 1 {
         "1 bar".to_owned()
     } else {
