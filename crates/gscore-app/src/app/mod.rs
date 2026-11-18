@@ -27,6 +27,7 @@ mod edit_staff;
 mod edit_staff_dialogs;
 mod editing;
 mod eq_editor;
+mod file_position;
 mod files;
 mod grace_editor;
 mod grid;
@@ -90,7 +91,7 @@ use gscore_session::FoundSession;
 use crate::document::Document;
 use crate::keys::KeyReader;
 use crate::playback::{Output, Playback};
-use crate::settings::{Settings, WindowState};
+use crate::settings::{FilePosition, Settings, WindowState};
 use crate::state::{ThemeChoice, ViewState};
 use crate::tasks::Tasks;
 use tab::Tab;
@@ -503,6 +504,27 @@ impl GuitarScoreApp {
             .active_file
             .clone()
             .or_else(|| settings.open_files.first().cloned());
+        // Where each open tab's cursor and selection are, so opening the file again returns
+        // there. The active tab goes first (it is the newest), the others keep their order.
+        let positions: Vec<FilePosition> = self
+            .tabs
+            .iter()
+            .filter_map(|tab| {
+                tab.document
+                    .reopen_path()
+                    .map(|path| FilePosition::of_tab(path, tab))
+            })
+            .collect();
+        for position in positions {
+            settings.remember_position(position);
+        }
+        if let Some(position) = self.tabs.get(self.active).and_then(|tab| {
+            tab.document
+                .reopen_path()
+                .map(|path| FilePosition::of_tab(path, tab))
+        }) {
+            settings.remember_position(position);
+        }
         settings.store_shortcuts(&self.keymap);
         // A browser cannot reopen a local path: there is nothing to restore at the next
         // start, and recent entries could not be opened either (the user picks the file
@@ -512,6 +534,7 @@ impl GuitarScoreApp {
             settings.open_files.clear();
             settings.active_file = None;
             settings.last_file = None;
+            settings.file_positions.clear();
             settings.recent_files.clear();
             settings.window = None;
             settings.keymap_path = None;

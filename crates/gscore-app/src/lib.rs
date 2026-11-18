@@ -50,8 +50,9 @@ pub use gscore_edit::Keymap;
 pub use playback::BROWSER_SOUNDFONT_NAME;
 pub use playback::{Heard, Output, Playback, SPEED_CHOICES, SPEED_RANGE, SpeedTrainer};
 pub use settings::{
-    DEFAULT_AUTOSAVE_SECONDS, MAX_OPEN_FILES, MAX_RECENT_FILES, MAX_SHAPE_PRESETS, PresetTone,
-    ReverbBus, Settings, ShapePreset, ShortcutSetting, WindowState,
+    DEFAULT_AUTOSAVE_SECONDS, FilePosition, FileSelection, MAX_FILE_POSITIONS, MAX_OPEN_FILES,
+    MAX_RECENT_FILES, MAX_SHAPE_PRESETS, PresetTone, ReverbBus, Settings, ShapePreset,
+    ShortcutSetting, WindowState,
 };
 pub use state::{MeasureSelection, ScoreView, ThemeChoice, ViewState, ZOOM_RANGE};
 

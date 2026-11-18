@@ -6298,3 +6298,21 @@ Tests: dragging the edge widens the column and the settings keep it.
   the key; the File menu entry works there.
 - Test: `ctrl_w_closes_the_active_tab_after_asking_about_changes` in `test_editing`, plus
   the built-in-keymap check in `test_keymap`.
+
+## 2026-11-18 — A file opens where its cursor and selection were left
+
+- `Settings.file_positions` (newest first, at most 64) keeps each file's cursor (track,
+  staff, measure, voice, beat, string), the shown track and its beat or measure selection.
+  Opening a file applies it after the tab exists; parts that no longer exist in the song
+  (a shorter file, an edited bar) are clamped or the selection is dropped. Restoring does
+  not count as making a selection, so Loop does not switch on by itself.
+- The place is written for every open tab whenever the settings are saved; a closed tab's
+  place is kept before it goes, so reopening it later still returns there. The browser
+  build keeps no paths and clears the list, like `open_files`.
+- Tests: `file_positions_keep_the_newest_place_of_each_file` (dedupe, cap),
+  `opening_a_file_returns_to_the_cursor_and_selection_it_was_left_at`,
+  `a_measure_selection_comes_back_to_the_grid_too`,
+  `a_stored_place_that_no_longer_exists_is_clamped_or_dropped`,
+  `the_settings_remember_where_each_open_tab_is`,
+  `closing_a_tab_keeps_its_place_for_the_next_open`, and the app-level
+  `reopening_a_file_returns_to_the_cursor_and_selection_it_was_left_at`.
