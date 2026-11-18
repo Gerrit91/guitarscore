@@ -67,9 +67,14 @@ impl SongMeasureOps for Song {
         for h in 0..self.measure_headers.len() {
             for t in 0..self.tracks.len() {
                 self.current_track = Some(t);
+                // Each track's measure carries its own copy of the header's signatures, as
+                // the GP6/GP7 import gives it: layout, playback and saving read these.
+                let header = item(&self.measure_headers, h, "measure header")?;
                 let mut m = Measure {
                     track_index: t,
                     header_index: h,
+                    time_signature: header.time_signature.clone(),
+                    key_signature: header.key_signature.clone(),
                     ..Default::default()
                 };
                 self.current_measure_number = Some(m.number);
