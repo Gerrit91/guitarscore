@@ -20,7 +20,10 @@ use std::time::{Duration, Instant};
 
 use egui_kittest::Harness;
 use egui_kittest::kittest::{NodeT as _, Queryable};
-use gscore_app::{GuitarScoreApp, Keymap, MAX_RECENT_FILES, Output, Settings, ThemeChoice};
+use gscore_app::{
+    FilePosition, FileSelection, GuitarScoreApp, Keymap, MAX_RECENT_FILES, Output, Settings,
+    ThemeChoice,
+};
 
 mod common;
 
@@ -75,6 +78,52 @@ fn a_file_given_at_start_opens_in_the_background() {
     let document = app.document().expect("a document");
     assert_eq!(document.display_title(), "Steel Guitar DADGAD");
     harness.get_by_label("1 measure, 1 track");
+}
+
+#[test]
+fn reopening_a_file_returns_to_the_cursor_and_selection_it_was_left_at() {
+    let path = testdata("basic/steel_guitar_dadgad.gp");
+    let settings = Settings {
+        file_positions: vec![FilePosition {
+            path: path.clone(),
+            measure: 0,
+            beat: 0,
+            string: 2,
+            selection: Some(FileSelection::Measures {
+                anchor: 0,
+                focus: 0,
+                track: Some(0),
+            }),
+            ..FilePosition::default()
+        }],
+        ..Settings::default()
+    };
+    let mut harness = Harness::builder()
+        .with_size(egui::vec2(1000.0, 700.0))
+        .build_eframe(|cc| {
+            GuitarScoreApp::with_settings(
+                &cc.egui_ctx,
+                Some(path),
+                Keymap::default(),
+                None,
+                settings.clone(),
+                None,
+            )
+        });
+    let started = Instant::now();
+    while harness.state().is_busy() {
+        assert!(
+            started.elapsed() < Duration::from_secs(30),
+            "opening timed out"
+        );
+        harness.step();
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    harness.run();
+    let editor = harness.state().document().expect("a document").editor();
+    assert_eq!(editor.cursor().string, 2);
+    assert!(editor.selection().is_some(), "the selection came back");
+    assert!(harness.state().selection().is_some(), "the grid shows it");
 }
 
 #[test]

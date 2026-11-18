@@ -706,6 +706,7 @@ mod tests {
     /// others.
     #[test]
     fn the_faces_match_their_snapshot() {
+        let _gpu = crate::test_support::lock_gpu();
         let (notes, wide) = super::super::edit_palette::faces();
         let mut faces: Vec<(Face<'static>, egui::Vec2)> = notes
             .into_iter()

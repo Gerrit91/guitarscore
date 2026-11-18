@@ -6248,6 +6248,16 @@ Tests: dragging the edge widens the column and the settings keep it.
 - Test: `a_section_scrolled_off_the_left_edge_still_marks_the_master_row` (scrolls a
   60-bar grid to its end, checks the section's line and title pixels in the master row).
 
+## 2026-11-18 — A speed other than the written tempo shows in blue
+
+- The playback speed in the toolbar now turns blue while it is anything but 100 % (the
+  owner's request): the number and the arrow beside it take the theme's accent color, so
+  a slowed-down or sped-up song is visible at a glance and not only by reading the number.
+  The knob is the number as shown (whole percent): 99.9 % still shows and reads as 100 %
+  and stays plain, so the color always matches what the control says.
+- `off_tempo` (unit test `a_speed_off_the_written_tempo_is_marked`); checked by hand on a
+  snapshot at 50 % (toolbar screenshot) and at 100 %.
+
 ## 2026-11-18 — A flaky audio test skips when the output cannot be heard
 
 - `a_jump_while_playing_is_where_stop_goes_back_to` failed in CI (one of 107) at "did not
@@ -6262,6 +6272,50 @@ Tests: dragging the edge widens the column and the settings keep it.
   read or the device opens becomes "the synthesizer failed unexpectedly" instead of a
   player that stays on "loading" with nothing to report. Test:
   `a_panic_in_the_synth_thread_becomes_an_error`.
+
+## 2026-11-18 — The library's snapshot unit tests render one GPU device at a time
+
+- CI's check job crashed with SIGSEGV in `cargo test -p gscore-app --lib`. The library's
+  five snapshot unit tests (`instrument`, `tile_faces`, `block_icons`, `updates` twice,
+  `desktop_menu`) each build a wgpu renderer, and with test threads they did so at the
+  same time; the runner's driver is Mesa's software Vulkan (lavapipe), where several
+  devices at once segfault the process. The integration tests fixed the same crash on
+  2026-11-14 with `tests/common::lock_gpu`; the library's tests never took that lock.
+- The new test-only `src/test_support.rs` has the same `lock_gpu`, and each of the six
+  tests holds it for its life (the `Harness` and its device are dropped before the next
+  test builds one).
+- Reproduced in a `rust:1.99.1` container with lavapipe: without the lock one of three
+  runs segfaulted, with it twelve of twelve passed. The crash surfaced on the
+  `speed-accent` branch but is unrelated to its toolbar change.
+
+## 2026-11-18 — Ctrl+W closes the active tab
+
+- A new action `close_tab` (File menu, Ctrl+W) closes the active tab the way its close
+  icon does: a tab with unsaved changes asks first (Save / Discard changes / Cancel), and
+  closing the last tab leaves the empty workspace. It works without a song too, like the
+  other file actions. The built-in keymap now carries `ctrl+w = close_tab`.
+- Note: browsers reserve Ctrl+W for closing their own tab, so the web build never sees
+  the key; the File menu entry works there.
+- Test: `ctrl_w_closes_the_active_tab_after_asking_about_changes` in `test_editing`, plus
+  the built-in-keymap check in `test_keymap`.
+
+## 2026-11-18 — A file opens where its cursor and selection were left
+
+- `Settings.file_positions` (newest first, at most 64) keeps each file's cursor (track,
+  staff, measure, voice, beat, string), the shown track and its beat or measure selection.
+  Opening a file applies it after the tab exists; parts that no longer exist in the song
+  (a shorter file, an edited bar) are clamped or the selection is dropped. Restoring does
+  not count as making a selection, so Loop does not switch on by itself.
+- The place is written for every open tab whenever the settings are saved; a closed tab's
+  place is kept before it goes, so reopening it later still returns there. The browser
+  build keeps no paths and clears the list, like `open_files`.
+- Tests: `file_positions_keep_the_newest_place_of_each_file` (dedupe, cap),
+  `opening_a_file_returns_to_the_cursor_and_selection_it_was_left_at`,
+  `a_measure_selection_comes_back_to_the_grid_too`,
+  `a_stored_place_that_no_longer_exists_is_clamped_or_dropped`,
+  `the_settings_remember_where_each_open_tab_is`,
+  `closing_a_tab_keeps_its_place_for_the_next_open`, and the app-level
+  `reopening_a_file_returns_to_the_cursor_and_selection_it_was_left_at`.
 
 ## 2026-11-18 — The track panel's Song tab and its section list
 
@@ -6296,4 +6350,3 @@ Tests: dragging the edge widens the column and the settings keep it.
 - Tests: `a_single_click_on_a_track_name_in_the_grid_does_not_open_the_rename_window` and
   `a_double_click_on_a_track_name_in_the_grid_opens_the_rename_window` (renames through
   the window's field); no snapshot changes.
-

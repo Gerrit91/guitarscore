@@ -427,6 +427,7 @@ mod tests {
     /// so a change to one is seen next to the others.
     #[test]
     fn the_symbols_match_their_snapshot() {
+        let _gpu = crate::test_support::lock_gpu();
         let mut harness = egui_kittest::Harness::builder()
             .with_size(egui::vec2(15.0 * 72.0 + 16.0, 2.0 * 128.0))
             .wgpu()

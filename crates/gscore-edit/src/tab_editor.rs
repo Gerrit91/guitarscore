@@ -388,6 +388,7 @@ impl TabEditor {
             | ActionId::OpenFile
             | ActionId::SaveAs
             | ActionId::OpenSettings
+            | ActionId::CloseTab
             | ActionId::Quit => Ok(Outcome::Nothing),
             // Palette actions: the app runs them like a click on the palette tile.
             ActionId::NoteWhole
