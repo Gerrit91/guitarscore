@@ -6272,3 +6272,18 @@ Tests: dragging the edge widens the column and the settings keep it.
   read or the device opens becomes "the synthesizer failed unexpectedly" instead of a
   player that stays on "loading" with nothing to report. Test:
   `a_panic_in_the_synth_thread_becomes_an_error`.
+
+## 2026-11-18 — The library's snapshot unit tests render one GPU device at a time
+
+- CI's check job crashed with SIGSEGV in `cargo test -p gscore-app --lib`. The library's
+  five snapshot unit tests (`instrument`, `tile_faces`, `block_icons`, `updates` twice,
+  `desktop_menu`) each build a wgpu renderer, and with test threads they did so at the
+  same time; the runner's driver is Mesa's software Vulkan (lavapipe), where several
+  devices at once segfault the process. The integration tests fixed the same crash on
+  2026-11-14 with `tests/common::lock_gpu`; the library's tests never took that lock.
+- The new test-only `src/test_support.rs` has the same `lock_gpu`, and each of the six
+  tests holds it for its life (the `Harness` and its device are dropped before the next
+  test builds one).
+- Reproduced in a `rust:1.99.1` container with lavapipe: without the lock one of three
+  runs segfaulted, with it twelve of twelve passed. The crash surfaced on the
+  `speed-accent` branch but is unrelated to its toolbar change.

@@ -18,6 +18,8 @@ mod rse_sound;
 mod settings;
 mod state;
 mod tasks;
+#[cfg(test)]
+mod test_support;
 mod tone_file;
 mod tone_library;
 #[cfg(not(target_arch = "wasm32"))]

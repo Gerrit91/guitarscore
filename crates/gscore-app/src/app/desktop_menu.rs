@@ -205,6 +205,7 @@ mod tests {
     fn the_question_matches_its_snapshot_and_a_yes_adds_the_entry() {
         use egui_kittest::kittest::Queryable as _;
 
+        let _gpu = crate::test_support::lock_gpu();
         let home = temp_dir("question");
         let entry = DesktopEntry::new(home.clone(), "/opt/gs/guitarscore".into());
         let mut harness = egui_kittest::Harness::builder()
