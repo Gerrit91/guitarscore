@@ -619,6 +619,14 @@ impl GuitarScoreApp {
         );
 
         ui.separator();
+        ui.heading("Song grid");
+        ui.checkbox(
+            &mut self.settings.grid_stripes,
+            "Stripe every other track row",
+        )
+        .on_hover_text("A lighter background on every other row, to follow a track along");
+
+        ui.separator();
         ui.heading("Playback");
         ui.checkbox(
             &mut self.settings.return_on_stop,

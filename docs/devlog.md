@@ -6248,6 +6248,16 @@ Tests: dragging the edge widens the column and the settings keep it.
 - Test: `a_section_scrolled_off_the_left_edge_still_marks_the_master_row` (scrolls a
   60-bar grid to its end, checks the section's line and title pixels in the master row).
 
+## 2026-11-18 — A speed other than the written tempo shows in blue
+
+- The playback speed in the toolbar now turns blue while it is anything but 100 % (the
+  owner's request): the number and the arrow beside it take the theme's accent color, so
+  a slowed-down or sped-up song is visible at a glance and not only by reading the number.
+  The knob is the number as shown (whole percent): 99.9 % still shows and reads as 100 %
+  and stays plain, so the color always matches what the control says.
+- `off_tempo` (unit test `a_speed_off_the_written_tempo_is_marked`); checked by hand on a
+  snapshot at 50 % (toolbar screenshot) and at 100 %.
+
 ## 2026-11-18 — A flaky audio test skips when the output cannot be heard
 
 - `a_jump_while_playing_is_where_stop_goes_back_to` failed in CI (one of 107) at "did not
@@ -6262,6 +6272,21 @@ Tests: dragging the edge widens the column and the settings keep it.
   read or the device opens becomes "the synthesizer failed unexpectedly" instead of a
   player that stays on "loading" with nothing to report. Test:
   `a_panic_in_the_synth_thread_becomes_an_error`.
+
+## 2026-11-18 — The library's snapshot unit tests render one GPU device at a time
+
+- CI's check job crashed with SIGSEGV in `cargo test -p gscore-app --lib`. The library's
+  five snapshot unit tests (`instrument`, `tile_faces`, `block_icons`, `updates` twice,
+  `desktop_menu`) each build a wgpu renderer, and with test threads they did so at the
+  same time; the runner's driver is Mesa's software Vulkan (lavapipe), where several
+  devices at once segfault the process. The integration tests fixed the same crash on
+  2026-11-14 with `tests/common::lock_gpu`; the library's tests never took that lock.
+- The new test-only `src/test_support.rs` has the same `lock_gpu`, and each of the six
+  tests holds it for its life (the `Harness` and its device are dropped before the next
+  test builds one).
+- Reproduced in a `rust:1.99.1` container with lavapipe: without the lock one of three
+  runs segfaulted, with it twelve of twelve passed. The crash surfaced on the
+  `speed-accent` branch but is unrelated to its toolbar change.
 
 ## 2026-11-18 — Ctrl+W closes the active tab
 

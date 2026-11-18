@@ -369,6 +369,7 @@ mod tests {
     fn the_new_release_window_matches_its_snapshot() {
         use egui_kittest::kittest::Queryable as _;
 
+        let _gpu = crate::test_support::lock_gpu();
         let mut harness = egui_kittest::Harness::builder()
             .with_size(egui::vec2(1000.0, 700.0))
             .wgpu()
@@ -398,6 +399,7 @@ mod tests {
     fn the_download_button_asks_for_the_release_page() {
         use egui_kittest::kittest::Queryable as _;
 
+        let _gpu = crate::test_support::lock_gpu();
         let mut harness = egui_kittest::Harness::builder()
             .with_size(egui::vec2(1000.0, 700.0))
             .wgpu()
