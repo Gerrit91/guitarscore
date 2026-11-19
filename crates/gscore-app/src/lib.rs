@@ -9,10 +9,10 @@ mod canvas;
 pub mod chain_settings;
 #[cfg(not(target_arch = "wasm32"))]
 mod desktop_entry;
-#[cfg(not(target_arch = "wasm32"))]
-mod file_types;
 mod document;
 mod export;
+#[cfg(not(target_arch = "wasm32"))]
+mod file_types;
 mod fonts;
 mod keys;
 mod playback;

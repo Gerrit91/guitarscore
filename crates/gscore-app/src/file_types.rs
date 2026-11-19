@@ -347,7 +347,10 @@ mod tests {
     }
 
     fn linux(home: &Path, program: &str) -> FileTypes {
-        FileTypes::Linux(DesktopEntry::new(home.to_path_buf(), PathBuf::from(program)))
+        FileTypes::Linux(DesktopEntry::new(
+            home.to_path_buf(),
+            PathBuf::from(program),
+        ))
     }
 
     #[test]
@@ -360,7 +363,10 @@ mod tests {
         let entry = std::fs::read_to_string(home.join("applications").join(FILES_ENTRY)).unwrap();
         assert!(entry.contains("\nExec=\"/opt/gs/guitarscore\" %f\n"));
         assert!(entry.contains("\nMimeType=application/x-guitar-pro;\n"));
-        assert!(entry.contains("\nNoDisplay=true\n"), "not a second menu entry");
+        assert!(
+            entry.contains("\nNoDisplay=true\n"),
+            "not a second menu entry"
+        );
         let package = std::fs::read_to_string(home.join(MIME_PACKAGE)).unwrap();
         for extension in EXTENSIONS {
             assert!(package.contains(&format!("pattern=\"*.{extension}\"")));
@@ -395,7 +401,10 @@ mod tests {
         types.install().unwrap();
         types.remove().unwrap();
         assert!(menu.is_installed());
-        assert!(home.join("icons/hicolor/256x256/apps/guitarscore.png").exists());
+        assert!(
+            home.join("icons/hicolor/256x256/apps/guitarscore.png")
+                .exists()
+        );
         let _ = std::fs::remove_dir_all(home);
     }
 
@@ -417,7 +426,10 @@ mod tests {
         let commands = install_commands(program);
         let command = commands
             .iter()
-            .find(|args| args.get(1).is_some_and(|key| key.ends_with(r"\shell\open\command")))
+            .find(|args| {
+                args.get(1)
+                    .is_some_and(|key| key.ends_with(r"\shell\open\command"))
+            })
             .unwrap();
         assert_eq!(
             command,
@@ -434,17 +446,21 @@ mod tests {
         );
         for extension in EXTENSIONS {
             let key = format!(r"HKCU\Software\Classes\.{extension}\OpenWithProgids");
-            assert!(commands.iter().any(|args| args.get(1) == Some(&key)
-                && args.contains(&"GuitarScore.Song".to_owned())));
-            assert!(remove_commands().iter().any(|args| args.get(1) == Some(&key)
-                && args.first().map(String::as_str) == Some("delete")));
+            assert!(
+                commands.iter().any(|args| args.get(1) == Some(&key)
+                    && args.contains(&"GuitarScore.Song".to_owned()))
+            );
+            assert!(
+                remove_commands()
+                    .iter()
+                    .any(|args| args.get(1) == Some(&key)
+                        && args.first().map(String::as_str) == Some("delete"))
+            );
         }
         // Only the user's own classes: no administrator rights, nothing for other users.
-        assert!(
-            commands
-                .iter()
-                .chain(&remove_commands())
-                .all(|args| args.get(1).is_some_and(|key| key.starts_with(r"HKCU\Software\Classes\")))
-        );
+        assert!(commands.iter().chain(&remove_commands()).all(|args| {
+            args.get(1)
+                .is_some_and(|key| key.starts_with(r"HKCU\Software\Classes\"))
+        }));
     }
 }

@@ -302,7 +302,10 @@ mod tests {
             "/old/guitarscore".into(),
         )));
         assert!(app.offers_file_association());
-        assert!(!app.has_file_association(), "nothing is written before it is switched on");
+        assert!(
+            !app.has_file_association(),
+            "nothing is written before it is switched on"
+        );
         // No question at the start for it: only the menu entry's (which is not offered).
         app.show_desktop_menu_question(&ctx);
         assert!(!app.has_file_association());
