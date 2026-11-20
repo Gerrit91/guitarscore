@@ -386,6 +386,32 @@ commands. Details of every step are in `docs/devlog.md`; known shortfalls in
   - Rough order: a CLAP effect block, then a CLAP instrument, then the separate host
     process before it leaves "experimental", then VST3.
 
+- **M25: Practice on phones and tablets** (owner, 2026-11-20: people may practise away
+  from home with a tablet or phone; written down, not scheduled). In the browser build
+  (GitHub Pages), no native mobile app. A practice view, not mobile editing: editing
+  stays keyboard-first, and egui's touch keyboard on the web (iOS above all) is too
+  unreliable to build on.
+  - Step 1, find out what breaks: the current site at phone and tablet sizes (headless
+    Chromium's device emulation, screenshots in the smoke test) and on real devices
+    (iOS Safari, Android Chrome): touch scrolling and pinch zoom in egui, audio starting
+    after the first tap (AudioWorklet on iOS), memory while the SoundFont is decoded
+    (about 100 MB at the peak), the file picker (cloud storage), installing to the home
+    screen.
+  - Step 2, the practice view, chosen by screen width (and by hand): a compact toolbar
+    with only play/pause, the loop, the speed and speed trainer, the count-in and the
+    metronome; no side panels or edit palette; the score fitted to the width and moved
+    by swiping; a tap on a bar starts there, a second tap makes a loop; touch targets of
+    at least 44 px. Tablets in landscape, with a keyboard, may keep the full interface
+    with the interface zoom.
+  - Step 3, practice helpers: the screen kept awake while playing (Screen Wake Lock
+    API), recent songs kept in browser storage so a song opens again without the file
+    picker, working offline once installed (the service worker already caches the app
+    and the SoundFont).
+  - Tests: the practice view laid out at phone and tablet sizes (snapshots), touch
+    gestures driven in the browser smoke test, playback started by a tap.
+  - **Done when:** the owner can open a song on a phone, loop a passage at a lower speed
+    and play along, without zooming the page by hand or opening a menu meant for a mouse.
+
 ### Still open from earlier milestones
 
 - **M18 (playback):** a speed slider, export to audio (WAV), fermatas and

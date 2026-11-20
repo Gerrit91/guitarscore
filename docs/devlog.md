@@ -6609,3 +6609,14 @@ Open: whether GitHub Pages gzips `.wasm` (check after the first deploy).
 
 Open: trimming the Bravura metadata (1.2 MiB of JSON) and subsetting Bravura to the `Glyph` set;
 egui's unused Ubuntu-Light (360 KiB).
+
+## 2026-11-20 — Browser updates without interrupting
+
+- A new build's service worker waits after installing; the page lets it take over at once
+  only while nobody has touched the page (key, click, drop). A page in use shows a bar
+  ("A new version of GuitarScore is ready", Reload / Later) instead of reloading.
+- Open tabs look for a new build every hour and when shown again (at most every 10 min).
+- The SoundFont manifest is cached with each build, so an old app is never pointed at a
+  newer font (seen: the cached app got the SF3 and said "not a usable SoundFont").
+- Smoke test: a page in use gets the bar, and its Reload brings in the new build.
+- M25 (practice on phones and tablets) written down in AGENTS.md.

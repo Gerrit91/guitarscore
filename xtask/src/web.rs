@@ -475,6 +475,13 @@ fn run_headless(browser: &std::ffi::OsString, out: &Path, port: u16) -> TaskResu
         )
     })?;
     println!("web: a new build takes over at the first visit");
+    page_checks::a_page_in_use_is_offered_the_update(&mut browser).map_err(|e| {
+        format!(
+            "an update while the page is in use: {e}{}",
+            console_log(browser.events())
+        )
+    })?;
+    println!("web: a page in use offers the new build, and Reload brings it in");
 
     // The audio worklet page: its module and second wasm instance must load, the
     // SoundFont must play a note, and the analyser must see samples (not silence).

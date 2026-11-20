@@ -7,8 +7,10 @@
 // pruned to the manifest's current file when a new worker activates.
 //
 // CACHE is unique to each build: `cargo xtask web` stamps the version and the build time
-// into this file, so every build is a new worker and a new cache. The page reloads once
-// when the new worker takes over (index.html).
+// into this file, so every build is a new worker and a new cache. A new worker waits after
+// installing until the page tells it to take over (`skipWaiting` message): at once if the
+// page is untouched, otherwise when the user presses Reload in its update bar
+// (index.html). The page reloads once when the new worker takes over.
 const CACHE = "guitarscore-__VERSION__";
 const SOUNDFONT_CACHE = "guitarscore-soundfonts";
 const SOUNDFONT_DIR = "./assets/soundfonts/";
@@ -39,9 +41,15 @@ self.addEventListener("install", (event) => {
       // filled with the previous build's files (seen in testing, 2026-11-13).
       .then((cache) =>
         Promise.allSettled(SHELL.map((url) => cache.add(new Request(url, { cache: "reload" })))),
-      )
-      .then(() => self.skipWaiting()),
+      ),
   );
+});
+
+// The page decides when a waiting new build takes over (see the top of this file).
+self.addEventListener("message", (event) => {
+  if (event.data && event.data.type === "skipWaiting") {
+    self.skipWaiting();
+  }
 });
 
 self.addEventListener("activate", (event) => {
