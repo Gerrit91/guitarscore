@@ -19,6 +19,7 @@ use std::process::{Command, Stdio};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 mod page_checks;
+mod sf3;
 mod soundfont;
 
 use crate::{TaskResult, cmd};
@@ -413,7 +414,8 @@ fn run_headless(browser: &std::ffi::OsString, out: &Path, port: u16) -> TaskResu
             console_log(browser.events())
         ));
     }
-    browser.screenshot(&out.join("smoke.png"))?;
+    // The screenshot waits for the SoundFont: until then the page's loading screen
+    // covers the editor.
 
     // The bundled SoundFont must download and be accepted by the worklet, or the page
     // says why. This is where a wrong manifest, a failed download or a broken RIFF file
@@ -440,6 +442,9 @@ fn run_headless(browser: &std::ffi::OsString, out: &Path, port: u16) -> TaskResu
         "web: SoundFont loaded in {millis} ms from page start ({:.1} s after the editor marker)",
         started.elapsed().as_secs_f32()
     );
+    // The loading screen fades out over 150 ms (`web/index.html`).
+    browser.eval("new Promise((resolve) => setTimeout(() => resolve('ok'), 300))")?;
+    browser.screenshot(&out.join("smoke.png"))?;
 
     // Editing: a dropped song, a typed fret, and the rescue copy the page keeps of it;
     // then the crash screen a panic shows, offering that copy (`web/page_checks.rs`).

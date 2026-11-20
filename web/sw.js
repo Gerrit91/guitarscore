@@ -1,7 +1,7 @@
 // GuitarScore's service worker: the app shell is cached on the first visit so the editor
 // opens offline (a file the user opens still comes from their own disk).
 //
-// SoundFonts have a cache of their own. They are large (about 30 MB), and their names
+// SoundFonts have a cache of their own. They are large (about 5 MB compressed), and their names
 // carry the version, so a new build must not throw the old one away on every deploy: it
 // would download again for nothing. The soundfont cache survives app-cache changes and is
 // pruned to the manifest's current file when a new worker activates.
@@ -119,7 +119,7 @@ self.addEventListener("fetch", (event) => {
 
   // A SoundFont is cache-first in its own cache. `cache.put` rejects partial (206)
   // responses, so only a full 200 is stored.
-  if (url.pathname.endsWith(".sf2")) {
+  if (url.pathname.endsWith(".sf2") || url.pathname.endsWith(".sf3")) {
     event.respondWith(
       (async () => {
         const cache = await caches.open(SOUNDFONT_CACHE);

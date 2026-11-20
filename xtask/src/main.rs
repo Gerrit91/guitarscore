@@ -31,7 +31,8 @@ Tasks:
                         Build the browser app (WebAssembly) and assemble the static site
                         (index.html, guitarscore.js, guitarscore_bg.wasm, assets/,
                         manifest.json, sw.js) in dist/web. Ships GeneralUser GS 2.0.3
-                        (downloaded once, checked) unless --soundfont PATH or
+                        (downloaded once, checked, compressed with ffmpeg) unless
+                        --soundfont PATH (shipped as it is) or
                         --no-soundfont is given; --smoke checks it in headless Chromium
   corpus                Run the opt-in corpus tests (not implemented yet)";
 

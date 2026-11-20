@@ -5,9 +5,9 @@
 //! new font is a new file. A site assembled by hand may still put `default.sf2` there;
 //! without either, playback has no sound and says so.
 //!
-//! The body is read as a stream so the toolbar can show real progress: a 30 MB font over a
+//! The body is read as a stream so the toolbar can show real progress: a 5 MB font over a
 //! slow connection must not look stuck. The chunks stay JavaScript arrays and are joined
-//! there: copied into the app's wasm memory, the font would grow it by 30 MB for good
+//! there: copied into the app's wasm memory, the font would grow it for good
 //! (wasm memory never shrinks), only to be copied out again for the worklet.
 
 use wasm_bindgen::prelude::*;

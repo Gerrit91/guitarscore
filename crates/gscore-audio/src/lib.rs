@@ -26,6 +26,8 @@ pub fn drum_part(key: u8) -> usize {
 }
 #[cfg(not(target_arch = "wasm32"))]
 mod clock;
+mod sf3;
+pub use sf3::{expand as expand_sf3, is_sf3};
 mod sound_wire;
 mod soundfont;
 mod stem_names;

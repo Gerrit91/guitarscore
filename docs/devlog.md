@@ -6579,3 +6579,19 @@ Tests: dragging the edge widens the column and the settings keep it.
   so such checks need one file per fresh start.
 - Tests: `a_gp_archive_has_the_version_and_folder_entries_guitar_pro_needs` (the entries,
   the header's place and the audio tracks).
+
+## 2026-11-20 — Browser build on GitHub Pages; compressed SoundFont; loading screen
+
+- Release workflow: the browser build is also deployed to GitHub Pages
+  (`https://gerrit91.github.io/guitarscore/`, linked from the README). Needs once: Pages
+  source "GitHub Actions", and a `v*` tag rule on the `github-pages` environment.
+- The page's loading screen stays up until the SoundFont is ready, with a progress bar in
+  MB ("Start without waiting" leaves the download to the toolbar).
+- The site's GeneralUser GS is compressed to SF3 (Ogg Vorbis q6, ffmpeg in `cargo xtask
+  web`; Vorbis headers stored once in a `vhdr` chunk): 5.63 MiB instead of 30.8. The
+  worklet decodes it back to SF2 (`gscore-audio/src/sf3.rs`, lewton), about 1 s. Every
+  sample keeps its exact length and loops, levels within 4 %. `SoundBank` reads SF3 on
+  the desktop too.
+- First visit: about 12 MB (editor 6.2 MiB gzip, sounds 5.6 MiB), was about 37.
+
+Open: whether GitHub Pages gzips `.wasm` (check after the first deploy).

@@ -1,6 +1,7 @@
 //! The browser build's bundled SoundFont: download a pinned, checked GeneralUser GS at
-//! build time (never commit the 30 MB file), copy it into the site with its license, and
-//! write the manifest the page uses to find it.
+//! build time (never commit the 30 MB file), compress its samples (SF3, see `sf3.rs`; about
+//! 5.5 MB instead of 30.8), put that into the site with the license, and write the manifest
+//! the page uses to find it.
 //!
 //! Source: <https://github.com/mrbumpy409/GeneralUser-GS> at commit
 //! `9704918` (v2.0.3). The author asks that visitors never download from GitHub, so the
@@ -13,8 +14,12 @@ use crate::{TaskResult, cmd};
 
 /// The pinned commit of the GeneralUser GS repository (v2.0.3, 2026-02-23).
 pub(crate) const COMMIT: &str = "97049183643d5fc5a9322a69c5b09efb667c6c3a";
-/// The file's name in the repository, and its name inside the site.
+/// The downloaded file's name in the cache.
 pub(crate) const FILE: &str = "GeneralUser-GS-2.0.3.sf2";
+/// The site's file name before its content hash: `GeneralUser-GS-2.0.3-1a2b3c4d.sf3`. The
+/// hash makes a differently encoded file (another ffmpeg) a new URL, so no browser keeps a
+/// cached copy that does not match the manifest.
+const SITE_STEM: &str = "GeneralUser-GS-2.0.3";
 /// The file's name in the upstream repository.
 const UPSTREAM_FILE: &str = "GeneralUser-GS.sf2";
 /// The display name in the manifest and the app.
@@ -64,16 +69,28 @@ pub(crate) fn install(root: &Path, out: &Path, source: &Source) -> TaskResult {
 
 /// Reports the SoundFont's size in the site (raw and gzip), for the release notes.
 pub(crate) fn report_size(out: &Path) {
-    let path = out.join("assets").join("soundfonts").join(FILE);
-    let Ok(bytes) = std::fs::read(&path) else {
+    let dir = out.join("assets").join("soundfonts");
+    let Ok(entries) = std::fs::read_dir(&dir) else {
         return;
     };
-    let gzip = crate::web::compressed_size("gzip", &["-9", "-c"], &path).unwrap_or(0);
-    println!(
-        "web: assets/soundfonts/{FILE}: {} raw, {} gzip",
-        human(u64::try_from(bytes.len()).unwrap_or(u64::MAX)),
-        human(gzip)
-    );
+    for path in entries.filter_map(Result::ok).map(|entry| entry.path()) {
+        let is_font = path
+            .extension()
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("sf2") || ext.eq_ignore_ascii_case("sf3"));
+        let Ok(meta) = std::fs::metadata(&path) else {
+            continue;
+        };
+        if !is_font {
+            continue;
+        }
+        let gzip = crate::web::compressed_size("gzip", &["-9", "-c"], &path).unwrap_or(0);
+        println!(
+            "web: assets/soundfonts/{}: {} raw, {} gzip",
+            path.file_name().unwrap_or_default().to_string_lossy(),
+            human(meta.len()),
+            human(gzip)
+        );
+    }
 }
 
 /// A local file the owner chose.
@@ -132,10 +149,29 @@ fn bundled(root: &Path, dir: &Path) -> Result<(String, String, Vec<u8>), String>
             cached.display()
         ));
     }
-    std::fs::write(dir.join(FILE), &bytes)
+    let compressed = compressed(&cache_dir, &bytes)?;
+    let name = format!("{SITE_STEM}-{}.sf3", &sha256::hex(&compressed)[..8]);
+    std::fs::write(dir.join(&name), &compressed)
         .map_err(|e| format!("cannot write the SoundFont into the site: {e}"))?;
     copy_license(root, dir)?;
-    Ok((FILE.to_owned(), NAME.to_owned(), bytes))
+    Ok((name, NAME.to_owned(), compressed))
+}
+
+/// The SF3 of the checked `sf2`, from the cache or compressed once (a few seconds).
+fn compressed(cache_dir: &Path, sf2: &[u8]) -> Result<Vec<u8>, String> {
+    let cached = cache_dir.join(format!("{SITE_STEM}-q{}-packed.sf3", super::sf3::QUALITY));
+    if !super::sf3::is_compressed(&cached) {
+        println!(
+            "web: compressing the SoundFont's samples (Ogg Vorbis q{})",
+            super::sf3::QUALITY
+        );
+        let bytes = super::sf3::compress(sf2)?;
+        let temporary = cached.with_extension("part");
+        std::fs::write(&temporary, &bytes)
+            .and_then(|()| std::fs::rename(&temporary, &cached))
+            .map_err(|e| format!("cannot keep the compressed SoundFont: {e}"))?;
+    }
+    std::fs::read(&cached).map_err(|e| format!("cannot read {}: {e}", cached.display()))
 }
 
 /// Downloads the pinned file into the cache through `curl`.
@@ -227,7 +263,7 @@ fn human(bytes: u64) -> String {
 }
 
 /// The first program found on `PATH`.
-fn which(names: &[&str]) -> Option<std::ffi::OsString> {
+pub(crate) fn which(names: &[&str]) -> Option<std::ffi::OsString> {
     let path = std::env::var_os("PATH")?;
     for dir in std::env::split_paths(&path) {
         for name in names {

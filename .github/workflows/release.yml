@@ -17,6 +17,11 @@
 # every platform, so the app has sound out of the box; it is never committed to git.
 #
 # Notes for later:
+# The browser build is also deployed to GitHub Pages (https://gerrit91.github.io/guitarscore/)
+# from the same run. Repository settings this needs once: Pages > Source "GitHub Actions",
+# and the `github-pages` environment must allow tags (a release runs on its tag, and the
+# environment admits only the default branch at first).
+#
 # - Nothing is signed or notarized yet. macOS shows a Gatekeeper warning for the unsigned
 #   app; Windows shows SmartScreen. Signing/notarization is its own task (see M20).
 name: Release
@@ -32,6 +37,8 @@ on:
 permissions:
   contents: write
   packages: write  # the browser build's image on ghcr.io
+  pages: write     # the browser build on GitHub Pages
+  id-token: write  # deploy-pages proves where the deployment comes from
 
 env:
   # Baked into the binaries by `crates/gscore-version/build.rs` (shown in Help > About and
@@ -296,7 +303,7 @@ jobs:
           path: ${{ steps.package.outputs.archive }}
 
   web:
-    name: Browser build (nginx image on ghcr.io)
+    name: Browser build (nginx image on ghcr.io, site for Pages)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -307,15 +314,22 @@ jobs:
           toolchain: "1.99.1"  # keep in sync with rust-toolchain.toml
           targets: wasm32-unknown-unknown
 
-      # wasm-bindgen must match the crate in Cargo.lock; binaryen gives wasm-opt.
+      # wasm-bindgen must match the crate in Cargo.lock; binaryen gives wasm-opt; ffmpeg
+      # (libvorbis) compresses the site's SoundFont.
       - name: Install the web tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends binaryen
+          sudo apt-get install -y --no-install-recommends binaryen ffmpeg
           cargo install wasm-bindgen-cli --version 0.2.130 --locked
 
       - name: Build the site
         run: cargo xtask web
+
+      # For the `pages` job. Only the built site goes in: `dist/web` has no dotfiles.
+      - name: Upload the site for GitHub Pages
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: dist/web
 
       - name: Log in to ghcr.io
         uses: docker/login-action@v4
@@ -337,6 +351,22 @@ jobs:
           tags: |
             ${{ steps.image.outputs.name }}:${{ github.ref_name }}
             ${{ steps.image.outputs.name }}:latest
+
+  pages:
+    name: Deploy the browser build to GitHub Pages
+    needs: web
+    runs-on: ubuntu-latest
+    # One deployment at a time; a newer release waits rather than cancelling one midway.
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v5
 
   release:
     name: Upload assets to the release
