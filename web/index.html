@@ -45,6 +45,46 @@
         font-weight: 600;
         letter-spacing: 0.02em;
       }
+      #loading-progress {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        align-items: center;
+      }
+      #loading-progress[hidden] {
+        display: none;
+      }
+      #loading-bar {
+        width: 240px;
+        height: 4px;
+        overflow: hidden;
+        border-radius: 2px;
+        background: #2d313a;
+      }
+      #loading-fill {
+        width: 0;
+        height: 100%;
+        background: #3d7fd9;
+        transition: width 120ms linear;
+      }
+      #loading-bytes {
+        color: #8d929c;
+        font-size: 13px;
+        font-variant-numeric: tabular-nums;
+      }
+      #loading-skip {
+        margin-top: 6px;
+        padding: 5px 14px;
+        border: 1px solid #4a4f5a;
+        border-radius: 4px;
+        color: #d8dade;
+        font: 13px/1.5 system-ui, sans-serif;
+        background: transparent;
+        cursor: pointer;
+      }
+      #loading-skip:hover {
+        background: #23262d;
+      }
       #status {
         max-width: 42em;
         padding: 0 1em;
@@ -120,7 +160,14 @@
     <canvas id="guitarscore" tabindex="0" aria-label="GuitarScore score editor"></canvas>
     <div id="loading">
       <div class="title">GuitarScore</div>
-      <div>Loading the editor…</div>
+      <div id="loading-text">Loading the editor…</div>
+      <div id="loading-progress" hidden>
+        <div id="loading-bar" role="progressbar" aria-label="Sounds downloaded" aria-valuemin="0" aria-valuemax="100">
+          <div id="loading-fill"></div>
+        </div>
+        <div id="loading-bytes"></div>
+        <button type="button" id="loading-skip">Start without waiting</button>
+      </div>
       <div id="status"></div>
     </div>
     <div id="crashed" hidden role="alertdialog" aria-labelledby="crash-title">
@@ -213,20 +260,53 @@
         showError(event.reason ?? "the editor failed to start");
       });
 
+      // The loading screen stays up until the editor runs and its SoundFont has
+      // downloaded and been decoded (about 5 MB on a first visit; later visits take it
+      // from the service worker's cache). The editor reports both on <body>: `data-guitarscore-ready`, then
+      // `data-guitarscore-sound` ("loaded" or "error: ...") with the download's
+      // `data-guitarscore-sound-bytes` ("done total") meanwhile. A font that fails hides
+      // the screen too: the editor works without sound and says why on Play. "Start
+      // without waiting" hides it at once; the download goes on behind the editor, whose
+      // toolbar shows it.
+      const progress = document.getElementById("loading-progress");
+      const fill = document.getElementById("loading-fill");
+      const bar = document.getElementById("loading-bar");
+      const bytes = document.getElementById("loading-bytes");
+      const megabytes = (value) => (value / (1024 * 1024)).toFixed(1);
+      let started = false;
+      const update = () => {
+        const body = document.body.dataset;
+        if (started || body.guitarscoreReady !== "true") return;
+        if (body.guitarscoreSound) {
+          started = true;
+          loading.classList.add("hidden");
+          return;
+        }
+        progress.hidden = false;
+        const [done, total] = (body.guitarscoreSoundBytes ?? "").split(" ").map(Number);
+        // A compressed SoundFont is decoded after the download (a second or two).
+        document.getElementById("loading-text").textContent =
+          total > 0 && done >= total ? "Preparing sounds…" : "Loading sounds…";
+        if (total > 0) {
+          const percent = Math.min(100, Math.round((done / total) * 100));
+          fill.style.width = `${percent}%`;
+          bar.setAttribute("aria-valuenow", String(percent));
+          bytes.textContent = `${megabytes(done)} of ${megabytes(total)} MB`;
+        }
+      };
+      document.getElementById("loading-skip").addEventListener("click", () => {
+        started = true;
+        loading.classList.add("hidden");
+        document.getElementById("guitarscore").focus();
+      });
+      new MutationObserver(update).observe(document.body, {
+        attributes: true,
+        attributeFilter: ["data-guitarscore-ready", "data-guitarscore-sound", "data-guitarscore-sound-bytes"],
+      });
+
       try {
         await init();
-        // The Rust side sets this once eframe's runner is up.
-        if (document.body.dataset.guitarscoreReady === "true") {
-          loading.classList.add("hidden");
-        } else {
-          const observer = new MutationObserver(() => {
-            if (document.body.dataset.guitarscoreReady === "true") {
-              loading.classList.add("hidden");
-              observer.disconnect();
-            }
-          });
-          observer.observe(document.body, { attributes: true, attributeFilter: ["data-guitarscore-ready"] });
-        }
+        update();
       } catch (error) {
         showError(error);
       }

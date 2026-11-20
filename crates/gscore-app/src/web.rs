@@ -107,7 +107,7 @@ pub async fn start() -> Result<(), JsValue> {
             app.set_notice(problem);
         }
         // Start downloading the bundled SoundFont now, not on the first Play: it is about
-        // 30 MB. The AudioContext starts suspended (no user gesture yet); Play resumes it.
+        // several MB. The AudioContext starts suspended (no user gesture yet); Play resumes it.
         app.playback_mut().preload_synth();
         Ok(Box::new(app))
     });

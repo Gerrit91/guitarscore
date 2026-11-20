@@ -89,9 +89,18 @@ impl SoundBank {
         SoundBank::read(&mut &bytes[..])
     }
 
-    /// Reads a SoundFont from `reader`.
+    /// Reads a SoundFont (SF2, or SF3 with compressed samples) from `reader`.
     pub fn read(reader: &mut impl Read) -> Result<Self, PlayError> {
-        let font = SoundFont::new(reader)
+        let mut bytes = Vec::new();
+        reader
+            .read_to_end(&mut bytes)
+            .map_err(|e| PlayError::Device(format!("cannot read the SoundFont: {e}")))?;
+        if crate::sf3::is_sf3(&bytes) {
+            bytes = crate::sf3::expand(&bytes).map_err(|e| {
+                PlayError::Device(format!("not a usable SoundFont (.sf3) file: {e}"))
+            })?;
+        }
+        let font = SoundFont::new(&mut &bytes[..])
             .map_err(|e| PlayError::Device(format!("not a usable SoundFont (.sf2) file: {e}")))?;
         let name = font.get_info().get_bank_name().trim().to_owned();
         Ok(SoundBank {

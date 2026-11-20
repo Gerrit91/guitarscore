@@ -1,7 +1,7 @@
 // GuitarScore's service worker: the app shell is cached on the first visit so the editor
 // opens offline (a file the user opens still comes from their own disk).
 //
-// SoundFonts have a cache of their own. They are large (about 30 MB), and their names
+// SoundFonts have a cache of their own. They are large (about 5 MB compressed), and their names
 // carry the version, so a new build must not throw the old one away on every deploy: it
 // would download again for nothing. The soundfont cache survives app-cache changes and is
 // pruned to the manifest's current file when a new worker activates.
@@ -24,6 +24,9 @@ const SHELL = [
   "./worklet_synth_bg.wasm",
   "./manifest.json",
   "./assets/icon.png",
+  // The SoundFont manifest belongs to the build: an older app must not be pointed at a
+  // newer font it may not read (a cached app got the compressed SF3, 2026-11-20).
+  "./assets/soundfonts/soundfont.json",
 ];
 
 self.addEventListener("install", (event) => {
@@ -97,21 +100,20 @@ self.addEventListener("fetch", (event) => {
     }
   }
 
-  // The manifest is network-first, so a new deploy's font is noticed; the cache answers
-  // when offline.
+  // The manifest comes from this worker's own build cache, never another build's: the app
+  // this worker serves and the font it names must match. A new deploy's font arrives with
+  // the new worker (its install caches the new manifest), which reloads the page.
   if (url.pathname.endsWith("/assets/soundfonts/soundfont.json")) {
     event.respondWith(
       (async () => {
-        try {
-          const response = await fetch(request, { cache: "no-cache" });
-          if (response.status === 200) {
-            const copy = response.clone();
-            caches.open(CACHE).then((cache) => cache.put(request, copy));
-          }
-          return response;
-        } catch {
-          return (await caches.match(request)) || Response.error();
+        const cache = await caches.open(CACHE);
+        const cached = await cache.match(request);
+        if (cached) return cached;
+        const response = await fetch(request, { cache: "no-cache" });
+        if (response.status === 200) {
+          await cache.put(request, response.clone());
         }
+        return response;
       })(),
     );
     return;
@@ -119,7 +121,7 @@ self.addEventListener("fetch", (event) => {
 
   // A SoundFont is cache-first in its own cache. `cache.put` rejects partial (206)
   // responses, so only a full 200 is stored.
-  if (url.pathname.endsWith(".sf2")) {
+  if (url.pathname.endsWith(".sf2") || url.pathname.endsWith(".sf3")) {
     event.respondWith(
       (async () => {
         const cache = await caches.open(SOUNDFONT_CACHE);

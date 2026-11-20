@@ -35,13 +35,21 @@ pub struct PdfFonts<'a> {
     pub bold: &'a [u8],
 }
 
+// Statics, not constants: a constant's bytes are copied into every crate that uses them
+// (the app and this crate each had their own 2.4 MiB), a static exists once.
+static BRAVURA: &[u8] = include_bytes!("../../../../assets/fonts/bravura/Bravura.otf");
+static NOTO_SANS: &[u8] = include_bytes!("../../../../assets/fonts/noto-sans/NotoSans-Regular.ttf");
+static NOTO_SANS_BOLD: &[u8] =
+    include_bytes!("../../../../assets/fonts/noto-sans/NotoSans-Bold.ttf");
+
 impl PdfFonts<'static> {
-    /// The bundled fonts: Bravura, Noto Sans and Noto Sans Bold.
+    /// The bundled fonts: Bravura, Noto Sans and Noto Sans Bold. The app draws with the
+    /// same bytes (`gscore-app/src/fonts.rs`), so the files are compiled in once.
     pub fn bundled() -> Self {
         PdfFonts {
-            music: include_bytes!("../../../../assets/fonts/bravura/Bravura.otf"),
-            text: include_bytes!("../../../../assets/fonts/noto-sans/NotoSans-Regular.ttf"),
-            bold: include_bytes!("../../../../assets/fonts/noto-sans/NotoSans-Bold.ttf"),
+            music: BRAVURA,
+            text: NOTO_SANS,
+            bold: NOTO_SANS_BOLD,
         }
     }
 }

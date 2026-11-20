@@ -74,7 +74,7 @@ impl Shared {
         self.post_with_transfer(message, None);
     }
 
-    /// Posts `message`, moving `transfer` instead of copying it (a 30 MB SoundFont).
+    /// Posts `message`, moving `transfer` instead of copying it (a SoundFont of several MB).
     fn post_with_transfer(&self, message: JsValue, transfer: Option<js_sys::Array>) {
         match self.port.borrow().as_ref() {
             Some(port) => {
@@ -283,7 +283,7 @@ async fn load_worklet_module() -> Result<JsValue, String> {
 
 /// Fetches the site's SoundFont (with progress) and hands it to the worklet, which
 /// answers `loaded`. The bytes are transferred, not copied: a structured clone would copy
-/// 30 MB on the UI thread.
+/// megabytes on the UI thread.
 async fn fetch_soundfont(shared: &Shared) -> Result<(), String> {
     let loaded = web_soundfont::download(|done, total| {
         shared.progress.set(Some((done, total)));

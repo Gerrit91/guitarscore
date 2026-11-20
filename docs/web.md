@@ -12,25 +12,37 @@ cargo xtask web --smoke    # also start it in headless Chromium and save screens
 
 | File | What it is |
 |---|---|
-| `index.html` | the page: a canvas for eframe, a loading screen, `#status` for errors |
+| `index.html` | the page: a canvas for eframe, a loading screen (editor, then SoundFont download), `#status` for errors |
 | `guitarscore.js` | wasm-bindgen's glue |
-| `guitarscore_bg.wasm` | the whole editor (about 13.5 MiB; 5.4 MiB gzip, 3.0 MiB brotli) |
+| `guitarscore_bg.wasm` | the whole editor (about 12.8 MiB; 4.6 MiB gzip; built with the size-optimised `web` profile) |
 | `assets/icon.png` | app icon for the page and the manifest |
-| `assets/soundfonts/GeneralUser-GS-2.0.3.sf2` | the bundled General MIDI SoundFont (30.8 MiB; not compressed by most static hosts) |
+| `assets/soundfonts/GeneralUser-GS-2.0.3-<hash>.sf3` | the bundled General MIDI SoundFont, samples compressed (5.6 MiB; 30.8 MiB as SF2) |
 | `assets/soundfonts/soundfont.json` | which SoundFont to load, its size and SHA-256 |
 | `assets/soundfonts/GeneralUser-GS-LICENSE.txt` | the font's license |
 | `manifest.json` | installable app metadata |
 | `sw.js` | service worker: cached app shell, offline start |
 | `worklet.js`, `worklet-polyfills.js`, `worklet_synth.js`, `worklet_synth_bg.wasm` | the AudioWorklet synthesizer |
 
-The build needs `wasm-bindgen` (`cargo install wasm-bindgen-cli --version 0.2.130`, or a
+The build needs `ffmpeg` with libvorbis (to compress the SoundFont), `wasm-bindgen` (`cargo install wasm-bindgen-cli --version 0.2.130`, or a
 release binary) and benefits from `wasm-opt` (binaryen): without it the module is not
-size-optimised. `--debug` builds without optimisations, `--out DIR` writes elsewhere.
+size-optimised. The editor is compiled with the `web` profile (Cargo.toml: LTO, one
+codegen unit, `opt-level = "s"`; 4.6 MiB gzip instead of 6.2 with `release`; "z" would
+save 0.3 MiB more but may slow layout and drawing), the
+AudioWorklet's synthesizer with `release`, so audio keeps its speed. `--debug` builds without optimisations, `--out DIR` writes elsewhere.
 
-The site ships GeneralUser GS 2.0.3 (about 30.8 MiB, GeneralUser GS License v2.0). The
-first build downloads it from the upstream repository at a pinned commit into
+The site ships GeneralUser GS 2.0.3 (GeneralUser GS License v2.0, which allows modifying
+it). The first build downloads it from the upstream repository at a pinned commit into
 `target/web-soundfont/` and verifies its size and SHA-256 every time; later builds reuse the
-cache. `--soundfont PATH` ships another `.sf2` (its size and RIFF header are checked; its
+cache. Then its samples are compressed to Ogg Vorbis (q6, ffmpeg's libvorbis, one process
+per sample, in parallel; cached as well): an SF3, 5.6 MiB instead of 30.8. Every Vorbis
+stream repeats the same header pages (3.4 MiB over 920 samples), so they are stored once
+in a `vhdr` chunk; `crates/gscore-audio/src/sf3.rs` describes the layout. The encoding is
+reproducible, and the file name carries a hash of the content. In the browser the worklet
+decodes it back to an SF2 before the synthesizer reads it, about a second (one native
+second; the page shows "Preparing sounds…" meanwhile). Measured against the original:
+every sample has its exact length and loop points, and its level within 4 %.
+`SoundBank` reads SF3 everywhere, so a desktop user may pick one too.
+`--soundfont PATH` ships another `.sf2` or `.sf3` as it is (its size and RIFF header are checked; its
 license is yours to add to the site, GeneralUser GS's is not copied for it), and
 `--no-soundfont` builds a silent site and says so. Nothing from the upstream repository is
 committed except the license text.
@@ -83,10 +95,12 @@ The browser has no audio device API from wasm, so playback goes through an Audio
 
 At startup the page fetches `assets/soundfonts/soundfont.json`, then the versioned `.sf2`
 it names (falling back to `default.sf2` for a hand-assembled site). The response is read
-as a stream, so the toolbar's "Loading sounds…" bar shows real bytes, and the bytes are
+as a stream, so the page's loading screen and the toolbar's "Loading sounds…" bar show
+real bytes (the app writes `data-guitarscore-sound-bytes` on `<body>` for the page; the
+screen's "Start without waiting" leaves the download to the toolbar), and the bytes are
 transferred to the worklet rather than copied. The worklet parses the font on the audio
 thread and answers `loaded`; a Play, seek or tempo change made meanwhile takes effect once
-it is loaded. Measured in the smoke test: about 0.6 s from page start to a parsed font
+it is loaded. Measured in the smoke test: about 2.2 s from page start to a decoded, parsed font
 (local server). A site without one says so on Play; editing works either way. The app names
 the font in About; choosing another one from the browser is not wired up yet.
 
@@ -128,12 +142,27 @@ the user's work:
 
 ## Updates
 
+The SoundFont manifest is part of each build's cached files: an app keeps getting the font
+of its own build until the new build takes over (an older app given a newer font it cannot
+read reported "not a usable SoundFont").
+
 `cargo xtask web` stamps a cache name unique to the build into `sw.js` (version and build
 time). The worker fetches the app shell with `cache: "reload"`, so the browser's HTTP cache
 cannot hand it the previous build's files. The visit after a deploy is still served by the
 old worker; when the new one takes over, the page reloads itself once (`controllerchange`
 in `index.html`; the unsaved-edits guard asks first), so the new build runs at that visit
 rather than the one after.
+
+## GitHub Pages
+
+The release workflow deploys the same `dist/web` to GitHub Pages:
+<https://gerrit91.github.io/guitarscore/>. Every path in the site is relative, so it runs
+under the repository's subpath; Pages serves HTTPS (audio needs a secure context) and
+`.wasm` as `application/wasm`. Pages sets a short cache lifetime on every file, the
+SoundFont included, which the service worker's own SoundFont cache makes up for. Once per
+repository: Settings > Pages > Source "GitHub Actions", and the `github-pages` environment
+must allow the release tags (Settings > Environments > github-pages > deployment branches
+and tags, add `v*`), since a release runs on its tag.
 
 ## Docker
 

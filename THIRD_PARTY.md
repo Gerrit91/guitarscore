@@ -15,7 +15,7 @@ This file documents all third-party assets used in the GuitarScore project.
 |------|-------|--------|--------|---------|
 | `assets/soundfonts/FluidR3-LICENSE.txt` (the `.sf2` itself is bundled into release archives, not the repo) | FluidR3 GM SoundFont (`FluidR3_GM.sf2`) | Frank Wen, Toby Smithe | Debian/Ubuntu `fluid-soundfont-gm` 3.1 (originally MuseScore's fluid-soundfont) | MIT (`assets/soundfonts/FluidR3-LICENSE.txt`) |
 
-| `assets/soundfonts/GeneralUser-GS-LICENSE.txt` (the `.sf2` is downloaded, checked and copied into the browser build, not the repo) | GeneralUser GS 2.0.3 SoundFont (`GeneralUser-GS-2.0.3.sf2`) | S. Christian Collins | [mrbumpy409/GeneralUser-GS](https://github.com/mrbumpy409/GeneralUser-GS) at `9704918` | GeneralUser GS License v2.0 (`assets/soundfonts/GeneralUser-GS-LICENSE.txt`; not SPDX; allows use and redistribution) |
+| `assets/soundfonts/GeneralUser-GS-LICENSE.txt` (the `.sf2` is downloaded, checked, its samples compressed to Ogg Vorbis and the result copied into the browser build, not the repo) | GeneralUser GS 2.0.3 SoundFont (`GeneralUser-GS-2.0.3.sf2`) | S. Christian Collins | [mrbumpy409/GeneralUser-GS](https://github.com/mrbumpy409/GeneralUser-GS) at `9704918` | GeneralUser GS License v2.0 (`assets/soundfonts/GeneralUser-GS-LICENSE.txt`; not SPDX; allows use and redistribution) |
 ## Derived Code
 
 | Path | Title | Author | Source | License |
@@ -38,5 +38,6 @@ This file documents all third-party assets used in the GuitarScore project.
 | subsetter (without default features) | 0.2.6 | MIT OR Apache-2.0 | Embedding only the used glyphs of the fonts in PDFs (Typst project; only `gscore-layout`) |
 | miniz_oxide (deflate) | 0.8.9 | MIT OR Apache-2.0 OR Zlib | Compressing GuitarScore's state block in a song's notes (pure Rust, works in the browser; only `gscore-app`) |
 | crc32fast | 1.5.3 | MIT OR Apache-2.0 | CRC-32 of that block, so a damaged or edited line is noticed and never half-applied (only `gscore-app`) |
+| lewton (with ogg, byteorder, tinyvec) | 0.10.2 | MIT OR Apache-2.0 | Decoding the Ogg Vorbis samples of SF3 SoundFonts, the browser build's compressed font (pure Rust; only `gscore-audio`) |
 
 > Add new entries when adding third-party assets or dependencies to the project.

@@ -54,7 +54,10 @@ const TOOLS: &[&str] = &["xtask"];
 /// (allowed crates, restricted dependencies).
 const RESTRICTED: &[(&[&str], &[&str])] = &[
     (&["gscore-app"], &["egui", "eframe", "winit", "rfd"]),
-    (&["gscore-audio"], &["cpal", "midir", "rustysynth"]),
+    (
+        &["gscore-audio"],
+        &["cpal", "midir", "rustysynth", "lewton"],
+    ),
     // Guitar Pro file internals: the model wraps them, gscore-io is the safe entry point.
     (&["gscore-model", "gscore-io"], &["gscore-gp"]),
 ];

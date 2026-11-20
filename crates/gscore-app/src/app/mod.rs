@@ -709,7 +709,8 @@ impl GuitarScoreApp {
         }
     }
 
-    /// Writes the SoundFont's state to the page, so the smoke test can wait for it.
+    /// Writes the SoundFont's state to the page: its loading screen shows the download
+    /// (`web/index.html`), and the smoke test waits for it.
     #[cfg(target_arch = "wasm32")]
     fn mark_browser_sound(&mut self, ctx: &egui::Context) {
         if self.playback.is_loading() {
@@ -725,6 +726,9 @@ impl GuitarScoreApp {
                         .unwrap_or(0)
                         .min(100);
                 let _ = body.set_attribute("data-guitarscore-sound-progress", &percent.to_string());
+                // Bytes as "done total", for the loading screen's megabytes.
+                let _ =
+                    body.set_attribute("data-guitarscore-sound-bytes", &format!("{done} {total}"));
             }
             ctx.request_repaint_after(std::time::Duration::from_millis(100));
             return;

@@ -47,6 +47,16 @@ opt-level = 3
 [profile.release]
 panic = "unwind"
 
+# The browser build's editor module (`cargo xtask web`): a small download. LTO with one
+# codegen unit and `opt-level = "s"` make it 4.6 MiB gzip instead of 6.2 (measured
+# 2026-11-20). "z" would save another 0.3 MiB, at the risk of slower layout and drawing.
+# The AudioWorklet's synthesizer is built with `release`: it must stay fast.
+[profile.web]
+inherits = "release"
+lto = "fat"
+codegen-units = 1
+opt-level = "s"
+
 [workspace.lints.rust]
 unsafe_code = "forbid"
 unused_imports = "warn"

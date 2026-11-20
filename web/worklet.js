@@ -2,7 +2,7 @@
 // (`crates/gscore-worklet`). It owns no sound itself; the wasm module does.
 //
 // Messages from the app (the main thread):
-//   {type: "soundfont", bytes: ArrayBuffer}   load a SoundFont (SF2)
+//   {type: "soundfont", bytes: ArrayBuffer}   load a SoundFont (SF2, or SF3: decoded here)
 //   {type: "sequence", bytes: ArrayBuffer}    load a song (gscore-play's wire format)
 //   {type: "replace", bytes: ArrayBuffer}     swap in a rebuilt song (live mixer changes)
 //   {type: "sound", bytes: ArrayBuffer}       a string model, a chain, a bus, a drum part
