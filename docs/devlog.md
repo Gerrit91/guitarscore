@@ -6599,13 +6599,13 @@ Open: whether GitHub Pages gzips `.wasm` (check after the first deploy).
 ## 2026-11-20 — Smaller editor download
 
 - The browser's editor module is built with a new `web` profile (LTO, one codegen unit,
-  `opt-level = "z"`): 12.2 MiB raw, 4.3 MiB gzip (was 15.9 and 6.2). The worklet keeps
-  `release`. First visit now about 10 MB.
+  `opt-level = "s"`): 12.8 MiB raw, 4.6 MiB gzip (was 15.9 and 6.2). "z" measured 4.3 MiB
+  but was not worth a risk to layout speed. The worklet keeps `release`. First visit now
+  about 10 MB.
 - The bundled fonts were compiled in twice (PDF export and app, as constants copied into
   each crate): now one set of statics in `gscore-layout`, the app takes them from
   `PdfFonts::bundled()`. Desktop binary 50.3 → 47.8 MB. (The wasm had already been
   de-duplicated by LTO.)
 
-Open: check that layout and scrolling of a long song stay smooth with `opt-level = "z"`;
-trimming the Bravura metadata (1.2 MiB of JSON) and subsetting Bravura to the `Glyph` set;
+Open: trimming the Bravura metadata (1.2 MiB of JSON) and subsetting Bravura to the `Glyph` set;
 egui's unused Ubuntu-Light (360 KiB).
