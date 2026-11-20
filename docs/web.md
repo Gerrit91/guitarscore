@@ -142,6 +142,10 @@ the user's work:
 
 ## Updates
 
+The SoundFont manifest is part of each build's cached files: an app keeps getting the font
+of its own build until the new build takes over (an older app given a newer font it cannot
+read reported "not a usable SoundFont").
+
 `cargo xtask web` stamps a cache name unique to the build into `sw.js` (version and build
 time). The worker fetches the app shell with `cache: "reload"`, so the browser's HTTP cache
 cannot hand it the previous build's files. The visit after a deploy is still served by the

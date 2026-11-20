@@ -24,6 +24,9 @@ const SHELL = [
   "./worklet_synth_bg.wasm",
   "./manifest.json",
   "./assets/icon.png",
+  // The SoundFont manifest belongs to the build: an older app must not be pointed at a
+  // newer font it may not read (a cached app got the compressed SF3, 2026-11-20).
+  "./assets/soundfonts/soundfont.json",
 ];
 
 self.addEventListener("install", (event) => {
@@ -97,21 +100,20 @@ self.addEventListener("fetch", (event) => {
     }
   }
 
-  // The manifest is network-first, so a new deploy's font is noticed; the cache answers
-  // when offline.
+  // The manifest comes from this worker's own build cache, never another build's: the app
+  // this worker serves and the font it names must match. A new deploy's font arrives with
+  // the new worker (its install caches the new manifest), which reloads the page.
   if (url.pathname.endsWith("/assets/soundfonts/soundfont.json")) {
     event.respondWith(
       (async () => {
-        try {
-          const response = await fetch(request, { cache: "no-cache" });
-          if (response.status === 200) {
-            const copy = response.clone();
-            caches.open(CACHE).then((cache) => cache.put(request, copy));
-          }
-          return response;
-        } catch {
-          return (await caches.match(request)) || Response.error();
+        const cache = await caches.open(CACHE);
+        const cached = await cache.match(request);
+        if (cached) return cached;
+        const response = await fetch(request, { cache: "no-cache" });
+        if (response.status === 200) {
+          await cache.put(request, response.clone());
         }
+        return response;
       })(),
     );
     return;
