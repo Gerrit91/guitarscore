@@ -11,6 +11,8 @@ pub mod chain_settings;
 mod desktop_entry;
 mod document;
 mod export;
+#[cfg(not(target_arch = "wasm32"))]
+mod file_types;
 mod fonts;
 mod keys;
 mod playback;

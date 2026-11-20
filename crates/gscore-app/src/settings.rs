@@ -850,6 +850,9 @@ pub struct Settings {
     /// Whether the app keeps its entry in the Linux applications menu; `None` until the
     /// user was asked (at the first start of a Linux release build).
     pub desktop_entry: Option<bool>,
+    /// Whether Guitar Pro files open with GuitarScore (a file association for the user
+    /// only, written by the app; Settings › Editor, off by default).
+    pub file_association: bool,
 }
 
 impl Default for Settings {
@@ -914,6 +917,7 @@ impl Default for Settings {
             update_checked_at: None,
             skipped_update: None,
             desktop_entry: None,
+            file_association: false,
         }
     }
 }

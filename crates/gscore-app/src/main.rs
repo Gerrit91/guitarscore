@@ -107,6 +107,12 @@ fn main() -> ExitCode {
             if gscore_version::RELEASE || std::env::var_os("APPIMAGE").is_some() {
                 app.enable_desktop_entry();
             }
+            // A release build on Linux or Windows offers, in Settings › Editor, to open the
+            // Guitar Pro files (and keeps an association it wrote pointing at itself).
+            #[cfg(any(target_os = "linux", windows))]
+            if gscore_version::RELEASE || std::env::var_os("APPIMAGE").is_some() {
+                app.enable_file_association();
+            }
             if let Some(problem) = settings_problem.or(loaded.problem) {
                 app.set_notice(problem);
             }
