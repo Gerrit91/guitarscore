@@ -58,6 +58,43 @@ pub(super) fn new_build_takes_over(
     result
 }
 
+/// After [`new_build_takes_over`] the page runs the test's "next" build while the files on
+/// disk are the real build again: one more deploy. A page in use (a key was pressed) must
+/// not be reloaded under the user: it shows the update bar, and its Reload button brings
+/// in the new build.
+pub(super) fn a_page_in_use_is_offered_the_update(browser: &mut Browser) -> Result<(), String> {
+    let touch_and_check = "window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Shift' })); \
+         globalThis.guitarscoreCheckForUpdate(); 'checked'";
+    browser.eval(touch_and_check)?;
+    let offered = "new Promise((resolve) => { const started = Date.now(); \
+         const poll = () => { const bar = document.getElementById('update'); \
+         if (bar && !bar.hidden) return resolve( \
+           document.querySelector('meta[name=gscore-build]') ? 'ok' : 'reloaded under the user'); \
+         if (Date.now() - started > 15000) return resolve('no update bar'); \
+         setTimeout(poll, 100); }; poll(); })";
+    let result = browser.eval(offered)?;
+    if result != "ok" {
+        return Err(format!("a page in use and a new build: {result}"));
+    }
+    browser.eval("document.getElementById('update-reload').click(); 'clicked'")?;
+    let check = "(document.querySelector('meta[name=gscore-build]') ? 'old' : 'new') + \
+                 (document.body?.dataset.guitarscoreReady === 'true' ? ' ready' : '')";
+    let started = Instant::now();
+    let mut last = String::from("nothing");
+    while started.elapsed() < TAKE_OVER {
+        if let Ok(state) = browser.eval(check) {
+            if state == "new ready" {
+                return Ok(());
+            }
+            last = state;
+        }
+        std::thread::sleep(Duration::from_millis(250));
+    }
+    Err(format!(
+        "Reload in the update bar did not bring the new build ({last})"
+    ))
+}
+
 /// Visits `url` once and waits (through the page's own reload) for the new build's page
 /// with the editor running.
 fn visit_until_new(browser: &mut Browser, url: &str) -> Result<(), String> {

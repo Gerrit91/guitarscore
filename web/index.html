@@ -85,6 +85,45 @@
       #loading-skip:hover {
         background: #23262d;
       }
+      #update {
+        position: fixed;
+        right: 16px;
+        bottom: 36px;
+        display: flex;
+        gap: 12px;
+        align-items: center;
+        max-width: calc(100vw - 32px);
+        box-sizing: border-box;
+        padding: 8px 10px 8px 14px;
+        border: 1px solid #4a4f5a;
+        border-radius: 6px;
+        color: #d8dade;
+        font: 13px/1.4 system-ui, sans-serif;
+        background: #23262d;
+        box-shadow: 0 4px 16px rgb(0 0 0 / 35%);
+      }
+      #update[hidden] {
+        display: none;
+      }
+      #update button {
+        padding: 4px 12px;
+        border: 1px solid #4a4f5a;
+        border-radius: 4px;
+        color: #d8dade;
+        font: inherit;
+        background: transparent;
+        cursor: pointer;
+      }
+      #update button:hover {
+        background: #2d313a;
+      }
+      #update button.primary {
+        border-color: #3d7fd9;
+        background: #2b5d9e;
+      }
+      #update button.primary:hover {
+        background: #3168b0;
+      }
       #status {
         max-width: 42em;
         padding: 0 1em;
@@ -179,6 +218,11 @@
       </div>
       <div id="crash-details"></div>
     </div>
+    <div id="update" hidden role="status">
+      <span>A new version of GuitarScore is ready.</span>
+      <button type="button" class="primary" id="update-reload">Reload</button>
+      <button type="button" id="update-later">Later</button>
+    </div>
     <noscript>GuitarScore needs JavaScript and WebAssembly.</noscript>
     <script type="module">
       import init from "./guitarscore.js";
@@ -209,6 +253,7 @@
         if (crashed) return;
         crashed = true;
         loading.classList.add("hidden");
+        document.getElementById("update").hidden = true;
         document.getElementById("guitarscore").style.visibility = "hidden";
         const screen = document.getElementById("crashed");
         const rescue = document.getElementById("crash-rescue");
@@ -315,9 +360,8 @@
       // file:// copy still runs the editor.
       if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
         // A new build takes over while this page still runs the old one (the old worker
-        // served it). Reload once into the new build, so a deploy is seen at the next
-        // visit, not the one after; the editor's own guard asks first if a song has
-        // unsaved edits. A first visit (no worker yet) has nothing to replace.
+        // served it). Reload once into the new build; the editor's own guard asks first if
+        // a song has unsaved edits. A first visit (no worker yet) has nothing to replace.
         const replacing = Boolean(navigator.serviceWorker.controller);
         let reloading = false;
         navigator.serviceWorker.addEventListener("controllerchange", () => {
@@ -325,7 +369,68 @@
           reloading = true;
           location.reload();
         });
-        navigator.serviceWorker.register("./sw.js").catch(() => {});
+
+        // When a new build may take over. A page nobody has touched yet (a key, a click, a
+        // dropped file) takes it at once: the visit after a deploy runs the new build. A
+        // page in use is not reloaded under the user: a bar offers the new version, and
+        // Reload (or the next visit) brings it in.
+        let touched = false;
+        for (const type of ["keydown", "pointerdown", "drop"]) {
+          window.addEventListener(type, () => (touched = true), { capture: true, once: true });
+        }
+        const bar = document.getElementById("update");
+        let waiting = null;
+        const takeOver = () => waiting?.postMessage({ type: "skipWaiting" });
+        const offer = (worker) => {
+          if (crashed) return;
+          waiting = worker;
+          if (touched) {
+            bar.hidden = false;
+          } else {
+            takeOver();
+          }
+        };
+        document.getElementById("update-reload").addEventListener("click", () => {
+          bar.hidden = true;
+          takeOver();
+        });
+        document.getElementById("update-later").addEventListener("click", () => {
+          bar.hidden = true;
+        });
+
+        navigator.serviceWorker
+          .register("./sw.js")
+          .then((registration) => {
+            // A new build that installed while an earlier page was open, still waiting.
+            if (registration.waiting && navigator.serviceWorker.controller) {
+              offer(registration.waiting);
+            }
+            registration.addEventListener("updatefound", () => {
+              const worker = registration.installing;
+              worker?.addEventListener("statechange", () => {
+                if (worker.state === "installed" && navigator.serviceWorker.controller) {
+                  offer(worker);
+                }
+              });
+            });
+            // The browser looks for a new build at each visit. A tab that stays open (a
+            // practice session) looks again every hour and when it is shown again, at
+            // most every ten minutes.
+            let checked = Date.now();
+            const check = () => {
+              checked = Date.now();
+              registration.update().catch(() => {});
+            };
+            setInterval(check, 60 * 60 * 1000);
+            document.addEventListener("visibilitychange", () => {
+              if (document.visibilityState === "visible" && Date.now() - checked > 10 * 60 * 1000) {
+                check();
+              }
+            });
+            // For the smoke test: look for a new build now.
+            globalThis.guitarscoreCheckForUpdate = check;
+          })
+          .catch(() => {});
       }
     </script>
   </body>

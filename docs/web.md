@@ -142,6 +142,14 @@ the user's work:
 
 ## Updates
 
+The browser looks for a new build at each visit; a tab that stays open looks again every
+hour and when it is shown again (at most every ten minutes). A new build's service worker
+installs in the background and then waits. A page nobody has touched yet (no key, click or
+dropped file) lets it take over at once and reloads, so the visit after a deploy runs the
+new build. A page in use is never reloaded under the user: a bar offers "A new version of
+GuitarScore is ready" with Reload and Later; Later leaves the new build for the next visit.
+The smoke test checks both.
+
 The SoundFont manifest is part of each build's cached files: an app keeps getting the font
 of its own build until the new build takes over (an older app given a newer font it cannot
 read reported "not a usable SoundFont").
