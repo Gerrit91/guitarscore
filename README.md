@@ -34,7 +34,7 @@ built never to lose your work.
 
 **Try it in your browser:** [gerrit91.github.io/guitarscore](https://gerrit91.github.io/guitarscore/)
 runs the latest release, nothing to install. Your songs stay on your disk; the first visit
-downloads about 12 MB (the editor and its sounds), later visits start from the cache and
+downloads about 10 MB (the editor and its sounds), later visits start from the cache and
 work offline.
 
 Builds for Linux, Windows and macOS are attached to

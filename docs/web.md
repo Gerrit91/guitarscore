@@ -14,7 +14,7 @@ cargo xtask web --smoke    # also start it in headless Chromium and save screens
 |---|---|
 | `index.html` | the page: a canvas for eframe, a loading screen (editor, then SoundFont download), `#status` for errors |
 | `guitarscore.js` | wasm-bindgen's glue |
-| `guitarscore_bg.wasm` | the whole editor (about 13.5 MiB; 5.4 MiB gzip, 3.0 MiB brotli) |
+| `guitarscore_bg.wasm` | the whole editor (about 12.2 MiB; 4.3 MiB gzip, 3.1 MiB brotli; built with the size-optimised `web` profile) |
 | `assets/icon.png` | app icon for the page and the manifest |
 | `assets/soundfonts/GeneralUser-GS-2.0.3-<hash>.sf3` | the bundled General MIDI SoundFont, samples compressed (5.6 MiB; 30.8 MiB as SF2) |
 | `assets/soundfonts/soundfont.json` | which SoundFont to load, its size and SHA-256 |
@@ -25,7 +25,9 @@ cargo xtask web --smoke    # also start it in headless Chromium and save screens
 
 The build needs `ffmpeg` with libvorbis (to compress the SoundFont), `wasm-bindgen` (`cargo install wasm-bindgen-cli --version 0.2.130`, or a
 release binary) and benefits from `wasm-opt` (binaryen): without it the module is not
-size-optimised. `--debug` builds without optimisations, `--out DIR` writes elsewhere.
+size-optimised. The editor is compiled with the `web` profile (Cargo.toml: LTO, one
+codegen unit, `opt-level = "z"`; 4.3 MiB gzip instead of 6.2 with `release`), the
+AudioWorklet's synthesizer with `release`, so audio keeps its speed. `--debug` builds without optimisations, `--out DIR` writes elsewhere.
 
 The site ships GeneralUser GS 2.0.3 (GeneralUser GS License v2.0, which allows modifying
 it). The first build downloads it from the upstream repository at a pinned commit into

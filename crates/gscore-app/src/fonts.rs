@@ -11,18 +11,17 @@ pub(crate) const BOLD: &str = "Noto Sans Bold";
 /// Family name for SMuFL music glyphs.
 pub(crate) const MUSIC: &str = "Bravura";
 
-const NOTO_SANS: &[u8] = include_bytes!("../../../assets/fonts/noto-sans/NotoSans-Regular.ttf");
-const NOTO_SANS_BOLD: &[u8] = include_bytes!("../../../assets/fonts/noto-sans/NotoSans-Bold.ttf");
-const BRAVURA: &[u8] = include_bytes!("../../../assets/fonts/bravura/Bravura.otf");
-
 /// The bundled fonts on top of egui's defaults: Noto Sans first for proportional text
 /// (egui's own fonts stay as fallbacks, e.g. for emoji).
 pub(crate) fn definitions() -> FontDefinitions {
     let mut fonts = FontDefinitions::default();
+    // The same files the PDF export embeds, taken from there: compiled in twice, they made
+    // the browser download 1.2 MiB (gzip) larger.
+    let bundled = gscore_layout::PdfFonts::bundled();
     for (name, bytes) in [
-        ("Noto Sans", NOTO_SANS),
-        (BOLD, NOTO_SANS_BOLD),
-        (MUSIC, BRAVURA),
+        ("Noto Sans", bundled.text),
+        (BOLD, bundled.bold),
+        (MUSIC, bundled.music),
     ] {
         fonts
             .font_data

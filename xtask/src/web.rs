@@ -142,11 +142,12 @@ fn build(root: &Path, options: &Options) -> Result<PathBuf, String> {
         "--features",
         "web",
     ];
+    // The `web` profile (Cargo.toml): optimised for size, the download is what matters.
     if !options.debug {
-        args.push("--release");
+        args.extend(["--profile", "web"]);
     }
     cmd::run_status(&cmd::cargo(), &args, root)?;
-    let profile = if options.debug { "debug" } else { "release" };
+    let profile = if options.debug { "debug" } else { "web" };
     let wasm = root
         .join("target")
         .join("wasm32-unknown-unknown")
