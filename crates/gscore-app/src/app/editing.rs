@@ -398,6 +398,7 @@ impl GuitarScoreApp {
             && let Some(text) = document.editor().clipboard_text()
         {
             ctx.copy_text(text);
+            self.copied = Some((document.editor().clipboard(), tab.id));
         }
         match performed {
             Ok(Outcome::Edited) => {
@@ -779,6 +780,21 @@ impl GuitarScoreApp {
                 beat: at.beat,
                 ..cursor
             });
+        }
+    }
+
+    /// The shown tab takes over what was last copied in another one, so it can be pasted
+    /// there (each song's editor has a clipboard of its own).
+    pub(super) fn share_clipboard(&mut self) {
+        let Some(tab) = self.tabs.get_mut(self.active) else {
+            return;
+        };
+        let Some((clipboard, holder)) = &mut self.copied else {
+            return;
+        };
+        if *holder != tab.id {
+            tab.document.editor_mut().set_clipboard(clipboard.clone());
+            *holder = tab.id;
         }
     }
 

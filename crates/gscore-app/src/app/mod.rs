@@ -206,6 +206,11 @@ pub struct GuitarScoreApp {
     /// A block or chain copied in a chain board, for pasting into a track, a drum part or
     /// the master (kept while the app runs).
     sound_clipboard: Option<sound_chain::SoundClip>,
+    /// What was last copied or cut in any open song, and the tab whose editor holds it as
+    /// it is now: each tab's editor has a clipboard of its own, so the shown tab takes this
+    /// one over ([`GuitarScoreApp::share_clipboard`]) and a copy in one song pastes in
+    /// another.
+    copied: Option<(gscore_edit::Clipboard, tab::TabId)>,
     /// While the Sound chain window's A/B is on: the track and what it plays instead of its
     /// own tone, as the window found it: that tone, or `None` when the track had no tone of
     /// its own then (it plays its built-in one, as playback gives it). Only what is heard
@@ -398,6 +403,7 @@ impl GuitarScoreApp {
             kit_room: None,
             sound_chain: None,
             sound_clipboard: None,
+            copied: None,
             compare_tone: None,
             reverb_bus_window: None,
             compressor_bus_window: None,
@@ -1029,6 +1035,7 @@ impl eframe::App for GuitarScoreApp {
         self.interface_zoom_keys(&ctx);
         // The Sound chain board's keys first, while it has the keyboard.
         self.take_sound_chain_keys(&ctx);
+        self.share_clipboard();
         self.handle_keys(&ctx);
         self.step_entry_tick(&ctx);
         self.deferred_audition_tick(&ctx);

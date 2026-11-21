@@ -40,7 +40,7 @@ pub use fingering::{FingeringError, Neck, Place, hand_before, pitch_name};
 pub use info::{COMMANDS, CommandInfo, ParamInfo, find_command};
 pub use keymap::{DEFAULT_KEYMAP, Key, KeyCombo, Keymap, KeymapError, Modifiers, NamedKey};
 pub use parse::{ParseError, parse_line};
-pub use selection::{BeatSpot, MAX_PASTE_COPIES, PasteOptions, Selection};
+pub use selection::{BeatSpot, Clipboard, MAX_PASTE_COPIES, PasteOptions, Selection};
 pub use step_entry::StepInput;
 pub use tab_editor::{FRET_DIGIT_WINDOW_MS, Outcome, Request, TabEditor};
 
