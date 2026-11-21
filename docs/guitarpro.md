@@ -358,3 +358,11 @@ Code comments mark changed spots with "GuitarScore". Each fix could be offered u
     `Track::visible`, a second byte per track of unknown meaning (kept), a `u32` that looks
     like the selected track (kept, reset to 0 if that track is gone). Data of the wrong
     length is ignored. Tests in the module, one on `testdata/basic/multi_staff.gp`.
+51. Tie origins (`src/io/gpif_export/ties.rs` (new), `notes.rs`, `beats.rs`, `mod.rs`,
+    2026-11-21): the writer marked only the tied note (`<Tie destination="true" />`), not
+    the note the tie starts from. Guitar Pro needs both ends, `<Tie origin="true"
+    destination="false" />` on the first note and both on a note in the middle of a chain,
+    and struck every tied note anew without them (heard in the M22 reference tabs, notes
+    tied across bar lines). The model keeps only the destination, so the writer finds the
+    origins per staff and voice: the last note on the tied note's string, also across bar
+    lines; a rest ends it, grace beats are passed over. Tests in the module.

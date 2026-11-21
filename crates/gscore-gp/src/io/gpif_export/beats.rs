@@ -23,6 +23,7 @@ pub(super) fn build_beat_xml(
     chord_id: Option<i32>,
     next_note_id: &mut i32,
     prev_velocity: &mut i16,
+    tie_starts: impl Fn(i8) -> bool,
 ) -> GpResult<BeatExport> {
     let mut note_xmls: Vec<String> = Vec::new();
     let mut note_ids: Vec<i32> = Vec::new();
@@ -34,7 +35,7 @@ pub(super) fn build_beat_xml(
         for note in &beat.notes {
             let note_id = next_id(next_note_id)?;
             note_ids.push(note_id);
-            note_xmls.push(build_note_xml(note, note_id));
+            note_xmls.push(build_note_xml(note, note_id, tie_starts(note.string)));
         }
     }
 

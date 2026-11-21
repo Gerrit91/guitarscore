@@ -9,6 +9,8 @@ use crate::app::icons::Icon;
 use crate::app::style;
 
 use super::widgets::icon_button;
+#[cfg(target_arch = "wasm32")]
+use super::widgets::switch_row;
 
 impl GuitarScoreApp {
     /// The song's title over where playback is, in `rect`.
