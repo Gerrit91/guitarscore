@@ -77,6 +77,8 @@ pub enum EditError {
     NothingSelected,
     /// There is nothing on the clipboard to paste.
     NothingToPaste,
+    /// A pitch or chord has no place on the track's strings; nothing changed.
+    Unplayable(crate::FingeringError),
 }
 
 impl fmt::Display for EditError {
@@ -88,6 +90,7 @@ impl fmt::Display for EditError {
             EditError::Unsupported(what) => f.write_str(what),
             EditError::NothingSelected => f.write_str("select some beats or measures first"),
             EditError::NothingToPaste => f.write_str("there is nothing on the clipboard"),
+            EditError::Unplayable(error) => write!(f, "{error}"),
         }
     }
 }
@@ -96,12 +99,19 @@ impl std::error::Error for EditError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             EditError::Model(error) => Some(error),
+            EditError::Unplayable(error) => Some(error),
             EditError::NothingToUndo
             | EditError::NothingToRedo
             | EditError::Unsupported(_)
             | EditError::NothingSelected
             | EditError::NothingToPaste => None,
         }
+    }
+}
+
+impl From<crate::FingeringError> for EditError {
+    fn from(error: crate::FingeringError) -> Self {
+        EditError::Unplayable(error)
     }
 }
 

@@ -18,7 +18,7 @@ use crate::selection::{Clipboard, Selection};
 /// How long after a fret digit a second digit still joins it (`1` then `2` is fret 12).
 pub const FRET_DIGIT_WINDOW_MS: u64 = 500;
 /// Highest fret that can be typed (two digits).
-const MAX_TYPED_FRET: u8 = 99;
+pub(crate) const MAX_TYPED_FRET: u8 = 99;
 /// Note value of a new beat when there is no beat to copy it from: a quarter.
 const DEFAULT_ENTRY_VALUE: u16 = 4;
 
@@ -55,12 +55,21 @@ pub enum Request {
     },
 }
 
+/// Where the cursor goes on from a beat.
+#[derive(Debug, Clone)]
+pub(crate) enum Advance {
+    /// It only moves.
+    Move(Cursor),
+    /// The song needs an edit first (a beat or a measure added at the end).
+    Edit(Command, Cursor),
+}
+
 /// A fret digit that a second digit may still extend.
 #[derive(Debug, Clone, Copy)]
-struct PendingDigit {
-    cursor: Cursor,
-    value: u8,
-    time_ms: u64,
+pub(crate) struct PendingDigit {
+    pub(crate) cursor: Cursor,
+    pub(crate) value: u8,
+    pub(crate) time_ms: u64,
 }
 
 /// A song being edited at a cursor, with undo and redo.
@@ -68,18 +77,22 @@ struct PendingDigit {
 pub struct TabEditor {
     pub(crate) editor: Editor,
     pub(crate) cursor: Cursor,
-    pending: Option<PendingDigit>,
+    pub(crate) pending: Option<PendingDigit>,
+    /// Whether step entry is on: entering a note moves the cursor on (M23).
+    pub(crate) step_entry: bool,
+    /// The beat step entry entered last, which a chord note or a correction still changes.
+    pub(crate) step: Option<crate::step_entry::Step>,
     /// Where the cursor was before each undoable edit, parallel to the editor's history.
     undo_cursors: Vec<Cursor>,
     /// Where the cursor goes when each undone edit is redone.
     redo_cursors: Vec<Cursor>,
     /// Counts changes to the song; a new value means layouts and sequences are stale.
-    revision: u64,
+    pub(crate) revision: u64,
     /// The note value new beats get when there is no beat to take it from.
-    entry_value: NoteValue,
+    pub(crate) entry_value: NoteValue,
     /// The command the last edit ran (or undid or redid), for the app to tell a live mixer
     /// change from an edit that invalidates playback.
-    last_command: Option<Command>,
+    pub(crate) last_command: Option<Command>,
     /// The selected beats or measures, if any.
     pub(crate) selection: Option<Selection>,
     /// What was last copied or cut.
@@ -100,6 +113,8 @@ impl TabEditor {
             editor: Editor::new(song),
             cursor,
             pending: None,
+            step_entry: false,
+            step: None,
             undo_cursors: Vec::new(),
             redo_cursors: Vec::new(),
             revision: 0,
@@ -172,6 +187,7 @@ impl TabEditor {
     /// Moves the cursor (for example to a clicked note); it is kept inside the song.
     pub fn set_cursor(&mut self, cursor: Cursor) {
         self.pending = None;
+        self.step = None;
         self.cursor = cursor;
         self.cursor.clamp(self.editor.song());
     }
@@ -259,8 +275,31 @@ impl TabEditor {
         // Anything but another digit ends a fret number.
         let pending = self.pending.take();
         self.last_command = None;
+        let mut closed = false;
+        if self.step_entry {
+            match self.perform_step(action, now_ms)? {
+                crate::step_entry::Handled::Done(outcome) => return Ok(outcome),
+                crate::step_entry::Handled::Continue { moved } => closed = moved,
+            }
+        }
+        let outcome = self.perform_plain(action, now_ms, pending)?;
+        Ok(match outcome {
+            Outcome::Nothing if closed => Outcome::Moved,
+            outcome => outcome,
+        })
+    }
+
+    /// [`TabEditor::perform`] for every action step entry does not handle itself.
+    fn perform_plain(
+        &mut self,
+        action: Action,
+        now_ms: u64,
+        pending: Option<PendingDigit>,
+    ) -> Result<Outcome, EditError> {
         let id = match action {
             Action::Digit(digit) => return self.enter_digit(digit, now_ms, pending),
+            // Step entry's own keys do nothing outside it.
+            Action::ChordDigit(_) | Action::Note { .. } => return Ok(Outcome::Nothing),
             Action::Plain(id) => id,
         };
         let song = self.editor.song();
@@ -396,6 +435,19 @@ impl TabEditor {
             | ActionId::OpenSettings
             | ActionId::CloseTab
             | ActionId::Quit => Ok(Outcome::Nothing),
+            ActionId::ToggleStepEntry => Ok(self.set_step_entry(!self.step_entry)),
+            // Step entry's own actions, outside step entry.
+            ActionId::LeaveStepEntry
+            | ActionId::StepNote
+            | ActionId::StepChordNote
+            | ActionId::EnterChordFret
+            | ActionId::StepRest
+            | ActionId::StepSemitoneUp
+            | ActionId::StepSemitoneDown
+            | ActionId::StepOctaveUp
+            | ActionId::StepOctaveDown
+            | ActionId::StepStringUp
+            | ActionId::StepStringDown => Ok(Outcome::Nothing),
             // Palette actions: the app runs them like a click on the palette tile.
             ActionId::NoteWhole
             | ActionId::NoteHalf
@@ -537,7 +589,7 @@ impl TabEditor {
         Ok(Outcome::Edited)
     }
 
-    fn string(&self) -> Result<gscore_model::StringNumber, EditError> {
+    pub(crate) fn string(&self) -> Result<gscore_model::StringNumber, EditError> {
         Ok(gscore_model::StringNumber::new(self.cursor.string)?)
     }
 
@@ -558,7 +610,7 @@ impl TabEditor {
                 .value
                 .checked_mul(10)
                 .and_then(|v| v.checked_add(digit))
-                .filter(|v| *v <= MAX_TYPED_FRET)
+                .filter(|v| *v <= self.max_typed_fret())
         {
             let fret = Fret::new(value)?;
             self.undo()?;
@@ -583,10 +635,23 @@ impl TabEditor {
     /// long as the current one, or what still fits); at the end of the last full measure,
     /// a measure is added.
     fn cursor_right(&mut self) -> Result<Outcome, EditError> {
+        match self.advance()? {
+            Advance::Move(next) => {
+                self.cursor = next;
+                Ok(Outcome::Moved)
+            }
+            Advance::Edit(command, next) => self.execute(command, next, false),
+        }
+    }
+
+    /// Where [`ActionId::CursorRight`] goes from the cursor, and the edit it needs to get
+    /// there (a rest beat or a measure added), without doing it.
+    pub(crate) fn advance(&self) -> Result<Advance, EditError> {
         let song = self.editor.song();
+        let mut next = self.cursor;
         if !self.cursor.at_measure_end(song) {
-            self.cursor.right(song);
-            return Ok(Outcome::Moved);
+            next.right(song);
+            return Ok(Advance::Move(next));
         }
         let beats = self.cursor.beats_in(song, self.cursor.measure);
         if beats > 0
@@ -609,7 +674,7 @@ impl TabEditor {
                 beat: BeatIndex::new(beats),
                 ..self.cursor
             };
-            return self.execute(Command::InsertBeat { at, duration }, after, false);
+            return Ok(Advance::Edit(Command::InsertBeat { at, duration }, after));
         }
         if self.cursor.in_last_measure(song) {
             let measure = MeasureIndex::new(song.measure_count());
@@ -618,10 +683,10 @@ impl TabEditor {
                 beat: BeatIndex::new(0),
                 ..self.cursor
             };
-            return self.execute(Command::InsertMeasure { measure }, after, false);
+            return Ok(Advance::Edit(Command::InsertMeasure { measure }, after));
         }
-        self.cursor.right(song);
-        Ok(Outcome::Moved)
+        next.right(song);
+        Ok(Advance::Move(next))
     }
 
     /// Transposes what the song sounds like by `semitones` (one undo step); the written
@@ -657,7 +722,7 @@ impl TabEditor {
     }
 
     /// The note value of the beat at the cursor, or the entry value.
-    fn current_value(&self) -> NoteValue {
+    pub(crate) fn current_value(&self) -> NoteValue {
         self.editor
             .song()
             .beat(self.cursor.position())

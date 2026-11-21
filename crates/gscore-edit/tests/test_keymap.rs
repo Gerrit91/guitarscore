@@ -201,10 +201,11 @@ just text
     // Binding the same key to the same action twice is harmless.
     assert!(Keymap::parse("Left = cursor_left\nLeft = cursor_left\n").is_ok());
     // Every action id can be bound.
-    for action in ACTIONS.iter().filter(|a| a.action != ActionId::EnterFret) {
+    // (Step entry's actions answer in step entry.)
+    for action in ACTIONS.iter().filter(|a| !a.action.has_fixed_keys()) {
         let keymap = Keymap::parse(&format!("F1 = {}", action.id)).unwrap();
         assert_eq!(
-            keymap.action(KeyCombo::named(NamedKey::F(1))),
+            keymap.action_in(KeyCombo::named(NamedKey::F(1)), true),
             Some(Action::Plain(action.action))
         );
     }

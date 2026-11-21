@@ -1,9 +1,10 @@
 //! The note tools: a virtual fretboard, a piano keyboard and the drum map. Each is a
 //! floating window that shows the notes of the cursor's beat; a click on the fretboard or
-//! the keyboard puts a note into that beat (or takes it out again).
+//! the keyboard puts a note into that beat (or takes it out again). In step entry a click
+//! enters a step and the cursor moves on; with Shift the note joins the chord entered last.
 
 use egui::{Align2, Color32, FontId, Margin, Pos2, Rect, RichText, Sense, Stroke, pos2, vec2};
-use gscore_edit::Command;
+use gscore_edit::{Command, Neck, Place, StepInput};
 use gscore_model::{BeatPosition, Fret, NoteValue, StringNumber};
 
 use super::GuitarScoreApp;
@@ -123,17 +124,17 @@ impl BeatNotes {
             .or(self.cursor_string)
     }
 
-    /// The fret and string that sound `pitch` and are easiest to reach: the lowest fret on
-    /// a string the beat does not use yet.
-    fn place_for(&self, pitch: u8) -> Option<(StringNumber, u8)> {
-        self.strings
+    /// The beat's notes as places, for the fingering.
+    fn places(&self) -> Vec<Place> {
+        self.notes
             .iter()
-            .filter(|(string, _)| !self.notes.iter().any(|note| note.string == *string))
-            .filter_map(|(string, open)| {
-                let fret = pitch.checked_sub(*open)?;
-                (fret <= FRETS).then_some((*string, fret))
+            .filter_map(|note| {
+                Some(Place {
+                    string: note.string,
+                    fret: Fret::new(note.fret).ok()?,
+                })
             })
-            .min_by_key(|(_, fret)| *fret)
+            .collect()
     }
 }
 
@@ -451,6 +452,21 @@ impl GuitarScoreApp {
         let (Some(click), Some(beat)) = (click, beat) else {
             return;
         };
+        let step_entry = self
+            .document()
+            .is_some_and(|document| document.editor().step_entry());
+        if step_entry {
+            let chord = ctx.input(|input| input.modifiers.shift);
+            let input = match click {
+                Click::Fret(string, fret) => match Fret::new(fret) {
+                    Ok(fret) => StepInput::Places(vec![Place { string, fret }]),
+                    Err(_) => return,
+                },
+                Click::Drum(key) | Click::Key(key) => StepInput::Pitches(vec![key]),
+            };
+            self.enter_step(input, chord, true, ctx);
+            return;
+        }
         let place = match click {
             Click::Fret(string, fret) => Some((string, fret)),
             Click::Drum(key) => {
@@ -472,12 +488,24 @@ impl GuitarScoreApp {
                 match sounding {
                     Some(note) => Some((note.string, note.fret)),
                     None => {
-                        let place = beat.place_for(pitch);
-                        if place.is_none() {
-                            self.notice =
-                                Some("No free string of this track can play that key.".to_owned());
+                        // Where the fingering puts it beside the beat's notes.
+                        let placed = self.document().ok_or(None).and_then(|document| {
+                            let song = document.song();
+                            let cursor = document.editor().cursor();
+                            let neck = Neck::of_staff(song, &cursor).map_err(Some)?;
+                            let hand = gscore_edit::hand_before(song, &cursor);
+                            neck.place_note(pitch, hand, &beat.places()).map_err(Some)
+                        });
+                        match placed {
+                            Ok(place) => Some((place.string, place.fret.get())),
+                            Err(error) => {
+                                if let Some(error) = error {
+                                    self.notice =
+                                        Some(format!("{}.", capitalized(&error.to_string())));
+                                }
+                                None
+                            }
                         }
-                        place
                     }
                 }
             }
@@ -523,6 +551,14 @@ impl GuitarScoreApp {
             self.audition(beat.at, string, ctx);
         }
     }
+}
+
+/// `text` with its first letter in upper case.
+fn capitalized(text: &str) -> String {
+    let mut chars = text.chars();
+    chars.next().map_or_else(String::new, |first| {
+        first.to_uppercase().chain(chars).collect()
+    })
 }
 
 /// A weak line saying what a tool cannot show for this track.
@@ -814,7 +850,7 @@ mod tests {
     }
 
     #[test]
-    fn a_key_goes_to_the_lowest_fret_on_a_free_string() {
+    fn a_key_goes_where_the_fingering_puts_it_beside_the_beat() {
         let string = |number: u8| StringNumber::new(number).unwrap();
         let beat = BeatNotes {
             at: BeatPosition {
@@ -843,11 +879,17 @@ mod tests {
                 pitch: Some((64, "E".to_owned())),
             }],
         };
+        let neck = Neck::new(beat.strings.clone(), FRETS);
+        let place_for = |pitch| {
+            neck.place_note(pitch, None, &beat.places())
+                .ok()
+                .map(|place| (place.string, place.fret.get()))
+        };
         // E4 is open on string 1, which is taken: fret 5 on string 2.
-        assert_eq!(beat.place_for(64), Some((string(2), 5)));
+        assert_eq!(place_for(64), Some((string(2), 5)));
         // A2 is open on string 5.
-        assert_eq!(beat.place_for(45), Some((string(5), 0)));
+        assert_eq!(place_for(45), Some((string(5), 0)));
         // Below the lowest string: nowhere.
-        assert_eq!(beat.place_for(30), None);
+        assert_eq!(place_for(30), None);
     }
 }

@@ -10,11 +10,15 @@
 //!
 //! The file format is one binding per line, `<key> = <action id>`; `#` starts a comment
 //! line. [`DEFAULT_KEYMAP`] is the built-in keymap in that format.
+//!
+//! Step entry (M23) has a layer of its own: the actions it alone uses
+//! ([`ActionId::step_entry_only`]) are bound in it, and while the mode is on its keys come
+//! before the others. So `a` enters the note A in step entry and an accent otherwise.
 
 use std::collections::BTreeMap;
 use std::fmt;
 
-use crate::action::{Action, ActionId};
+use crate::action::{Action, ActionId, Letter};
 
 /// The built-in keymap, in the keymap file format. Keys are the owner's (AGENTS.md
 /// section 7); actions without a key there stay unbound.
@@ -84,6 +88,7 @@ ctrl+, = open_settings
 ctrl+w = close_tab
 ctrl+q = quit
 H = show_history
+N = toggle_step_entry
 
 # Palette: note values, rest and tie, techniques.
 ctrl+1 = note_whole
@@ -128,6 +133,42 @@ PageUp = scroll_page_up
 PageDown = scroll_page_down
 F11 = toggle_fullscreen
 F3 = toggle_mixer
+
+# Step entry: these keys only work while it is on (N switches it on and off).
+# Letters enter notes by name, capitals add them to the chord entered last, alt+digit
+# types a fret that keeps the beat open for the next note of a chord.
+Escape = leave_step_entry
+c = step_note
+d = step_note
+e = step_note
+f = step_note
+g = step_note
+a = step_note
+b = step_note
+C = step_chord_note
+D = step_chord_note
+E = step_chord_note
+F = step_chord_note
+G = step_chord_note
+A = step_chord_note
+B = step_chord_note
+alt+0 = enter_chord_fret
+alt+1 = enter_chord_fret
+alt+2 = enter_chord_fret
+alt+3 = enter_chord_fret
+alt+4 = enter_chord_fret
+alt+5 = enter_chord_fret
+alt+6 = enter_chord_fret
+alt+7 = enter_chord_fret
+alt+8 = enter_chord_fret
+alt+9 = enter_chord_fret
+r = step_rest
+alt+Up = step_semitone_up
+alt+Down = step_semitone_down
+ctrl+Up = step_octave_up
+ctrl+Down = step_octave_down
+ctrl+shift+Up = step_string_up
+ctrl+shift+Down = step_string_down
 ";
 
 /// A key that types nothing, bound by name.
@@ -362,6 +403,8 @@ impl fmt::Display for KeymapError {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Keymap {
     bindings: BTreeMap<KeyCombo, ActionId>,
+    /// The step-entry layer: [`ActionId::step_entry_only`] actions.
+    step: BTreeMap<KeyCombo, ActionId>,
 }
 
 impl Default for Keymap {
@@ -370,8 +413,34 @@ impl Default for Keymap {
         // The built-in text is tested to parse; an empty keymap is the harmless fallback.
         Keymap::parse(DEFAULT_KEYMAP).unwrap_or_else(|_| Keymap {
             bindings: BTreeMap::new(),
+            step: BTreeMap::new(),
         })
     }
+}
+
+/// Whether `combo` can be one of `action`'s keys, for the actions whose key is their
+/// parameter (a digit or a note's letter). The error says what it needs.
+fn key_fits(action: ActionId, combo: KeyCombo) -> Result<(), String> {
+    let fits = match (action, combo.key) {
+        (ActionId::EnterFret | ActionId::EnterChordFret, Key::Char(c)) => c.is_ascii_digit(),
+        (ActionId::StepNote, Key::Char(c)) => {
+            Letter::from_char(c).is_some() && c.is_ascii_lowercase()
+        }
+        (ActionId::StepChordNote, Key::Char(c)) => {
+            Letter::from_char(c).is_some() && c.is_ascii_uppercase()
+        }
+        (action, _) if action.has_fixed_keys() => false,
+        _ => true,
+    };
+    if fits {
+        return Ok(());
+    }
+    let needs = match action {
+        ActionId::StepNote => "a letter from a to g",
+        ActionId::StepChordNote => "a capital letter from A to G",
+        _ => "a digit key",
+    };
+    Err(format!("{action} needs {needs}, not `{combo}`"))
 }
 
 impl Keymap {
@@ -379,6 +448,7 @@ impl Keymap {
     /// bound twice); the keymap is only returned if there are none.
     pub fn parse(text: &str) -> Result<Self, Vec<KeymapError>> {
         let mut bindings = BTreeMap::new();
+        let mut step = BTreeMap::new();
         let mut errors = Vec::new();
         for (index, line) in text.lines().enumerate() {
             let number = index.saturating_add(1);
@@ -409,54 +479,110 @@ impl Keymap {
                     continue;
                 }
             };
-            if action == ActionId::EnterFret && !matches!(combo.key, Key::Char('0'..='9')) {
-                error(format!("enter_fret needs a digit key, not `{combo}`"));
+            if let Err(message) = key_fits(action, combo) {
+                error(message);
                 continue;
             }
-            match bindings.get(&combo) {
+            let layer = if action.step_entry_only() {
+                &mut step
+            } else {
+                &mut bindings
+            };
+            match layer.get(&combo) {
                 Some(&existing) if existing != action => {
                     error(format!(
                         "`{combo}` is bound to both {existing} and {action}"
                     ));
                 }
                 _ => {
-                    bindings.insert(combo, action);
+                    layer.insert(combo, action);
                 }
             }
         }
         if errors.is_empty() {
-            Ok(Keymap { bindings })
+            Ok(Keymap { bindings, step })
         } else {
             Err(errors)
         }
     }
 
-    /// The action `combo` runs, if any. A digit bound to `enter_fret` enters that digit.
+    /// The action `combo` runs outside step entry, if any. A digit bound to `enter_fret`
+    /// enters that digit.
     pub fn action(&self, combo: KeyCombo) -> Option<Action> {
-        let id = *self.bindings.get(&combo)?;
-        if id == ActionId::EnterFret {
-            let Key::Char(c) = combo.key else {
-                return None;
-            };
-            let digit = c.to_digit(10).and_then(|d| u8::try_from(d).ok())?;
-            return Some(Action::Digit(digit));
+        self.action_in(combo, false)
+    }
+
+    /// The action `combo` runs, with step entry on or off: in step entry its own keys come
+    /// first.
+    pub fn action_in(&self, combo: KeyCombo, step_entry: bool) -> Option<Action> {
+        let id = step_entry
+            .then(|| self.step.get(&combo))
+            .flatten()
+            .or_else(|| self.bindings.get(&combo))?;
+        let c = match combo.key {
+            Key::Char(c) => Some(c),
+            Key::Named(_) => None,
+        };
+        let digit = || {
+            c.and_then(|c| c.to_digit(10))
+                .and_then(|d| u8::try_from(d).ok())
+        };
+        let letter = || c.and_then(Letter::from_char);
+        Some(match id {
+            ActionId::EnterFret => Action::Digit(digit()?),
+            ActionId::EnterChordFret => Action::ChordDigit(digit()?),
+            ActionId::StepNote => Action::Note {
+                letter: letter()?,
+                chord: false,
+            },
+            ActionId::StepChordNote => Action::Note {
+                letter: letter()?,
+                chord: true,
+            },
+            id => Action::Plain(*id),
+        })
+    }
+
+    fn layer(&self, action: ActionId) -> &BTreeMap<KeyCombo, ActionId> {
+        if action.step_entry_only() {
+            &self.step
+        } else {
+            &self.bindings
         }
-        Some(Action::Plain(id))
+    }
+
+    fn layer_mut(&mut self, action: ActionId) -> &mut BTreeMap<KeyCombo, ActionId> {
+        if action.step_entry_only() {
+            &mut self.step
+        } else {
+            &mut self.bindings
+        }
+    }
+
+    /// The other action that `combo` runs where `action` would (in the same layer), if
+    /// any: what binding `combo` to `action` takes the key from.
+    pub fn conflict(&self, action: ActionId, combo: KeyCombo) -> Option<ActionId> {
+        self.layer(action)
+            .get(&combo)
+            .copied()
+            .filter(|other| *other != action)
     }
 
     /// The keys bound to `action`, for menus and help.
     pub fn keys_for(&self, action: ActionId) -> Vec<KeyCombo> {
-        self.bindings
+        self.layer(action)
             .iter()
             .filter(|(_, a)| **a == action)
             .map(|(combo, _)| *combo)
             .collect()
     }
 
-    /// Every binding, as `(key, action)`, in key order.
+    /// Every binding, as `(key, action)`, in key order: those outside step entry, then
+    /// the step-entry layer's.
     pub fn bindings(&self) -> impl Iterator<Item = (KeyCombo, ActionId)> + '_ {
         self.bindings
             .iter()
+            .chain(&self.step)
             .map(|(&combo, &action)| (combo, action))
     }
 
@@ -483,10 +609,10 @@ impl Keymap {
         for (action, keys) in overrides {
             self.unbind(action);
             for combo in keys {
-                if action == ActionId::EnterFret && !matches!(combo.key, Key::Char('0'..='9')) {
+                if key_fits(action, combo).is_err() {
                     continue;
                 }
-                self.bindings.insert(combo, action);
+                self.layer_mut(action).insert(combo, action);
             }
         }
     }
@@ -496,19 +622,20 @@ impl Keymap {
     /// message for `enter_fret`, whose digit keys are fixed (binding one digit would drop
     /// the other nine).
     pub fn bind(&mut self, action: ActionId, combo: KeyCombo) -> Result<(), String> {
-        if action == ActionId::EnterFret {
+        if action.has_fixed_keys() {
             return Err(format!(
-                "enter_fret always uses the digit keys; `{combo}` cannot replace them"
+                "{action} always uses its own keys; `{combo}` cannot replace them"
             ));
         }
-        self.bindings.retain(|_, bound| *bound != action);
-        self.bindings.insert(combo, action);
+        let layer = self.layer_mut(action);
+        layer.retain(|_, bound| *bound != action);
+        layer.insert(combo, action);
         Ok(())
     }
 
     /// Removes every key bound to `action`.
     pub fn unbind(&mut self, action: ActionId) {
-        self.bindings.retain(|_, bound| *bound != action);
+        self.layer_mut(action).retain(|_, bound| *bound != action);
     }
 
     /// Restores the built-in key(s) of `action`, dropping a custom one.
@@ -516,7 +643,7 @@ impl Keymap {
         self.unbind(action);
         let defaults = Keymap::default();
         for combo in defaults.keys_for(action) {
-            self.bindings.insert(combo, action);
+            self.layer_mut(action).insert(combo, action);
         }
     }
 }
@@ -575,6 +702,80 @@ mod tests {
                 .is_err()
         );
         assert_eq!(keymap.keys_for(ActionId::EnterFret), digits);
+    }
+
+    #[test]
+    fn step_entry_keys_only_work_in_step_entry() {
+        let keymap = Keymap::default();
+        let a = KeyCombo::char('a');
+        assert_eq!(
+            keymap.action(a),
+            Some(Action::Plain(ActionId::ToggleAccent))
+        );
+        assert_eq!(
+            keymap.action_in(a, true),
+            Some(Action::Note {
+                letter: Letter::A,
+                chord: false
+            })
+        );
+        assert_eq!(
+            keymap.action_in(KeyCombo::char('G'), true),
+            Some(Action::Note {
+                letter: Letter::G,
+                chord: true
+            })
+        );
+        let alt_three = KeyCombo::parse("alt+3").unwrap();
+        assert_eq!(keymap.action(alt_three), None);
+        assert_eq!(
+            keymap.action_in(alt_three, true),
+            Some(Action::ChordDigit(3))
+        );
+        // Keys the layer does not bind still do what they do outside it.
+        assert_eq!(
+            keymap.action_in(KeyCombo::char('5'), true),
+            Some(Action::Digit(5))
+        );
+        // N switches step entry on, and off again from inside it.
+        for step_entry in [false, true] {
+            assert_eq!(
+                keymap.action_in(KeyCombo::char('N'), step_entry),
+                Some(Action::Plain(ActionId::ToggleStepEntry))
+            );
+        }
+        // A key can be in both layers: no conflict.
+        assert_eq!(keymap.conflict(ActionId::StepNote, a), None);
+        assert_eq!(
+            keymap.conflict(ActionId::StepRest, a),
+            Some(ActionId::StepNote)
+        );
+        assert_eq!(
+            keymap.conflict(ActionId::Copy, a),
+            Some(ActionId::ToggleAccent)
+        );
+    }
+
+    #[test]
+    fn note_keys_must_be_their_letters() {
+        assert!(Keymap::parse("h = step_note").is_err());
+        assert!(Keymap::parse("A = step_note").is_err());
+        assert!(Keymap::parse("a = step_chord_note").is_err());
+        assert!(Keymap::parse("alt+x = enter_chord_fret").is_err());
+        let mut keymap = Keymap::default();
+        assert!(
+            keymap
+                .bind(ActionId::StepNote, KeyCombo::char('h'))
+                .is_err()
+        );
+        // Rebinding a step-entry action stays in its layer.
+        let combo = KeyCombo::parse("ctrl+j").unwrap();
+        keymap.bind(ActionId::StepRest, combo).unwrap();
+        assert_eq!(keymap.action(combo), None);
+        assert_eq!(
+            keymap.action_in(combo, true),
+            Some(Action::Plain(ActionId::StepRest))
+        );
     }
 
     #[test]

@@ -36,6 +36,7 @@ mod chains;
 
 pub(crate) use chains::ExportTones;
 mod demo;
+mod monitor;
 mod preview;
 
 pub use preview::Heard;
@@ -399,6 +400,9 @@ pub struct Playback {
     preview: Option<u64>,
     /// The beat excerpt last played.
     preview_sequence: Option<Arc<Sequence>>,
+    /// The track a monitored MIDI input sounds through, with the note-less excerpt loaded
+    /// for it (while it is still the loaded excerpt, live notes play on its strings).
+    monitor: Option<(TrackIndex, Arc<Sequence>)>,
     /// A beat to play once the synthesizer has loaded its SoundFont (it was chosen while
     /// it loaded).
     pending_preview: Option<Arc<Sequence>>,
@@ -461,6 +465,7 @@ impl Default for Playback {
             audition: None,
             preview: None,
             preview_sequence: None,
+            monitor: None,
             pending_preview: None,
         }
     }

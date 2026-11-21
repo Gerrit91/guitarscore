@@ -17,6 +17,7 @@ use super::GuitarScoreApp;
 use super::edit_dynamics::{self, DynamicsSnapshot};
 use super::edit_effects::{BeatState, EffectsState, LyricsPreview, NoteState};
 use super::edit_staff::{self, StaffState};
+use super::icons;
 use super::style;
 use super::tiles::{self, Face};
 use super::toolbar::key_hint;
@@ -326,6 +327,8 @@ impl GuitarScoreApp {
         snapshot.system_break =
             super::score_view::shown_break(document.song(), cursor.track, cursor.measure, several);
 
+        let step_entry = document.editor().step_entry();
+        let mut toggle_step_entry = false;
         let mut commands: Vec<Command> = Vec::new();
         // A beat to play although nothing changed (its dynamic chosen again).
         let mut heard = None;
@@ -349,8 +352,24 @@ impl GuitarScoreApp {
                     tab.edit_palette.effects.open_lyrics(&snapshot);
                 }
                 style::section(ui, "note_input", "Note input", |ui| {
-                    // The voice, centered at the top: which voice the cursor writes into.
+                    // The voice, centered at the top: which voice the cursor writes into;
+                    // step entry beside it.
+                    let step_tip = format!(
+                        "Step entry{}: each note, chord or rest moves the cursor on. Letters \
+                         a-g enter notes by name (capitals add to the chord), digits type \
+                         frets (alt+digit for a chord), r a rest",
+                        hint(ActionId::ToggleStepEntry)
+                    );
+                    // Four voice segments (36 wide, 2 apart, in a 2-wide frame), a gap and
+                    // the button: centered as one row.
+                    let row =
+                        egui::vec2(4.0 * 36.0 + 3.0 * 2.0 + 4.0 + 8.0 + icons::BUTTON.x, 26.0);
                     ui.with_layout(egui::Layout::top_down(egui::Align::Center), |ui| {
+                        ui.allocate_ui_with_layout(
+                            row,
+                            egui::Layout::left_to_right(egui::Align::Center),
+                            |ui| {
+                        ui.spacing_mut().item_spacing.x = 8.0;
                         if let Some(voice) = tiles::segments_with_tips(
                             ui,
                             &[
@@ -371,6 +390,19 @@ impl GuitarScoreApp {
                         ) {
                             tab.edit_palette.pending_voice = Some(voice);
                         }
+                        if icons::toggle_button(
+                            ui,
+                            icons::Icon::StepEntry,
+                            "Step entry",
+                            &step_tip,
+                            step_entry,
+                        )
+                        .clicked()
+                        {
+                            toggle_step_entry = true;
+                        }
+                            },
+                        );
                     });
                     note_length(ui, &mut tab.edit_palette, &snapshot, &hint, &mut commands);
                     beat_buttons(ui, &mut tab.edit_palette, &snapshot, &hint, &mut commands);
@@ -385,6 +417,10 @@ impl GuitarScoreApp {
         let duration = tab.edit_palette.duration();
         let pending_voice = tab.edit_palette.pending_voice.take();
         self.apply_commands(commands);
+        if toggle_step_entry {
+            let ctx = ui.ctx().clone();
+            self.perform_action(gscore_edit::Action::Plain(ActionId::ToggleStepEntry), &ctx);
+        }
         if let Some(at) = heard {
             self.preview_beat(at);
         }

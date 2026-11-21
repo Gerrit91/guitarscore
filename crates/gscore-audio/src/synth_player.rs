@@ -565,6 +565,10 @@ impl Player for SynthPlayer {
         self.send(Command::Send(event))
     }
 
+    fn live_note(&mut self, note: gscore_play::LiveNote) -> Result<(), PlayError> {
+        self.send(Command::Live(note))
+    }
+
     fn replace(&mut self, sequence: Arc<Sequence>) -> Result<(), PlayError> {
         self.send(Command::Replace(sequence))
     }

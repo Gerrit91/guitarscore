@@ -6620,3 +6620,49 @@ egui's unused Ubuntu-Light (360 KiB).
   newer font (seen: the cached app got the SF3 and said "not a usable SoundFont").
 - Smoke test: a page in use gets the bar, and its Reload brings in the new build.
 - M25 (practice on phones and tablets) written down in AGENTS.md.
+
+## 2026-11-20 — M23: step entry, the fingering, MIDI input and monitoring
+
+- **Step entry** (`gscore-edit/src/step_entry.rs`): a mode of `TabEditor` (toggle_step_entry,
+  `N`, the owner's choice; a ♩› button right of the voices in the edit palette's Note input (owner's place), Tools › Step entry; Escape leaves it). Each
+  note, chord or rest writes the cursor's beat at the entry length and moves on, adding
+  beats and bars as Right does; each step, advance included, is one undo step (a chord
+  note or correction undoes the step and writes it again).
+  - Typed frets advance when the digit window ends (`TabEditor::tick`, the app calls it
+    each frame) or with the next note; a second digit only joins the first if the neck has
+    that fret (`3 5` quickly is 3 then 5 on a 24-fret neck, `1 2` is 12). Moving between
+    strings ends the beat (riffs), unless it was held open with alt+digit (chords).
+  - Letters a-g enter notes by name with the key signature's accidentals, at the octave
+    nearest the note before; capitals A-G add to the chord; r a rest; alt+Up/Down a
+    semitone, ctrl+Up/Down an octave, ctrl+shift+Up/Down the same pitch on the next
+    string. These keys are a layer of the keymap that only answers in step entry
+    (`ActionId::step_entry_only`), so `a` stays the accent otherwise.
+  - The note tools in step entry: a click enters a step, Shift+click adds to the chord.
+- **Fingering** (`gscore-edit/src/fingering.rs`, `Neck`): sounding pitch to string and fret
+  on the staff's tuning, capo and transposition; near the hand (the fretted notes of the
+  beats before), chords on different strings within a 4-fret span (open strings take no
+  finger), open strings preferred only up to the 5th position. Unplayable pitches are an
+  `EditError::Unplayable` with a message. The keyboard tool's `place_for` is gone.
+- **MIDI input**: `gscore_play::MidiInput::parse` (fuzzed: every 1-2 byte message and random
+  ones) and `ChordGatherer` (notes within 40 ms are one chord); `gscore_audio::MidiIn`
+  (midir, bounded queue, wakes the UI). Settings › Audio I/O › Input: port, channel filter,
+  MIDI guitar in mono mode (string 1 on a chosen channel, the next strings after it; the
+  fingering is skipped), monitoring. Ports are listed again every 2 s: an unplugged input
+  connects again when it is back. Desktop only.
+- **Monitoring**: `Player::live_note` (`LiveNote`); the synth engine plays it on the
+  modelled string of the track (a note-less `Sequence::track_excerpt` is loaded while
+  stopped) or as a note on channel 15 with the track's SoundFont sound.
+- Tests: `gscore-edit/tests/test_step_entry.rs` (18, including every action and adversarial
+  pitches on every test song with step entry on, journal replay), fingering, keymap layer,
+  MIDI parsing, live notes in the engine, MIDI guitar mapping, alt+digit keys.
+
+- **Typed frets heard once complete** (owner, 2026-11-20): a first digit that a second may
+  still extend (1 and 2 on a 24-fret neck: `TabEditor::fret_complete_at`) is played when
+  its window ends or the next key comes, so `1 2` sounds only 12; a step-entry chord held
+  open with alt+digit sounds when it closes. On by default, Settings › Editor › "Wait for a
+  second digit (frets 1 and 2)". Outside step entry too, two digits now join only up to the
+  neck's last fret (was 99): `3 5` gives 5.
+
+Open: palette effects in step entry act on the cursor's (next) beat, not on
+the one just entered; Web MIDI in the browser; monitoring a MIDI-out track; real-time
+recording (later, not M23).

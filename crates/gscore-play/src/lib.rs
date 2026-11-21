@@ -34,6 +34,7 @@ mod event;
 mod excerpt;
 mod graces;
 mod midi;
+mod midi_input;
 mod order;
 mod performance;
 mod pitch;
@@ -53,13 +54,17 @@ pub use click::{
     CLICK_SOUND_CONTROLLER, CLICK_TRACK, Click, ClickSound, MAX_COUNT_IN_BARS, count_in, lead_in,
 };
 pub use event::{Channel, MidiEvent, controller};
+pub use midi_input::{
+    ChordGatherer, ChordNote, DEFAULT_CHORD_WINDOW_MS, MAX_CHORD_NOTES as MAX_INPUT_CHORD_NOTES,
+    MidiInput,
+};
 pub use order::playback_order;
 // The model's types in a performance's public fields, so engines need not depend on the
 // model.
 pub use gscore_model::{Fade, HarmonicKind, InstrumentKind, StrokeDirection};
 pub use performance::{Attack, Performance, PerformanceTrack, PlayedNote, StringKind, TrackEngine};
 pub use pitch::PitchShape;
-pub use player::{PlayError, PlayState, Player, Scheduler, TEMPO_SCALE_RANGE};
+pub use player::{LiveNote, PlayError, PlayState, Player, Scheduler, TEMPO_SCALE_RANGE};
 pub use sequence::{BeatSpan, MeasureSpan, Sequence, SequenceTrack, TimedEvent, sound_events};
 pub use smf::{SmfError, to_smf};
 pub use tempo::{PPQ, TempoMap, micros_per_quarter};

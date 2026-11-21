@@ -69,6 +69,12 @@ fn type_char(harness: &mut Harness<'static, GuitarScoreApp>, text: &str, modifie
     harness.run();
 }
 
+/// Types `text` and runs a single frame (no waiting for timed repaints).
+fn type_one_frame(harness: &mut Harness<'static, GuitarScoreApp>, text: &str) {
+    harness.event(Event::Text(text.to_owned()));
+    harness.step();
+}
+
 fn press(harness: &mut Harness<'static, GuitarScoreApp>, key: Key) {
     harness.key_press(key);
     harness.run();
@@ -873,6 +879,36 @@ fn an_entered_fret_is_heard_and_undo_is_not() {
         app.playback().auditioning().is_none()
     });
     assert!(ended, "the entered note kept sounding");
+
+    // A 1 may still become 12: it is held back, and only the whole fret is heard (one
+    // frame per key: `run` would wait out the digit window).
+    press(&mut harness, Key::ArrowRight);
+    type_one_frame(&mut harness, "1");
+    assert_eq!(harness.state().playback().auditioning(), None);
+    type_one_frame(&mut harness, "2");
+    assert_eq!(fret_at_cursor(harness.state(), string), Some(12));
+    assert_eq!(
+        harness.state().playback().auditioning(),
+        pitch_at_cursor(harness.state(), string)
+    );
+    step_until(&mut harness, Duration::from_secs(2), |app| {
+        app.playback().auditioning().is_none()
+    });
+    // A 1 left alone is heard once its digit window has ended.
+    press(&mut harness, Key::ArrowRight);
+    type_one_frame(&mut harness, "1");
+    assert_eq!(harness.state().playback().auditioning(), None);
+    let heard = step_until(&mut harness, Duration::from_secs(3), |app| {
+        app.playback().auditioning().is_some()
+    });
+    assert!(heard, "the held-back fret was never heard");
+    assert_eq!(
+        harness.state().playback().auditioning(),
+        pitch_at_cursor(harness.state(), string)
+    );
+    step_until(&mut harness, Duration::from_secs(2), |app| {
+        app.playback().auditioning().is_none()
+    });
 
     // Undoing the fret is silent.
     type_char(&mut harness, "z", Modifiers::COMMAND);

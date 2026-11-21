@@ -29,6 +29,9 @@ pub(crate) enum Command {
     TempoScale(f32),
     /// Sends one MIDI message at once (a live mixer change).
     Send(MidiEvent),
+    /// Starts or ends a note played live (a monitored MIDI input); the synth engine plays
+    /// it on the modelled strings where they play the track, else it is sent as a note.
+    Live(gscore_play::LiveNote),
     /// Swaps in a rebuilt sequence where playback is (a mixer change), without stopping.
     Replace(Arc<Sequence>),
     /// Ends the backend (the transport itself ignores it).
@@ -201,6 +204,7 @@ impl Transport {
                     s.set_tempo_scale(scale, now);
                 }
             }
+            Command::Live(note) => out.send(live_event(note)),
             Command::Quit
             | Command::StringModel(..)
             | Command::TrackModel(..)
@@ -251,6 +255,22 @@ impl Transport {
     fn silence(&self, out: &mut impl Sink) {
         if let Some(s) = &self.scheduler {
             out.silence(s.sequence());
+        }
+    }
+}
+
+/// A live note as the MIDI message an output without strings plays.
+pub(crate) fn live_event(note: gscore_play::LiveNote) -> MidiEvent {
+    if note.velocity > 0 {
+        MidiEvent::NoteOn {
+            channel: note.channel,
+            key: note.key,
+            velocity: note.velocity,
+        }
+    } else {
+        MidiEvent::NoteOff {
+            channel: note.channel,
+            key: note.key,
         }
     }
 }

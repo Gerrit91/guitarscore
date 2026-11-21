@@ -9,6 +9,8 @@
 // Native device backends. In a browser, `gscore-audio`'s synth engine is compiled into an
 // AudioWorklet (see `docs/web.md`) and there is no MIDI port list.
 #[cfg(not(target_arch = "wasm32"))]
+mod midi_in;
+#[cfg(not(target_arch = "wasm32"))]
 mod midi_out;
 // The metronome's own click (the synth engine plays it in a browser too).
 mod chains;
@@ -48,6 +50,8 @@ pub use chains::{
     MAX_TONES, chain_is_empty, drum_room_knobs, drum_room_spec, prepare_chain, prepare_drum_room,
 };
 pub use meters::{Level, Meters};
+#[cfg(not(target_arch = "wasm32"))]
+pub use midi_in::{MidiIn, midi_input_ports};
 #[cfg(not(target_arch = "wasm32"))]
 pub use midi_out::{MidiOutPlayer, midi_output_ports};
 pub use sound_wire::{SoundMessage, decode_sound, encode_sound};
