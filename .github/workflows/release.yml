@@ -370,8 +370,10 @@ jobs:
           sudo apt-get install -y --no-install-recommends binaryen ffmpeg
           cargo install wasm-bindgen-cli --version 0.2.130 --locked
 
+      # The commit's time names the service worker's cache, so the preview workflow's
+      # rebuild of this release for the site's root is the same build (xtask web.rs).
       - name: Build the site
-        run: cargo xtask web
+        run: SOURCE_DATE_EPOCH=$(git log -1 --format=%ct) cargo xtask web
 
       # For the `pages` job. Only the built site goes in: `dist/web` has no dotfiles.
       - name: Upload the site for GitHub Pages

@@ -1,10 +1,12 @@
 # A preview of a branch's browser build on GitHub Pages, for checks on real phones and
 # tablets: https://gerrit91.github.io/guitarscore/preview/
 #
-# Run it by hand (Actions > Preview > Run workflow) from the default branch and name the
-# branch to preview. GitHub Pages holds one site per repository, so the run rebuilds the
-# latest release for the site's root and puts the branch's build under `preview/` beside
-# it. The next release deploys only the root again, which ends the preview.
+# It runs on every push to main (the preview is then main as it is now), and by hand
+# (Actions > Preview > Run workflow, from the default branch) with a branch to preview
+# instead. GitHub Pages holds one site per repository, so the run rebuilds the latest
+# release for the site's root and puts the preview's build under `preview/` beside it. A
+# release deploys only the root, so this runs again after the Release workflow and puts
+# main's preview back.
 #
 # The two builds share the origin: settings and recent songs (localStorage) are the same
 # for both. Each has its own service worker and caches (web/sw.js). A release from before
@@ -16,12 +18,17 @@
 name: Preview
 
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
     inputs:
       ref:
-        description: "The branch (or commit) to preview"
-        required: true
+        description: "The branch (or commit) to preview; empty for main"
+        required: false
         type: string
+  workflow_run:
+    workflows: [Release]
+    types: [completed]
 
 permissions:
   contents: read
@@ -35,11 +42,19 @@ jobs:
   build:
     name: Build the release and the preview
     runs-on: ubuntu-latest
+    # After a release only when it went through (a failed one deployed nothing).
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    # A newer push makes a build still running for an older one pointless.
+    concurrency:
+      group: preview-build
+      cancel-in-progress: true
     steps:
       - name: Check out the branch to preview
         uses: actions/checkout@v7
         with:
-          ref: ${{ inputs.ref }}
+          # The branch asked for by hand; otherwise the pushed commit, or main's latest
+          # after a release (`github.sha` is that for both).
+          ref: ${{ inputs.ref || github.sha }}
           path: preview-src
           fetch-depth: 0  # the tags, for the version (`git describe`)
 
@@ -78,7 +93,10 @@ jobs:
         working-directory: release-src
         env:
           GSCORE_VERSION: ${{ steps.release.outputs.tag }}
-        run: cargo xtask web --out "$GITHUB_WORKSPACE/site"
+        # The commit's time names the service worker's cache, as in the release workflow:
+        # the root is then the same build as the release deployed, and its visitors are
+        # not offered an update on every preview deploy.
+        run: SOURCE_DATE_EPOCH=$(git log -1 --format=%ct) cargo xtask web --out "$GITHUB_WORKSPACE/site"
 
       - name: Build the preview
         # Not a release build: the version comes from `git describe` (for example
