@@ -9,6 +9,9 @@
 //! hand from its own menu and from View in the full interface.
 
 mod controls;
+mod drawer;
+mod header;
+mod widgets;
 
 use egui::{FontFamily, FontId, RichText, vec2};
 
@@ -97,6 +100,9 @@ pub(super) struct PracticeState {
     pending: Option<(TabId, usize)>,
     /// Whether a bar was tapped yet: until then a hint says what a tap does.
     tapped: bool,
+    /// Whether the bottom bar is pulled up to show more (transposition, mute and solo,
+    /// count-in length, score size, tuner, settings, saving).
+    pub(super) drawer: bool,
 }
 
 impl GuitarScoreApp {
@@ -182,6 +188,7 @@ impl GuitarScoreApp {
         };
         if shape.has_header() {
             egui::Panel::top("practice_header")
+                .resizable(false)
                 .frame(style::chrome_frame(&ctx, 6))
                 .show(ui, |ui| self.practice_header(ui, shape, has_song));
         }
@@ -190,6 +197,7 @@ impl GuitarScoreApp {
         }
         if has_song && shape.has_bottom() {
             egui::Panel::bottom("practice_controls")
+                .resizable(false)
                 .frame(style::chrome_frame(&ctx, 8))
                 .show(ui, |ui| self.practice_controls(ui, shape));
         }

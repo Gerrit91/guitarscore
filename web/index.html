@@ -16,10 +16,18 @@
         overflow: hidden;
         background: #181a1f;
       }
+      /* Fixed to the visible area, not 100vh: on a phone 100vh reaches under the
+         browser's own bar at the bottom (iOS Safari), which then covers the player. The
+         safe-area insets keep it clear of the notch and the home indicator. */
       #guitarscore {
         display: block;
-        width: 100vw;
-        height: 100vh;
+        position: fixed;
+        top: env(safe-area-inset-top, 0px);
+        right: env(safe-area-inset-right, 0px);
+        bottom: env(safe-area-inset-bottom, 0px);
+        left: env(safe-area-inset-left, 0px);
+        width: calc(100% - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px));
+        height: calc(100% - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
         outline: none;
         touch-action: none;
       }
@@ -229,6 +237,34 @@
 
       // Used by the browser smoke test to measure download + SoundFont load.
       globalThis.__guitarscoreStarted = performance.now();
+
+      // Sound on phones. iOS Safari starts Web Audio only inside a tap or key press, but
+      // the editor handles a tap in its next frame, a moment later: so the page resumes
+      // the editor's audio (globalThis.guitarscoreAudio, set by the player) in the tap
+      // itself, and plays one silent sample the first time, which iOS needs to unlock
+      // the output. As "playback" audio (Safari 16.4+) it is heard with the ringer
+      // switch on silent too, as a music app is.
+      try {
+        if (navigator.audioSession) navigator.audioSession.type = "playback";
+      } catch {}
+      let audioUnlocked = false;
+      const wakeAudio = () => {
+        const context = globalThis.guitarscoreAudio;
+        if (!context) return;
+        if (context.state !== "running") context.resume().catch(() => {});
+        if (!audioUnlocked) {
+          audioUnlocked = true;
+          try {
+            const source = context.createBufferSource();
+            source.buffer = context.createBuffer(1, 1, context.sampleRate);
+            source.connect(context.destination);
+            source.start(0);
+          } catch {}
+        }
+      };
+      for (const type of ["touchend", "click", "keydown"]) {
+        window.addEventListener(type, wakeAudio, { capture: true, passive: true });
+      }
 
       const loading = document.getElementById("loading");
       const status = document.getElementById("status");

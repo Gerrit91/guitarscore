@@ -4,7 +4,9 @@
 //! Without system decorations the window also needs its own resize edges.
 
 use egui::viewport::ResizeDirection;
-use egui::{Align2, Color32, CursorIcon, FontFamily, FontId, Rect, Sense, ViewportCommand, vec2};
+use egui::{
+    Align2, Color32, CursorIcon, FontFamily, FontId, Rect, Sense, ViewportCommand, pos2, vec2,
+};
 
 use super::GuitarScoreApp;
 use super::icons::{self, Icon};
@@ -56,24 +58,10 @@ impl GuitarScoreApp {
         } else {
             0.0
         };
-        let title_room = Rect::from_center_size(
-            rect.center(),
-            vec2(
-                (rect.width() - 2.0 * (buttons + 160.0)).max(80.0),
-                rect.height(),
-            ),
-        );
-        ui.painter().with_clip_rect(title_room).text(
-            rect.center(),
-            Align2::CENTER_CENTER,
-            &title,
-            FontId::new(13.0, FontFamily::Name(BOLD.into())),
-            tokens.text,
-        );
-
+        let mut menus_end = rect.left();
         ui.horizontal_centered(|ui| {
             ui.add_space(4.0);
-            self.menu_bar(ui);
+            menus_end = self.menu_bar(ui);
             if !WINDOW_CONTROLS {
                 return;
             }
@@ -95,6 +83,36 @@ impl GuitarScoreApp {
                 }
             });
         });
+
+        // The title goes where it clears the menus: centered on the bar when there is
+        // room, else in the space right of the menus, and not at all on a phone held
+        // upright (the menus fill the bar there).
+        let font = FontId::new(13.0, FontFamily::Name(BOLD.into()));
+        let galley = ui
+            .painter()
+            .layout_no_wrap(title.clone(), font, tokens.text);
+        let free = Rect::from_min_max(
+            pos2(menus_end + 16.0, rect.top()),
+            pos2(rect.right() - buttons - 16.0, rect.bottom()),
+        );
+        let width = galley.size().x;
+        let centered = rect.center().x - width / 2.0;
+        let place = if centered >= free.left() && centered + width <= free.right() {
+            Some((rect.center(), Align2::CENTER_CENTER))
+        } else if free.width() >= 80.0 {
+            Some((pos2(free.left(), rect.center().y), Align2::LEFT_CENTER))
+        } else {
+            None
+        };
+        if let Some((at, align)) = place {
+            ui.painter().with_clip_rect(free).text(
+                at,
+                align,
+                &title,
+                FontId::new(13.0, FontFamily::Name(BOLD.into())),
+                tokens.text,
+            );
+        }
     }
 }
 

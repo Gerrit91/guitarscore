@@ -15,6 +15,9 @@ use super::style;
 use super::tiles;
 use crate::state::MeasureSelection;
 
+/// Below this room the player leaves out "go to start" and "go to end" (Home and End, and
+/// the menus, still do it), so the rest fits a phone held upright.
+const COMPACT_PLAYER: f32 = 420.0;
 /// The player's width before it was first measured.
 const PLAYER_WIDTH: f32 = 220.0;
 /// How much room each part of the position readout needs, in the order they are shown: the
@@ -71,6 +74,46 @@ const NOTE_TOOL_BUTTONS: [(NoteTool, Icon); 3] = [
 ];
 const NOTE_TOOLS_MIN_WIDTH: f32 = 1100.0;
 
+/// Which row of the toolbar each group goes on (0 is the first): the left group (file,
+/// edit, panels) is always on the first; the right group (history, tools, settings) and the
+/// player join it while they fit, and go to rows of their own on a narrow window.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct ToolbarRows {
+    right: usize,
+    player: usize,
+}
+
+impl ToolbarRows {
+    /// The rows for a bar `width` wide whose side groups were `left` and `right` wide
+    /// (0 before they were first measured: then everything is on one row).
+    fn fit(width: f32, left: f32, right: f32, gap: f32) -> Self {
+        let player = TRANSPORT_BUTTONS + SPEED_WIDTH;
+        if left <= 0.0 && right <= 0.0 {
+            return ToolbarRows {
+                right: 0,
+                player: 0,
+            };
+        }
+        let right_fits = left + gap + right <= width;
+        if right_fits && left + right + 2.0 * gap + player <= width {
+            ToolbarRows {
+                right: 0,
+                player: 0,
+            }
+        } else if right_fits {
+            ToolbarRows {
+                right: 0,
+                player: 1,
+            }
+        } else {
+            ToolbarRows {
+                right: 2,
+                player: 1,
+            }
+        }
+    }
+}
+
 impl GuitarScoreApp {
     /// " (ctrl+z)": the keys bound to `action`, for a tooltip.
     pub(super) fn key_hint(&self, action: ActionId) -> String {
@@ -95,7 +138,22 @@ impl GuitarScoreApp {
     pub(super) fn toolbar(&mut self, ui: &mut egui::Ui) {
         let bar = ui.max_rect();
         let height = ui.spacing().interact_size.y + 4.0;
-        let row = Rect::from_min_size(bar.min, vec2(bar.width(), height));
+        let gap = 8.0;
+        // The groups' widths from the last frame (egui lays out in one pass): on a narrow
+        // window (a phone) the groups that do not fit beside each other go to rows of
+        // their own instead of drawing over each other. The left group always stays first.
+        let widths = ui.scope_id().with("toolbar_group_widths");
+        let (left_width, right_width) = ui
+            .data(|data| data.get_temp::<(f32, f32)>(widths))
+            .unwrap_or((0.0, 0.0));
+        let layout = ToolbarRows::fit(bar.width(), left_width, right_width, gap);
+        let row_at = |index: usize| {
+            Rect::from_min_size(
+                bar.min + vec2(0.0, index as f32 * (height + 4.0)),
+                vec2(bar.width(), height),
+            )
+        };
+        let row = row_at(0);
 
         // Left: file, edit, panels.
         let left = ui.scope_builder(
@@ -112,9 +170,10 @@ impl GuitarScoreApp {
         let left_end = left.response.rect.right();
 
         // Right: settings rightmost, zoom before it (laid out right to left).
+        let right_row = row_at(layout.right);
         let right = ui.scope_builder(
             UiBuilder::new()
-                .max_rect(row)
+                .max_rect(right_row)
                 .layout(Layout::right_to_left(Align::Center)),
             |ui| {
                 ui.spacing_mut().item_spacing.x = 8.0;
@@ -147,7 +206,13 @@ impl GuitarScoreApp {
                 }
             },
         );
-        let right_start = right.response.rect.left();
+        let measured_groups = (left.response.rect.width(), right.response.rect.width());
+        if (measured_groups.0 - left_width).abs() > 0.5
+            || (measured_groups.1 - right_width).abs() > 0.5
+        {
+            ui.data_mut(|data| data.insert_temp(widths, measured_groups));
+            ui.ctx().request_repaint();
+        }
 
         // Middle: the player, centered on the whole bar. Its width comes from the last
         // frame (egui lays out in one pass).
@@ -155,27 +220,39 @@ impl GuitarScoreApp {
         let stored = ui
             .data(|data| data.get_temp::<f32>(id))
             .unwrap_or(PLAYER_WIDTH);
-        let gap = 8.0;
+        let player_row = row_at(layout.player);
+        // What the player shares its row with: the side groups on the first row, nothing
+        // on a row of its own.
+        let (room_left, room_right) = if layout.player == 0 {
+            let right_start = if layout.right == 0 {
+                right.response.rect.left()
+            } else {
+                player_row.right()
+            };
+            (left_end + gap, right_start - gap)
+        } else {
+            (player_row.left(), player_row.right())
+        };
         // The room between the side groups: the player never draws (or takes clicks) over
         // their buttons. What the position readout may use is what is left of it beside the
         // transport's own buttons and the speed control; on a narrow window its parts are
         // left out in order of importance.
-        let span = (right_start - 2.0 * gap - left_end).max(0.0);
+        let span = (room_right - room_left).max(0.0);
         let readout_room = (span - TRANSPORT_BUTTONS - SPEED_WIDTH).max(0.0);
         let width = stored.min(span).max(0.0);
         // Centered on the whole bar where there is room; otherwise moved clear of the side
         // groups (the left one wins when even that does not fit).
-        let centered = row.center().x - width / 2.0;
-        let x = centered.min(right_start - gap - width).max(left_end + gap);
+        let centered = player_row.center().x - width / 2.0;
+        let x = centered.min(room_right - width).max(room_left);
         let player = Rect::from_min_size(
-            egui::pos2(x, row.center().y - height / 2.0),
+            egui::pos2(x, player_row.center().y - height / 2.0),
             vec2(span, height),
         );
         let drawn = ui.scope_builder(
             UiBuilder::new()
                 .max_rect(player)
                 .layout(Layout::left_to_right(Align::Center)),
-            |ui| self.transport(ui, readout_room),
+            |ui| self.transport(ui, readout_room, span < COMPACT_PLAYER),
         );
         // The transport measures its own content once it settled (the parts of the
         // readout that fit do not depend on this width, so it settles in a frame or two).
@@ -386,7 +463,7 @@ impl GuitarScoreApp {
 
     /// The player: play/pause, stop, where playback (or the cursor) is, and the tempo
     /// there. Returns the width it took, for centering it next frame.
-    fn transport(&mut self, ui: &mut egui::Ui, readout_room: f32) -> f32 {
+    fn transport(&mut self, ui: &mut egui::Ui, readout_room: f32, compact: bool) -> f32 {
         let playing = self.playback.state() == gscore_play::PlayState::Playing;
         let has_song = self.document().is_some();
         let (metronome, count_in) = (self.playback.metronome(), self.playback.count_in());
@@ -397,12 +474,13 @@ impl GuitarScoreApp {
         let (mut to_start, mut previous, mut next, mut to_end) = (false, false, false, false);
         let start = ui.cursor().left();
         style::toolbar_group(ui, |ui| {
-            if ui
-                .add_enabled_ui(has_song, |ui| {
-                    icons::toolbar_button(ui, Icon::ToStart, "Go to start", "Top of the score")
-                })
-                .inner
-                .clicked()
+            if !compact
+                && ui
+                    .add_enabled_ui(has_song, |ui| {
+                        icons::toolbar_button(ui, Icon::ToStart, "Go to start", "Top of the score")
+                    })
+                    .inner
+                    .clicked()
             {
                 to_start = true;
             }
@@ -445,12 +523,13 @@ impl GuitarScoreApp {
             {
                 next = true;
             }
-            if ui
-                .add_enabled_ui(has_song, |ui| {
-                    icons::toolbar_button(ui, Icon::ToEnd, "Go to end", "End of the score")
-                })
-                .inner
-                .clicked()
+            if !compact
+                && ui
+                    .add_enabled_ui(has_song, |ui| {
+                        icons::toolbar_button(ui, Icon::ToEnd, "Go to end", "End of the score")
+                    })
+                    .inner
+                    .clicked()
             {
                 to_end = true;
             }
@@ -1072,8 +1151,37 @@ mod tests {
     use gscore_model::{BeatIndex, BeatPosition, MeasureIndex, NoteValue, TrackIndex, VoiceIndex};
     use gscore_play::{PPQ, Timeline};
 
-    use super::{FillState, bar_fill, beats_text, off_tempo, playback_times, time_text};
+    use super::{
+        FillState, ToolbarRows, bar_fill, beats_text, off_tempo, playback_times, time_text,
+    };
     use crate::state::MeasureSelection;
+
+    #[test]
+    fn a_narrow_toolbar_puts_its_groups_on_rows_of_their_own() {
+        let one = ToolbarRows {
+            right: 0,
+            player: 0,
+        };
+        assert_eq!(ToolbarRows::fit(1400.0, 300.0, 170.0, 8.0), one);
+        // Before the groups were measured: one row.
+        assert_eq!(ToolbarRows::fit(390.0, 0.0, 0.0, 8.0), one);
+        // A phone on its side: the side groups fit, the player goes below them.
+        assert_eq!(
+            ToolbarRows::fit(700.0, 300.0, 170.0, 8.0),
+            ToolbarRows {
+                right: 0,
+                player: 1
+            }
+        );
+        // Upright: one group per row, the player in the middle.
+        assert_eq!(
+            ToolbarRows::fit(390.0, 300.0, 170.0, 8.0),
+            ToolbarRows {
+                right: 2,
+                player: 1
+            }
+        );
+    }
 
     fn at(beat: usize) -> BeatPosition {
         BeatPosition {
