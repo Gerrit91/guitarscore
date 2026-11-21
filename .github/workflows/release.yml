@@ -5,7 +5,13 @@
 # pre-release", press "Publish release"). Check the attached assets there, then untick
 # "pre-release" to make it the full release; that does not build again. A release published
 # directly as a full release, and a tag alone, build nothing. Running it again for the same
-# release (re-run in the Actions tab) replaces the assets.
+# release (re-run in the Actions tab) replaces the assets, but builds the commit the tag
+# had when the release was published.
+#
+# To build a release again after moving its tag (a fix found while testing the
+# pre-release), use "Run workflow" on this workflow in the Actions tab and type the tag:
+# the tag's current commit is built and replaces the release's assets (and the browser
+# build). The release must exist; nothing is published that was not.
 #
 # The archives are named `guitarscore-<tag>-<target>`, and each contains both the
 # `guitarscore` app and the `gscore-cli` command-line tool, the bundled FluidR3 GM
@@ -33,6 +39,13 @@ on:
     # checked assets (and their SHA256SUMS).
     types:
       - prereleased
+  # Building an existing release again from where its tag is now (see the top).
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "The release's tag (for example v0.2.8), at the commit to build"
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -41,16 +54,38 @@ permissions:
   id-token: write  # deploy-pages proves where the deployment comes from
 
 env:
+  # The release's tag: the one published, or the one typed into "Run workflow".
+  TAG: ${{ inputs.tag || github.ref_name }}
   # Baked into the binaries by `crates/gscore-version/build.rs` (shown in Help > About and
-  # `gscore-cli --version`). For a published release, `github.ref_name` is the tag.
-  GSCORE_VERSION: ${{ github.ref_name }}
+  # `gscore-cli --version`).
+  GSCORE_VERSION: ${{ inputs.tag || github.ref_name }}
 
 jobs:
+  check:
+    name: Check the release
+    runs-on: ubuntu-latest
+    steps:
+      # A typed tag must name a release that exists: the upload below would otherwise
+      # publish a new full release. Fails before the long builds start.
+      - name: The release exists
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          if ! gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json tagName > /dev/null; then
+            echo "::error::There is no release for the tag \"$TAG\"; publish it as a pre-release first."
+            exit 1
+          fi
+
   soundfont:
     name: Fetch the bundled SoundFont
+    needs: check
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          # The tag's commit now (the same as the release's own for a published one).
+          ref: refs/tags/${{ env.TAG }}
 
       # FluidR3 GM (MIT) from the distro, so the app has sound out of the box. The same
       # file is bundled into every archive; a raw .sf2 download would need a third-party
@@ -84,6 +119,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          # The tag's commit now (the same as the release's own for a published one).
+          ref: refs/tags/${{ env.TAG }}
 
       - name: Download the bundled SoundFont
         uses: actions/download-artifact@v8
@@ -118,7 +156,7 @@ jobs:
         id: package
         run: |
           set -euo pipefail
-          stage="guitarscore-${{ github.ref_name }}-x86_64-unknown-linux-gnu"
+          stage="guitarscore-${{ env.TAG }}-x86_64-unknown-linux-gnu"
           mkdir -p "$stage/licenses"
           cp target/release/guitarscore target/release/gscore-cli "$stage/"
           # Beside the binary, where gscore-audio looks for the bundled SoundFont.
@@ -175,7 +213,7 @@ jobs:
           test -n "$asound"
           cp "$asound" "$appdir/usr/lib/libasound.so.2"
 
-          appimage="GuitarScore-${{ github.ref_name }}-x86_64.AppImage"
+          appimage="GuitarScore-${{ env.TAG }}-x86_64.AppImage"
           APPIMAGE_EXTRACT_AND_RUN=1 ARCH=x86_64 /tmp/appimagetool "$appdir" "$appimage"
           echo "appimage=$appimage" >> "$GITHUB_OUTPUT"
 
@@ -193,6 +231,9 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          # The tag's commit now (the same as the release's own for a published one).
+          ref: refs/tags/${{ env.TAG }}
 
       - name: Download the bundled SoundFont
         uses: actions/download-artifact@v8
@@ -222,7 +263,7 @@ jobs:
         id: package
         shell: pwsh
         run: |
-          $stage = "guitarscore-${{ github.ref_name }}-x86_64-pc-windows-msvc"
+          $stage = "guitarscore-${{ env.TAG }}-x86_64-pc-windows-msvc"
           New-Item -ItemType Directory -Force -Path "$stage\licenses" | Out-Null
           Copy-Item target\release\guitarscore.exe, target\release\gscore-cli.exe $stage
           Copy-Item soundfont\FluidR3_GM.sf2 $stage
@@ -245,6 +286,9 @@ jobs:
     runs-on: macos-26
     steps:
       - uses: actions/checkout@v7
+        with:
+          # The tag's commit now (the same as the release's own for a published one).
+          ref: refs/tags/${{ env.TAG }}
 
       - name: Download the bundled SoundFont
         uses: actions/download-artifact@v8
@@ -285,7 +329,7 @@ jobs:
         id: package
         run: |
           set -euo pipefail
-          stage="guitarscore-${{ github.ref_name }}-universal-apple-darwin"
+          stage="guitarscore-${{ env.TAG }}-universal-apple-darwin"
           mkdir -p "$stage/licenses"
           cp target/release/guitarscore target/release/gscore-cli "$stage/"
           cp soundfont/FluidR3_GM.sf2 "$stage/"
@@ -304,9 +348,13 @@ jobs:
 
   web:
     name: Browser build (nginx image on ghcr.io, site for Pages)
+    needs: check
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          # The tag's commit now (the same as the release's own for a published one).
+          ref: refs/tags/${{ env.TAG }}
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -349,7 +397,7 @@ jobs:
           context: .
           push: true
           tags: |
-            ${{ steps.image.outputs.name }}:${{ github.ref_name }}
+            ${{ steps.image.outputs.name }}:${{ env.TAG }}
             ${{ steps.image.outputs.name }}:latest
 
   pages:
@@ -392,6 +440,7 @@ jobs:
       - name: Upload to GitHub Release
         uses: softprops/action-gh-release@v3
         with:
+          tag_name: ${{ env.TAG }}
           files: dist/*
           # A re-run replaces the assets of the earlier run instead of failing.
           overwrite_files: true
