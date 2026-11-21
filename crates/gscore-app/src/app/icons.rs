@@ -106,6 +106,10 @@ pub(crate) enum Icon {
     StepEntry,
     /// More choices (three dots in a row): a menu.
     More,
+    /// Mute (a loudspeaker with a cross after it).
+    Mute,
+    /// Solo (headphones).
+    Solo,
 }
 
 /// The size of the compact icon buttons in the panels and the toolbar.
@@ -1023,6 +1027,57 @@ pub(crate) fn paint(painter: &Painter, rect: Rect, color: Color32, icon: Icon) {
                 vec![at(0.12, -0.2), tip, at(0.42, 0.1)],
                 stroke,
             ));
+        }
+        Icon::Mute => {
+            // A loudspeaker: the box and its cone, outlined, then a cross where the sound
+            // would be.
+            let (left, joint, mouth) = (
+                center.x - size * 0.42,
+                center.x - size * 0.22,
+                center.x + size * 0.02,
+            );
+            let (small, large) = (size * 0.12, size * 0.32);
+            painter.add(Shape::closed_line(
+                vec![
+                    pos2(left, center.y - small),
+                    pos2(joint, center.y - small),
+                    pos2(mouth, center.y - large),
+                    pos2(mouth, center.y + large),
+                    pos2(joint, center.y + small),
+                    pos2(left, center.y + small),
+                ],
+                stroke,
+            ));
+            let (near, far, arm) = (center.x + size * 0.16, center.x + size * 0.4, size * 0.12);
+            painter.line_segment(
+                [pos2(near, center.y - arm), pos2(far, center.y + arm)],
+                stroke,
+            );
+            painter.line_segment(
+                [pos2(near, center.y + arm), pos2(far, center.y - arm)],
+                stroke,
+            );
+        }
+        Icon::Solo => {
+            // Headphones: the band over the top and a cup at each end.
+            let radius = size * 0.36;
+            let hub = pos2(center.x, center.y + size * 0.06);
+            let band: Vec<_> = (0..=16)
+                .map(|step| {
+                    let angle = std::f32::consts::PI * (1.0 + step as f32 / 16.0);
+                    hub + Vec2::angled(angle) * radius
+                })
+                .collect();
+            painter.add(Shape::line(band, stroke));
+            for side in [-1.0_f32, 1.0] {
+                let outer = center.x + side * size * 0.42;
+                let inner = center.x + side * size * 0.24;
+                let cup = Rect::from_x_y_ranges(
+                    outer.min(inner)..=outer.max(inner),
+                    (center.y + size * 0.02)..=(center.y + size * 0.38),
+                );
+                painter.rect_filled(cup, size * 0.06, color);
+            }
         }
         Icon::More => {
             for x in [-0.3_f32, 0.0, 0.3] {
