@@ -35,8 +35,8 @@ pub(super) fn new_build_takes_over(
     };
     let (old_worker, old_page) = (read(&worker)?, read(&page)?);
     let new_worker = old_worker.replacen(
-        "const CACHE = \"guitarscore-",
-        "const CACHE = \"guitarscore-next-",
+        "const CACHE = `${PREFIX}",
+        "const CACHE = `${PREFIX}next-",
         1,
     );
     let new_page = old_page.replacen(

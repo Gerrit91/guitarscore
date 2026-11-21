@@ -520,10 +520,7 @@ impl GuitarScoreApp {
                 open = true;
             }
             #[cfg(target_arch = "wasm32")]
-            ui.add_sized(
-                vec2(ui.available_width(), TARGET),
-                egui::Checkbox::new(&mut keep, "Keep the screen on while playing"),
-            );
+            switch_row(ui, &mut keep, "Keep the screen on while playing");
             ui.separator();
             if row(ui, &format!("Full interface (editing){key}")).clicked() {
                 full = true;
@@ -612,9 +609,10 @@ impl GuitarScoreApp {
 /// The speed trainer's settings with buttons a finger can hit: on or off, how many
 /// passes between steps, how much faster each step is, and the top speed.
 fn trainer_settings(ui: &mut egui::Ui, trainer: &mut SpeedTrainer, passes: u32) {
-    ui.add_sized(
-        vec2(ui.available_width(), TARGET),
-        egui::Checkbox::new(&mut trainer.enabled, "Raise the speed while a loop plays"),
+    switch_row(
+        ui,
+        &mut trainer.enabled,
+        "Raise the speed while a loop plays",
     );
     ui.add_enabled_ui(trainer.enabled, |ui| {
         stepper_row(ui, "Passes per step", &trainer.every.to_string(), |up| {
@@ -685,6 +683,65 @@ fn stepper_row(ui: &mut egui::Ui, label: &str, value: &str, mut step: impl FnMut
         FontId::proportional(15.0),
         tokens.text,
     );
+}
+
+/// A row as tall as a finger: `label` on the left, an on/off switch on the right. A tap
+/// anywhere on the row flips it (a checkbox's small box is hard to hit on a phone).
+fn switch_row(ui: &mut egui::Ui, on: &mut bool, label: &str) -> egui::Response {
+    let (row, response) = ui.allocate_exact_size(
+        vec2(ui.available_width().max(200.0), TARGET),
+        Sense::click(),
+    );
+    if response.clicked() {
+        *on = !*on;
+    }
+    let state = *on;
+    response.widget_info(|| egui::WidgetInfo::selected(egui::Role::Switch, true, state, label));
+    let tokens = style::tokens(ui);
+    let enabled = ui.is_enabled();
+    let text = if enabled {
+        tokens.text
+    } else {
+        tokens.text_weak
+    };
+    let size = vec2(46.0, 28.0);
+    let track = Rect::from_min_size(
+        Pos2::new(row.right() - size.x, row.center().y - size.y / 2.0),
+        size,
+    );
+    ui.painter()
+        .with_clip_rect(Rect::from_min_max(
+            row.min,
+            Pos2::new(track.left() - 8.0, row.bottom()),
+        ))
+        .text(
+            Pos2::new(row.left(), row.center().y),
+            Align2::LEFT_CENTER,
+            label,
+            FontId::proportional(14.0),
+            text,
+        );
+    // The knob glides to its side.
+    let how_on = ui.ctx().animate_bool(response.id, state);
+    let fill = if state {
+        tokens.accent
+    } else {
+        tokens.control_hover
+    };
+    ui.painter().rect_filled(track, size.y / 2.0, fill);
+    let radius = size.y / 2.0 - 3.0;
+    let x = egui::lerp(
+        (track.left() + 3.0 + radius)..=(track.right() - 3.0 - radius),
+        how_on,
+    );
+    let knob = if enabled {
+        Color32::WHITE
+    } else {
+        tokens.text_weak
+    };
+    ui.painter()
+        .circle_filled(Pos2::new(x, track.center().y), radius, knob);
+    response
 }
 
 /// A touch-sized − or + (`plus`), drawn as lines so it sits exactly in the middle.

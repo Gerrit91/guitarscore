@@ -73,6 +73,12 @@ The app crate is the same on both platforms. Native-only pieces are behind
   (`gscore-app/src/song_store.rs`: up to 768 KiB each, 8 songs, 3 MiB together, the oldest
   go first), so the recent list opens it again without the file picker. Recent entries
   without a copy are dropped from the list.
+- A preview for real devices: Actions › Preview › Run workflow (from the default branch,
+  naming the branch) deploys the latest release at the site's root and the branch's build
+  under `preview/` (`.github/workflows/preview.yml`); the next release ends it. Both share
+  `localStorage`; each has its own service worker and caches (`web/sw.js` keeps to its
+  scope). A release from before the scoped worker (up to v0.2.8) still answers for
+  `preview/` on a device that visited the root: clear the site's data there once.
 - Phones and tablets: below 900 CSS pixels the app shows the practice view
   (`app/practice.rs`, M25) instead of the full interface; its menu leads to the full
   interface, View › Practice view back. While a song plays the page holds a Screen Wake

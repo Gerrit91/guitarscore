@@ -11,8 +11,17 @@
 // installing until the page tells it to take over (`skipWaiting` message): at once if the
 // page is untouched, otherwise when the user presses Reload in its update bar
 // (index.html). The page reloads once when the new worker takes over.
-const CACHE = "guitarscore-__VERSION__";
-const SOUNDFONT_CACHE = "guitarscore-soundfonts";
+//
+// Two builds may share the origin: the release at the site's root and a preview under
+// `preview/` (`.github/workflows/preview.yml`). Each worker keeps to its own scope: its cache
+// names carry the scope, it deletes only its own old caches, and the root's worker leaves
+// the preview's requests alone (the browser hands them to the preview's own worker, whose
+// scope is the more specific one).
+const SCOPE = new URL(self.registration.scope).pathname;
+const PREFIX = `guitarscore-${SCOPE}-`;
+const CACHE = `${PREFIX}__VERSION__`;
+const SOUNDFONT_CACHE = `guitarscore-soundfonts-${SCOPE}`;
+const PREVIEW = `${SCOPE}preview/`;
 const SOUNDFONT_DIR = "./assets/soundfonts/";
 const SOUNDFONT_MANIFEST = "./assets/soundfonts/soundfont.json";
 const SHELL = [
@@ -58,7 +67,16 @@ self.addEventListener("activate", (event) => {
       const keys = await caches.keys();
       await Promise.all(
         keys
-          .filter((key) => key !== CACHE && key !== SOUNDFONT_CACHE)
+          // Only this scope's own older builds. The caches of builds from before the
+          // scope was part of the name ("guitarscore-<version>", "guitarscore-soundfonts")
+          // went with the root's worker.
+          .filter(
+            (key) =>
+              key !== CACHE &&
+              key !== SOUNDFONT_CACHE &&
+              (key.startsWith(PREFIX) ||
+                (SCOPE !== PREVIEW_ROOT && isUnscoped(key))),
+          )
           .map((key) => caches.delete(key)),
       );
       await pruneSoundfonts();
@@ -66,6 +84,15 @@ self.addEventListener("activate", (event) => {
     })(),
   );
 });
+
+/// The preview's own scope, seen from inside it: `/<site>/preview/`. Its worker must not
+/// clean up after the root's.
+const PREVIEW_ROOT = SCOPE.endsWith("/preview/") ? SCOPE : null;
+
+/// A cache name from before the scope was part of it (the root's worker cleans them up).
+function isUnscoped(key) {
+  return key === "guitarscore-soundfonts" || /^guitarscore-[^/]*$/.test(key);
+}
 
 /// Keeps only the SoundFont the current manifest names. Offline (no manifest), nothing is
 /// deleted: a font fetched for offline use must stay usable.
@@ -95,14 +122,19 @@ self.addEventListener("fetch", (event) => {
   if (request.method !== "GET") return;
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
+  // A preview under this scope has a worker of its own.
+  if (url.pathname.startsWith(PREVIEW)) return;
 
   // The app's own URL goes to the cached shell first, so the editor opens offline. Other
   // pages (for example worklet-check.html) load normally.
   if (request.mode === "navigate") {
-    const isApp = url.pathname.endsWith("/") || url.pathname.endsWith("/index.html");
+    // Only this scope's own page, not a folder below it.
+    const isApp = url.pathname === SCOPE || url.pathname === `${SCOPE}index.html`;
     if (isApp) {
       event.respondWith(
-        caches.match("./index.html").then((cached) => cached || fetch(request)),
+        caches
+          .match("./index.html", { cacheName: CACHE })
+          .then((cached) => cached || fetch(request)),
       );
       return;
     }
@@ -145,8 +177,9 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
+  // Only this build's cache: another build's files must never answer for this one.
   event.respondWith(
-    caches.match(request).then((cached) => {
+    caches.match(request, { cacheName: CACHE }).then((cached) => {
       if (cached) return cached;
       return fetch(request).then((response) => {
         if (response.status === 200) {

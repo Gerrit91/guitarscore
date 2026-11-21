@@ -6718,3 +6718,12 @@ the count-in a square key with 1 2 / 3 4 (hard to read at toolbar size). New act
 `toggle_practice_view` on F2 (`docs/usage.md`). The toolbar snapshots changed for the two
 icons only.
 
+Third round: a preview on GitHub Pages for real devices (`.github/workflows/preview.yml`,
+run by hand from the default branch with the branch to preview): the latest release at the
+root, the branch under `preview/`, named "GuitarScore Preview" when installed. The service
+worker keeps to its scope (cache names carry it, it deletes only its own old caches, the
+root's worker leaves `preview/` alone, navigation serves only its own page); checked with
+both builds on one origin in headless Chromium, and `cargo xtask web --smoke` passes. The
+practice view's two checkboxes (speed trainer, keep the screen on) are switches on a
+finger-sized row.
+

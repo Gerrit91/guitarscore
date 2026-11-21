@@ -1,0 +1,116 @@
+# A preview of a branch's browser build on GitHub Pages, for checks on real phones and
+# tablets: https://gerrit91.github.io/guitarscore/preview/
+#
+# Run it by hand (Actions > Preview > Run workflow) from the default branch and name the
+# branch to preview. GitHub Pages holds one site per repository, so the run rebuilds the
+# latest release for the site's root and puts the branch's build under `preview/` beside
+# it. The next release deploys only the root again, which ends the preview.
+#
+# The two builds share the origin: settings and recent songs (localStorage) are the same
+# for both. Each has its own service worker and caches (web/sw.js). A release from before
+# the service workers were scoped (v0.1.x) still answers for `preview/` on a device that
+# visited the root before; clear the site's data there once, or open only the preview.
+#
+# Running from the default branch keeps the `github-pages` environment's branch rule as it
+# is (the run's ref is the default branch; the branch to preview is only checked out).
+name: Preview
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "The branch (or commit) to preview"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  pages: write     # deploy-pages
+  id-token: write  # deploy-pages proves where the deployment comes from
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: Build the release and the preview
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the branch to preview
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref }}
+          path: preview-src
+          fetch-depth: 0  # the tags, for the version (`git describe`)
+
+      - name: Find the latest release
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag=$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName --jq .tagName 2>/dev/null || true)
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "Latest release: ${tag:-none}"
+
+      - name: Check out the latest release
+        if: steps.release.outputs.tag != ''
+        uses: actions/checkout@v7
+        with:
+          ref: refs/tags/${{ steps.release.outputs.tag }}
+          path: release-src
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.99.1"  # keep in sync with rust-toolchain.toml
+          targets: wasm32-unknown-unknown
+
+      # wasm-bindgen must match the crate in Cargo.lock; binaryen gives wasm-opt; ffmpeg
+      # (libvorbis) compresses the site's SoundFont.
+      - name: Install the web tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends binaryen ffmpeg
+          cargo install wasm-bindgen-cli --version 0.2.130 --locked
+
+      - name: Build the release for the root
+        if: steps.release.outputs.tag != ''
+        working-directory: release-src
+        env:
+          GSCORE_VERSION: ${{ steps.release.outputs.tag }}
+        run: cargo xtask web --out "$GITHUB_WORKSPACE/site"
+
+      - name: Build the preview
+        # Not a release build: the version comes from `git describe` (for example
+        # v0.2.8-5-gabc1234), so About and the update check show what this is.
+        working-directory: preview-src
+        run: cargo xtask web --out "$GITHUB_WORKSPACE/site/preview"
+
+      # Installed to a home screen, the preview must not look like the release.
+      - name: Name the preview
+        working-directory: site/preview
+        run: |
+          sed -i 's/"name": "GuitarScore"/"name": "GuitarScore Preview"/; s/"short_name": "GuitarScore"/"short_name": "GS Preview"/' manifest.json
+          sed -i 's#<title>\(.*\)</title>#<title>\1 (preview)</title>#' index.html
+          grep -q 'GuitarScore Preview' manifest.json
+
+      - name: Upload the site for GitHub Pages
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: site
+
+  pages:
+    name: Deploy to GitHub Pages
+    needs: build
+    runs-on: ubuntu-latest
+    # The same group as the release's deployment: one at a time.
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}preview/
+    steps:
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v5
