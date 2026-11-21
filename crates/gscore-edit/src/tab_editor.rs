@@ -427,6 +427,7 @@ impl TabEditor {
             | ActionId::ScrollPageDown
             | ActionId::ToggleFullscreen
             | ActionId::ToggleMixer
+            | ActionId::TogglePracticeView
             | ActionId::ToggleMultitrack
             | ActionId::ShowHistory
             | ActionId::NewSong

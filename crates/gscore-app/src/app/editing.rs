@@ -308,6 +308,11 @@ impl GuitarScoreApp {
                     ctx.request_repaint();
                     return;
                 }
+                ActionId::TogglePracticeView => {
+                    self.toggle_practice_view();
+                    ctx.request_repaint();
+                    return;
+                }
                 // Windows and files: they work without an open document too.
                 ActionId::ShowHistory => {
                     self.open_history();
@@ -1343,6 +1348,7 @@ fn needs_no_song(action: Action) -> bool {
                 | ActionId::ZoomReset
                 | ActionId::ToggleFullscreen
                 | ActionId::ToggleMixer
+                | ActionId::TogglePracticeView
         )
     )
 }

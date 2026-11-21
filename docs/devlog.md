@@ -6706,3 +6706,15 @@ Open:
   sizes.
 - `localStorage` is small; IndexedDB would hold more songs (and the recovery journal).
 
+Second round (owner's look, same day): the controls follow the mockups. Each control is
+drawn in a rectangle of its own, so a row shares one centre line (the play button had
+pushed the buttons after it down; it is now as large as the others). Four arrangements
+by screen (`controls::Shape`): phone upright (header; speed pill and captioned switches,
+then the transport spread with the time), phone on its side (no header, one row with the
+menu), tablet upright (header, one row), 1000 pt and wider (all in the header). The track
+chip shows the track's colour, ⋯ opens the menu, a hint explains the taps until the first
+one, − and + are drawn as lines. New icons everywhere: the speed trainer is a rising arrow,
+the count-in a square key with 1 2 / 3 4 (hard to read at toolbar size). New action
+`toggle_practice_view` on F2 (`docs/usage.md`). The toolbar snapshots changed for the two
+icons only.
+

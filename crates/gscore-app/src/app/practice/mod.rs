@@ -24,8 +24,8 @@ pub(crate) const NARROW: f32 = 900.0;
 /// The smallest touch target, in points (Apple's and Google's guidelines agree on about
 /// this size).
 pub(crate) const TARGET: f32 = 44.0;
-/// The play button: larger than the rest, the one control found without looking.
-pub(super) const PLAY: f32 = 58.0;
+/// The play button: as large as the others, marked by its colour and round shape.
+pub(super) const PLAY: f32 = TARGET;
 /// One step of the speed buttons.
 pub(super) const SPEED_STEP: f32 = 0.05;
 
@@ -95,6 +95,8 @@ pub(super) struct PracticeState {
     pub(super) shown: bool,
     /// The bar tapped first, waiting for a second tap to make a loop: its tab and measure.
     pending: Option<(TabId, usize)>,
+    /// Whether a bar was tapped yet: until then a hint says what a tap does.
+    tapped: bool,
 }
 
 impl GuitarScoreApp {
@@ -111,6 +113,21 @@ impl GuitarScoreApp {
         self.practice.pending = None;
     }
 
+    /// Forgets the bar waiting for a second tap (the loop was switched off).
+    pub(super) fn practice_forget_tap(&mut self) {
+        self.practice.pending = None;
+    }
+
+    /// Switches between the practice view and the full interface (F2).
+    pub fn toggle_practice_view(&mut self) {
+        let choice = if self.practice.shown {
+            PracticeChoice::Off
+        } else {
+            PracticeChoice::On
+        };
+        self.set_practice_view(choice);
+    }
+
     /// The bar waiting for a second tap, in the active tab.
     fn practice_pending(&self) -> Option<usize> {
         let id = self.tabs.get(self.active)?.id;
@@ -122,6 +139,7 @@ impl GuitarScoreApp {
     /// A tap on bar `measure` (0-based) of the practice view: the first plays from there,
     /// the second loops the bars from the first to this one.
     pub(super) fn practice_tap(&mut self, measure: usize) {
+        self.practice.tapped = true;
         let pending = self.practice_pending();
         let Some(tab) = self.tabs.get_mut(self.active) else {
             return;
@@ -155,16 +173,25 @@ impl GuitarScoreApp {
     /// The practice view: the header, the controls and the score between them.
     pub(super) fn practice_ui(&mut self, ui: &mut egui::Ui) {
         let ctx = ui.ctx().clone();
-        egui::Panel::top("practice_header")
-            .frame(style::chrome_frame(&ctx, 6))
-            .show(ui, |ui| self.practice_header(ui));
+        let has_song = self.document().is_some();
+        // Without a song there is nothing to play: the header only, with the menu.
+        let shape = if has_song {
+            controls::Shape::of(ctx.content_rect().size())
+        } else {
+            controls::Shape::Narrow
+        };
+        if shape.has_header() {
+            egui::Panel::top("practice_header")
+                .frame(style::chrome_frame(&ctx, 6))
+                .show(ui, |ui| self.practice_header(ui, shape, has_song));
+        }
         if self.notice.is_some() {
             egui::Panel::top("notice").show(ui, |ui| self.notice_bar(ui));
         }
-        if self.document().is_some() {
+        if has_song && shape.has_bottom() {
             egui::Panel::bottom("practice_controls")
                 .frame(style::chrome_frame(&ctx, 8))
-                .show(ui, |ui| self.practice_controls(ui));
+                .show(ui, |ui| self.practice_controls(ui, shape));
         }
         egui::CentralPanel::default()
             .frame(style::canvas_frame(&ctx))
@@ -192,6 +219,13 @@ impl GuitarScoreApp {
         self.view.score_view = kept.0;
         self.view.set_zoom(kept.1);
         self.view.design_mode = kept.2;
+        // Until the first tap, a hint says what a tap does.
+        let hint = !self.practice.tapped
+            && self.practice_pending().is_none()
+            && !self.playback.loop_selection();
+        if hint {
+            practice_hint(ui);
+        }
         if drawn.is_err() {
             self.notice =
                 Some("Drawing the page failed unexpectedly; a crash report was written".to_owned());
@@ -263,6 +297,31 @@ impl GuitarScoreApp {
             self.ask_open(&ctx);
         }
     }
+}
+
+/// "Tap a bar …" in a dark pill near the bottom of the score.
+fn practice_hint(ui: &egui::Ui) {
+    let area = ui.max_rect();
+    let text = "Tap a bar to start there · tap another to loop";
+    let font = FontId::proportional(13.0);
+    let galley = ui
+        .painter()
+        .layout_no_wrap(text.to_owned(), font, egui::Color32::WHITE);
+    let size = galley.size() + vec2(28.0, 16.0);
+    if size.x > area.width() {
+        return;
+    }
+    let rect = egui::Rect::from_center_size(
+        egui::pos2(area.center().x, area.bottom() - 14.0 - size.y / 2.0),
+        size,
+    );
+    let painter = ui.painter();
+    painter.rect_filled(rect, size.y / 2.0, egui::Color32::from_black_alpha(220));
+    painter.galley(
+        rect.center() - galley.size() / 2.0,
+        galley,
+        egui::Color32::WHITE,
+    );
 }
 
 #[cfg(test)]
