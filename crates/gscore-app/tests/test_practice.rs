@@ -1,6 +1,8 @@
 //! The practice view's drawer, driven through its accessibility tree: what it holds, and
 //! how its tiles that open windows behave.
 
+#![allow(unused_crate_dependencies)]
+
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
