@@ -291,6 +291,18 @@ impl GuitarScoreApp {
                     ui.close();
                 }
                 ui.separator();
+                if let Some(mut on) = self.document().map(|d| d.editor().step_entry())
+                    && ui
+                        .checkbox(&mut on, "Step entry")
+                        .on_hover_text("Each note, chord or rest entered moves the cursor on")
+                        .clicked()
+                {
+                    self.perform_action(
+                        gscore_edit::Action::Plain(ActionId::ToggleStepEntry),
+                        ui.ctx(),
+                    );
+                    ui.close();
+                }
                 // The note tools: each entry opens its window, or closes it again.
                 for tool in super::note_tools::NoteTool::ALL {
                     let mut open = self.note_tools.is_open(tool);

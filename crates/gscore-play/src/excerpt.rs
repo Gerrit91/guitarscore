@@ -4,7 +4,7 @@
 
 use std::sync::Arc;
 
-use gscore_model::{BeatPosition, ModelError, Song};
+use gscore_model::{BeatPosition, MeasureIndex, ModelError, Song, TrackIndex};
 
 use crate::build;
 use crate::event::{Channel, MidiEvent, controller};
@@ -20,6 +20,38 @@ const MAX_TICKS: u64 = 8 * PPQ as u64;
 const RELEASE_TAIL: u64 = 4 * PPQ as u64;
 
 impl Sequence {
+    /// `track` alone, without notes: its sound and how it is played, for notes played
+    /// live through it (a monitored MIDI input). `None` for a track the song lacks.
+    pub fn track_excerpt(song: &Song, track: TrackIndex) -> Result<Option<Sequence>, ModelError> {
+        if song.track(track).is_none() {
+            return Ok(None);
+        }
+        let (measures, _) = crate::timeline::measure_spans(song)?;
+        let none = |_: &crate::sounding::Sounding| false;
+        let collected = build::collect(song, &[track], &measures, Some(&none), None)?;
+        let mut performance = Performance {
+            tracks: collected.tracks,
+            notes: Vec::new(),
+            tempo: TempoMap::new(crate::timeline::tempo_at(song, MeasureIndex::new(0))),
+            measures: Vec::new(),
+            end: 0,
+            skipped_notes: 0,
+            by_start: Vec::new(),
+        };
+        performance.index_by_start();
+        let midi = crate::midi::derive(&performance);
+        Ok(Some(Sequence {
+            tracks: midi.tracks,
+            events: midi.events,
+            tempo: performance.tempo.clone(),
+            measures: Vec::new(),
+            end: 0,
+            skipped_notes: 0,
+            degraded_pitch_bends: midi.degraded_pitch_bends,
+            performance: Arc::new(performance),
+        }))
+    }
+
     /// The beat at `at` alone, with its effects, from tick 0 at the tempo it is played at.
     /// `None` when the beat is not played (a muted track, a rest, a measure no pass
     /// reaches) or has no sounding note.

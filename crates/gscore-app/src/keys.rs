@@ -9,6 +9,10 @@
 //! clipboard events, which map back to `ctrl+c`/`x`/`v`.
 //!
 //! While an input method composes text (IME), typed text is never a command.
+//!
+//! Alt with a digit (step entry's chord frets) comes from the `Key` event too; the
+//! character the same press types next (a digit, or `£` with Option+3 on a Mac) is then
+//! not a key of its own.
 
 use egui::{Event, ImeEvent};
 use gscore_edit::{Key, KeyCombo, Modifiers, NamedKey};
@@ -18,6 +22,8 @@ use gscore_edit::{Key, KeyCombo, Modifiers, NamedKey};
 pub(crate) struct KeyReader {
     /// An input method is composing text.
     composing: bool,
+    /// The `Text` event of an Alt+digit press is still to come, and is not a key.
+    alt_digit_text: bool,
 }
 
 impl KeyReader {
@@ -34,6 +40,7 @@ impl KeyReader {
                 }
                 None
             }
+            Event::Text(_) if std::mem::take(&mut self.alt_digit_text) => None,
             Event::Text(text) if !self.composing => {
                 let mut chars = text.chars();
                 match (chars.next(), chars.next()) {
@@ -50,6 +57,8 @@ impl KeyReader {
                 modifiers,
                 ..
             } => {
+                // A key press after an Alt+digit means its text never came.
+                self.alt_digit_text = false;
                 let mods = Modifiers {
                     ctrl: modifiers.command,
                     alt: modifiers.alt,
@@ -57,6 +66,13 @@ impl KeyReader {
                 };
                 if let Some(named) = named_key(*key) {
                     return Some(KeyCombo::new(Key::Named(named), mods));
+                }
+                if modifiers.alt
+                    && !modifiers.command
+                    && let Some(digit) = digit_key(*key)
+                {
+                    self.alt_digit_text = true;
+                    return Some(KeyCombo::new(Key::Char(digit), mods));
                 }
                 // Typed characters come from `Text`; only Ctrl combinations type nothing.
                 if !modifiers.command {
@@ -89,6 +105,24 @@ fn ctrl_char(c: char) -> KeyCombo {
             ..Modifiers::default()
         },
     )
+}
+
+/// The digit a digit key (main row or numpad) types.
+fn digit_key(key: egui::Key) -> Option<char> {
+    use egui::Key as K;
+    Some(match key {
+        K::Num0 => '0',
+        K::Num1 => '1',
+        K::Num2 => '2',
+        K::Num3 => '3',
+        K::Num4 => '4',
+        K::Num5 => '5',
+        K::Num6 => '6',
+        K::Num7 => '7',
+        K::Num8 => '8',
+        K::Num9 => '9',
+        _ => return None,
+    })
 }
 
 /// The keymap name of a key that types nothing.
@@ -182,6 +216,28 @@ mod tests {
         assert_eq!(
             reader.combo(&Event::Copy),
             Some(KeyCombo::parse("ctrl+c").unwrap())
+        );
+    }
+
+    #[test]
+    fn alt_with_a_digit_is_one_key_without_its_text() {
+        let mut reader = KeyReader::default();
+        assert_eq!(
+            reader.combo(&key(egui::Key::Num3, egui::Modifiers::ALT)),
+            Some(KeyCombo::parse("alt+3").unwrap())
+        );
+        // What the press typed (`3`, or `£` on a Mac) is not a key of its own.
+        assert_eq!(reader.combo(&Event::Text("£".into())), None);
+        assert_eq!(
+            reader.combo(&Event::Text("3".into())),
+            Some(KeyCombo::char('3'))
+        );
+        // A press that typed nothing does not swallow the next one's text.
+        reader.combo(&key(egui::Key::Num4, egui::Modifiers::ALT));
+        reader.combo(&key(egui::Key::ArrowUp, egui::Modifiers::NONE));
+        assert_eq!(
+            reader.combo(&Event::Text("4".into())),
+            Some(KeyCombo::char('4'))
         );
     }
 

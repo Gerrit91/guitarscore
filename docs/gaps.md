@@ -118,7 +118,11 @@ in AGENTS.md section 9.
     cannot be edited; the GP7 instrument name is shown but not editable; the program list
     has no search field and a per-track SoundFont bank beyond the program is not stored.
     Undo back to the saved state still counts as changed, and the undo history is kept
-    across a crash (journal) but not across a normal close.
+    across a crash (journal) but not across a normal close. Step entry (M23, 2026-11-20):
+    palette effects act on the cursor's beat, which is the next one after a note entered
+    by name or from MIDI, not on the note just entered; MIDI input is desktop only (no Web
+    MIDI), and a track played by a hardware MIDI out is monitored on the built-in
+    synthesizer; no real-time recording against the metronome yet.
 13. **Platforms.** On macOS the file dialog must run on the main thread (rfd); it runs on
     a background thread here, so Open… needs a change there. On Windows, egui turns
     Ctrl+Insert into Copy, so `insert_measure` needs another key. On Wayland the compositor
@@ -185,8 +189,9 @@ testing the built site in headless Chromium; what could only be judged by ear is
 22. **No SoundFont picker.** The site's bundled GeneralUser GS is the only one ("choosing
     a SoundFont is not available in the browser build yet"); `.sf3` is not supported
     anywhere. The 31 MB download is cached by the service worker after the first visit.
-23. **No MIDI out.** A browser has no MIDI ports here (Web MIDI is not used): the "MIDI
-    out" choice is hidden and a track saved with it falls back to the SoundFont.
+23. **No MIDI out or in.** A browser has no MIDI ports here (Web MIDI is not used): the
+    "MIDI out" choice is hidden and a track saved with it falls back to the SoundFont, and
+    there is no MIDI input for step entry.
 24. **No sample-rate choice.** The AudioContext's rate is used; the setting has no effect.
 25. **Audio starts only after a user gesture** (the browser's rule): the first Play
     resumes the context. Not a defect, but a count-in or an auditioned note before any

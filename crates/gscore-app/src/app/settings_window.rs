@@ -430,7 +430,135 @@ impl GuitarScoreApp {
         self.guitar_sound(ui);
         ui.separator();
         ui.heading("Input");
-        ui.label(RichText::new("MIDI inputs (a keyboard or guitar) come later.").weak());
+        self.midi_input_settings(ui);
+    }
+
+    /// The MIDI input (M23): which port, which channel, a MIDI guitar's strings, and
+    /// whether the notes are heard as they are played.
+    #[cfg(not(target_arch = "wasm32"))]
+    fn midi_input_settings(&mut self, ui: &mut Ui) {
+        let mut changed = false;
+        ui.horizontal(|ui| {
+            ui.label("MIDI input");
+            let chosen = self.settings.midi_input_port.clone();
+            let mut pick = None;
+            let response = egui::ComboBox::from_id_salt("settings_midi_input")
+                .selected_text(chosen.clone().unwrap_or_else(|| "Off".to_owned()))
+                .show_ui(ui, |ui| {
+                    if ui.selectable_label(chosen.is_none(), "Off").clicked() {
+                        pick = Some(None);
+                    }
+                    for port in self.midi_inputs.ports() {
+                        if ui
+                            .selectable_label(chosen.as_deref() == Some(port.as_str()), port)
+                            .clicked()
+                        {
+                            pick = Some(Some(port.clone()));
+                        }
+                    }
+                });
+            ui.ctx()
+                .accesskit_node_builder(response.response.id, |node| {
+                    node.set_label("MIDI input");
+                });
+            if let Some(port) = pick {
+                self.settings.midi_input_port = port;
+                self.midi_inputs.rescan();
+                changed = true;
+            }
+            if ui
+                .button("Refresh inputs")
+                .on_hover_text("List the MIDI inputs again (a device plugged in just now)")
+                .clicked()
+            {
+                self.midi_inputs.rescan();
+            }
+        });
+        if self.midi_inputs.ports().is_empty() {
+            // Listed once, so the dropdown offers something without a click.
+            self.midi_inputs.rescan();
+        }
+        if let Some(port) = &self.settings.midi_input_port {
+            let state = match self.midi_inputs.connected() {
+                Some(_) => "connected".to_owned(),
+                None => "not there: it connects when it is plugged in".to_owned(),
+            };
+            ui.label(RichText::new(format!("{port}: {state}")).weak());
+        }
+        ui.horizontal(|ui| {
+            ui.add_enabled_ui(!self.settings.midi_guitar, |ui| {
+                ui.label("Channel");
+                let text = |channel: Option<u8>| {
+                    channel.map_or_else(|| "All".to_owned(), |c| c.to_string())
+                };
+                let response = egui::ComboBox::from_id_salt("settings_midi_input_channel")
+                    .selected_text(text(self.settings.midi_input_channel))
+                    .show_ui(ui, |ui| {
+                        for channel in std::iter::once(None).chain((1..=16).map(Some)) {
+                            if ui
+                                .selectable_label(
+                                    self.settings.midi_input_channel == channel,
+                                    text(channel),
+                                )
+                                .clicked()
+                            {
+                                self.settings.midi_input_channel = channel;
+                                changed = true;
+                            }
+                        }
+                    });
+                ui.ctx()
+                    .accesskit_node_builder(response.response.id, |node| {
+                        node.set_label("MIDI input channel");
+                    });
+            });
+        });
+        ui.horizontal(|ui| {
+            changed |= ui
+                .checkbox(
+                    &mut self.settings.midi_guitar,
+                    "MIDI guitar, one channel per string",
+                )
+                .on_hover_text(
+                    "A guitar pickup in mono mode (Fishman TriplePlay, Roland GK, Jamstik): \
+                     each note is entered on the string it was played on",
+                )
+                .changed();
+            ui.add_enabled_ui(self.settings.midi_guitar, |ui| {
+                ui.label("string 1 on channel");
+                let response = ui.add(
+                    egui::DragValue::new(&mut self.settings.midi_guitar_first_channel)
+                        .range(1..=16),
+                );
+                ui.ctx().accesskit_node_builder(response.id, |node| {
+                    node.set_label("MIDI guitar: channel of string 1");
+                });
+                changed |= response.changed();
+            });
+        });
+        changed |= ui
+            .checkbox(
+                &mut self.settings.midi_monitor,
+                "Hear the notes as they are played",
+            )
+            .on_hover_text("Monitoring: incoming notes sound at once through the track's sound")
+            .changed();
+        ui.label(
+            RichText::new(
+                "In step entry, each note or chord played is entered at the cursor and the \
+                 cursor moves on.",
+            )
+            .weak(),
+        );
+        if changed {
+            self.save_settings();
+        }
+    }
+
+    /// The browser has no MIDI input yet (Web MIDI comes later).
+    #[cfg(target_arch = "wasm32")]
+    fn midi_input_settings(&mut self, ui: &mut Ui) {
+        ui.label(RichText::new("MIDI inputs come later in the browser.").weak());
     }
 
     /// The audio I/O tab in a browser: the synthesizer with the site's SoundFont is the
@@ -455,7 +583,7 @@ impl GuitarScoreApp {
         self.guitar_sound(ui);
         ui.separator();
         ui.heading("Input");
-        ui.label(RichText::new("MIDI inputs (a keyboard or guitar) come later.").weak());
+        self.midi_input_settings(ui);
     }
 
     /// The sample rate of the built-in synthesizer (desktop: the browser sets its own).
@@ -617,6 +745,19 @@ impl GuitarScoreApp {
             "A fret typed into the score sounds briefly with the track's instrument (not \
              while the song plays)",
         );
+        ui.indent("wait_for_whole_frets", |ui| {
+            ui.add_enabled(
+                self.settings.audition_notes,
+                egui::Checkbox::new(
+                    &mut self.settings.wait_for_whole_frets,
+                    "Wait for a second digit (frets 1 and 2)",
+                ),
+            )
+            .on_hover_text(
+                "A 1 or 2 may become 10 to 24: play it once the fret is complete (half a \
+                 second later, or at the next key) instead of hearing 1, then 12",
+            );
+        });
 
         ui.separator();
         ui.heading("Song grid");

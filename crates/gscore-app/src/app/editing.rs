@@ -98,6 +98,11 @@ impl GuitarScoreApp {
             .tabs
             .get(self.active)
             .and_then(|tab| tab.edit_palette.finger_hand());
+        // In step entry its own keys come first (letters are notes then).
+        let step_entry = self
+            .tabs
+            .get(self.active)
+            .is_some_and(|tab| tab.document.editor().step_entry());
         let mut finger = None;
         for event in events {
             if let Some(hand) = finger_hand {
@@ -135,7 +140,7 @@ impl GuitarScoreApp {
                 )),
                 _ => self.keys.combo(&event),
             };
-            match combo.and_then(|c| self.keymap.action(c)) {
+            match combo.and_then(|c| self.keymap.action_in(c, step_entry)) {
                 Some(action) if !without_song || needs_no_song(action) => actions.push(action),
                 _ => kept.push(event),
             }
@@ -194,8 +199,69 @@ impl GuitarScoreApp {
         }
     }
 
+    /// Plays a held-back fret (or step-entry beat) once it is complete: its digit window
+    /// has ended, or a held chord was let go.
+    pub(super) fn deferred_audition_tick(&mut self, ctx: &egui::Context) {
+        if self.deferred_audition.is_none() {
+            return;
+        }
+        let now_ms = ctx.input(|i| (i.time.max(0.0) * 1000.0) as u64);
+        let complete_at = self
+            .document()
+            .and_then(|document| document.editor().fret_complete_at(now_ms));
+        match complete_at {
+            None => self.flush_deferred_audition(ctx),
+            Some(u64::MAX) => {}
+            Some(deadline) => ctx.request_repaint_after(std::time::Duration::from_millis(
+                deadline.saturating_sub(now_ms).max(1),
+            )),
+        }
+    }
+
+    /// Plays the held-back fret or beat now, if there is one.
+    fn flush_deferred_audition(&mut self, ctx: &egui::Context) {
+        if let Some(to_hear) = self.deferred_audition.take() {
+            self.hear(to_hear, ctx);
+        }
+    }
+
+    /// Plays an entered note (briefly) or a step-entry beat (with its effects).
+    fn hear(&mut self, to_hear: DeferredAudition, ctx: &egui::Context) {
+        match to_hear {
+            DeferredAudition::Note(at, string) => self.audition(at, string, ctx),
+            DeferredAudition::Beat(at) => self.preview_beat(at),
+        }
+    }
+
+    /// Step entry: moves the cursor on once a typed fret's digit window has ended, and
+    /// asks for a frame then.
+    pub(super) fn step_entry_tick(&mut self, ctx: &egui::Context) {
+        let Some(tab) = self.tabs.get_mut(self.active) else {
+            return;
+        };
+        let editor = tab.document.editor_mut();
+        let Some(deadline) = editor.step_deadline_ms() else {
+            return;
+        };
+        let now_ms = ctx.input(|i| (i.time.max(0.0) * 1000.0) as u64);
+        if editor.tick(now_ms) == Outcome::Nothing {
+            ctx.request_repaint_after(std::time::Duration::from_millis(
+                deadline.saturating_sub(now_ms).max(1),
+            ));
+        } else {
+            ctx.request_repaint();
+        }
+    }
+
     /// Runs `action` at the cursor (from a key or a menu).
     pub(crate) fn perform_action(&mut self, action: Action, ctx: &egui::Context) {
+        // A fret held back until it was complete is complete now: the next key came. An
+        // undo or redo takes it back, so it is not heard then.
+        match action {
+            Action::Digit(_) | Action::ChordDigit(_) => {}
+            Action::Plain(ActionId::Undo | ActionId::Redo) => self.deferred_audition = None,
+            _ => self.flush_deferred_audition(ctx),
+        }
         // Palette actions run like a click on their tile.
         if let Action::Plain(id) = action
             && id.is_palette()
@@ -347,6 +413,20 @@ impl GuitarScoreApp {
                     }
                     _ => None,
                 };
+                // A note or chord entered in step entry is heard as its whole beat.
+                let stepped = (document.editor().step_entry()
+                    && !matches!(
+                        action,
+                        Action::Plain(ActionId::Undo | ActionId::Redo | ActionId::Paste)
+                    ))
+                .then(|| document.editor().stepped_beat())
+                .flatten();
+                // A typed fret a second digit may still change is heard once complete
+                // (Settings › Editor), not digit by digit.
+                let typed = matches!(action, Action::Digit(_) | Action::ChordDigit(_));
+                let incomplete = typed
+                    && self.settings.wait_for_whole_frets
+                    && document.editor().fret_complete_at(now_ms).is_some();
                 // Only a toggle sets an effect this way; undo, redo and paste replay
                 // commands and stay quiet.
                 let heard = match action {
@@ -375,8 +455,19 @@ impl GuitarScoreApp {
                 if let Some(semitones) = transposed {
                     self.status = Some(transpose_status(semitones));
                 }
-                if let Some((at, string)) = entered {
-                    self.audition(at, string, ctx);
+                let to_hear = stepped
+                    .map(DeferredAudition::Beat)
+                    .or_else(|| entered.map(|(at, string)| DeferredAudition::Note(at, string)));
+                if typed {
+                    self.deferred_audition = None;
+                }
+                if let Some(to_hear) = to_hear {
+                    if incomplete {
+                        self.deferred_audition = Some(to_hear);
+                        ctx.request_repaint();
+                    } else {
+                        self.hear(to_hear, ctx);
+                    }
                 } else if let Some(at) = heard {
                     self.preview_beat(at);
                 }
@@ -410,6 +501,54 @@ impl GuitarScoreApp {
             Ok(Outcome::Request(request)) => self.request(request, ctx),
             Err(error) => self.notice = Some(error.to_string()),
         }
+    }
+
+    /// Enters one step at the cursor (a note tool's click, a MIDI note or chord): the
+    /// beat is written at the entry length and the cursor moves on; with `chord` the notes
+    /// join the beat entered last. With `play`, the beat is heard as entered (a MIDI
+    /// keyboard that is monitored is heard already).
+    pub(crate) fn enter_step(
+        &mut self,
+        input: gscore_edit::StepInput,
+        chord: bool,
+        play: bool,
+        ctx: &egui::Context,
+    ) {
+        let Some(tab) = self.tabs.get_mut(self.active) else {
+            return;
+        };
+        let now_ms = ctx.input(|i| (i.time.max(0.0) * 1000.0) as u64);
+        let document = &mut tab.document;
+        let editor = document.editor_mut();
+        let entered = catch_unwind(AssertUnwindSafe(|| editor.enter_step(input, chord, now_ms)));
+        let Ok(entered) = entered else {
+            document.snapshot();
+            self.notice = Some(
+                "The edit failed unexpectedly and was not applied. A crash report and a \
+                 recovery snapshot were written."
+                    .to_owned(),
+            );
+            return;
+        };
+        match entered {
+            Ok(Outcome::Edited) => {
+                self.status = None;
+                let editor = document.editor();
+                let layout = editor.last_command().is_some_and(Command::changes_layout);
+                let effect = editor
+                    .last_command()
+                    .map_or(EditEffect::Other, EditEffect::of);
+                let at = editor.stepped_beat();
+                self.sync_grid_selection();
+                self.after_edit(effect, layout);
+                if play && let Some(at) = at {
+                    self.preview_beat(at);
+                }
+            }
+            Ok(_) => {}
+            Err(error) => self.notice = Some(error.to_string()),
+        }
+        ctx.request_repaint();
     }
 
     /// Runs `command` as one undo step from a window rather than a key press (a dialog's
@@ -1270,4 +1409,13 @@ mod interface_zoom_tests {
         );
         assert_eq!(interface_zoom_step(K::A, Some(K::A)), None);
     }
+}
+
+/// An entered note waiting to be heard until no second digit can change it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum DeferredAudition {
+    /// One note, typed outside step entry.
+    Note(BeatPosition, gscore_model::StringNumber),
+    /// A beat entered in step entry (its chord).
+    Beat(BeatPosition),
 }

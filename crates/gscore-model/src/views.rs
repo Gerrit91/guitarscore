@@ -191,6 +191,16 @@ impl<'a> TrackView<'a> {
         self.inner.gpif_sounds.as_deref()
     }
 
+    /// How many frets the instrument has: Guitar Pro's per-track fret count, or 24 when
+    /// the file stores none (or a count no fret could have).
+    pub fn fret_count(&self) -> u8 {
+        const DEFAULT_FRETS: u8 = 24;
+        match self.inner.fret_count {
+            0 => DEFAULT_FRETS,
+            count => Fret::new(count).map_or(DEFAULT_FRETS, Fret::get),
+        }
+    }
+
     /// The tuning, from string 1 (highest) down, or `None` if the track has none: it is
     /// not a string instrument (Guitar Pro still stores E standard for vocal and piano
     /// tracks), the file stores no tuning, or every string is at pitch 0 (drum kits).

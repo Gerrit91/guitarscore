@@ -224,6 +224,7 @@ This is the heart of the project. List the actions you do constantly in Guitar P
 | `save` | save the file | ctrl+s | |
 | `close_tab` | close the active tab (asking about unsaved changes) | ctrl+w | Leaves an empty workspace when the last tab closes |
 | `edit_beat_text` | text written above the current beat | t | the dialog's text field takes the keyboard at once (Guitar Pro's shortcut) |
+| `toggle_step_entry` | step entry on/off: every note, chord or rest entered moves the cursor on (M23) | N | as MuseScore's note input; also a button beside the voices in the edit palette's Note input, and the Tools menu. In the mode: a-g notes by name, A-G into the chord, alt+digit a fret into the chord, r a rest, Escape leaves |
 
 ## 8. Sound plan
 
@@ -354,6 +355,9 @@ commands. Details of every step are in `docs/devlog.md`; known shortfalls in
   - **Done when:** the owner can enter a riff and its chords at the cursor from the
     keyboard, the note tools and a MIDI keyboard without moving the cursor by hand, and
     the fingering rarely needs a correction.
+  - *Steps 1-4 implemented 2026-11-20* (branch `m23-step-entry`, `docs/devlog.md`);
+    waiting for the owner to try it. Keys chosen for the step-entry layer are listed in
+    the default keymap; `toggle_step_entry` is `N` (owner, 2026-11-20).
 
 - **M24: Plugin hosting** (owner, 2026-11-17: written down so the idea is not lost, not
   scheduled; comes after M23 at the earliest). Plugins as the sound source of a track

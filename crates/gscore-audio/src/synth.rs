@@ -231,6 +231,12 @@ impl SynthEngine {
         let _ = self.apply(Command::Send(event));
     }
 
+    /// Starts or ends a note played live (a monitored MIDI input): on its string when the
+    /// modelled strings play the track, else as a note on its channel.
+    pub fn live_note(&mut self, note: gscore_play::LiveNote) {
+        let _ = self.apply(Command::Live(note));
+    }
+
     /// The current position in ticks.
     pub fn position(&self) -> u64 {
         self.transport.position()
@@ -544,6 +550,12 @@ impl SynthEngine {
             }
             Command::PartRoom(track, part, value) => {
                 self.mixer.set_part_room(track, part, value);
+                return None;
+            }
+            // A monitored note on a track the strings play goes to its string; any other
+            // is a note for the SoundFont (below).
+            Command::Live(note) if self.guitars.plays(note.track) => {
+                self.guitars.live(note);
                 return None;
             }
             _ => {}

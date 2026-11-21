@@ -4,7 +4,7 @@
 //! settings (no keymap text file needed).
 
 use egui::Margin;
-use gscore_edit::{ACTIONS, Action, ActionId, Key, KeyCombo, Keymap, NamedKey};
+use gscore_edit::{ACTIONS, ActionId, Key, KeyCombo, Keymap, NamedKey};
 
 use super::GuitarScoreApp;
 use super::icons::{self, Icon};
@@ -144,8 +144,8 @@ impl GuitarScoreApp {
                                                 .map(ToString::to_string)
                                                 .collect::<Vec<_>>()
                                                 .join(", ");
-                                            let text = if action == ActionId::EnterFret {
-                                                "0–9".to_owned()
+                                            let text = if let Some(fixed) = fixed_keys(action) {
+                                                fixed.to_owned()
                                             } else if key_text.is_empty() {
                                                 "—".to_owned()
                                             } else {
@@ -170,7 +170,7 @@ impl GuitarScoreApp {
                                                     if ui.button("Cancel").clicked() {
                                                         panel.capturing = None;
                                                     }
-                                                } else if action != ActionId::EnterFret
+                                                } else if !action.has_fixed_keys()
                                                     && ui.button("Change").clicked()
                                                 {
                                                     panel.capturing = Some(action);
@@ -231,7 +231,7 @@ impl GuitarScoreApp {
                     panel.capturing = None;
                     break;
                 }
-                let other = bound_action(&self.keymap, combo).filter(|bound| *bound != action);
+                let other = self.keymap.conflict(action, combo);
                 if let Some(other) = other {
                     panel.conflict = Some(PendingShortcut {
                         action,
@@ -266,10 +266,13 @@ impl GuitarScoreApp {
     }
 }
 
-/// The action a key combination is currently bound to, if any.
-fn bound_action(keymap: &Keymap, combo: KeyCombo) -> Option<ActionId> {
-    match keymap.action(combo)? {
-        Action::Plain(action) => Some(action),
-        Action::Digit(_) => Some(ActionId::EnterFret),
-    }
+/// How the shortcut table shows the keys of an action whose keys are its parameter.
+fn fixed_keys(action: ActionId) -> Option<&'static str> {
+    Some(match action {
+        ActionId::EnterFret => "0–9",
+        ActionId::EnterChordFret => "alt+0–9 (step entry)",
+        ActionId::StepNote => "a–g (step entry)",
+        ActionId::StepChordNote => "A–G (step entry)",
+        _ => return None,
+    })
 }

@@ -638,3 +638,51 @@ fn a_long_tail_after_stop_costs_what_playing_does() {
         );
     }
 }
+
+#[test]
+fn a_live_note_plays_on_the_track_string_while_stopped() {
+    let mut engine = SynthEngine::new(&bank(), RATE).unwrap();
+    engine.load(Arc::new(
+        Sequence::new(&a3(), None).unwrap().with_modelled_guitars(),
+    ));
+    // Loaded but stopped: silent until a monitored note comes in.
+    assert!(rms(&render(&mut engine, 0.2)) < 1e-4);
+    let note = |velocity| gscore_play::LiveNote {
+        track: 0,
+        channel: gscore_play::Channel::new(0).unwrap(),
+        string: 3,
+        key: 57,
+        velocity,
+    };
+    engine.live_note(note(100));
+    let heard = render(&mut engine, 0.6);
+    let window = seconds(&heard, 0.1, 0.6);
+    assert!(rms(window) > 0.01, "the live note sounds: {}", rms(window));
+    // It is the string, in tune: A3, with overtones the sine font lacks.
+    let a = 220.0;
+    assert!(power(window, a) > power(window, a * (10.0_f32 / 1200.0).exp2()));
+    assert!((power(window, 2.0 * a) + power(window, 3.0 * a)) / power(window, a) > 1e-2);
+    // Letting go ends it.
+    engine.live_note(note(0));
+    let released = render(&mut engine, 1.0);
+    assert!(rms(seconds(&released, 0.7, 1.0)) < rms(window) * 0.1);
+}
+
+#[test]
+fn a_live_note_on_a_soundfont_track_is_a_note_on_its_channel() {
+    let mut engine = SynthEngine::new(&bank(), RATE).unwrap();
+    engine.load(Arc::new(Sequence::new(&a3(), None).unwrap()));
+    let channel = gscore_play::Channel::new(5).unwrap();
+    engine.live_note(gscore_play::LiveNote {
+        track: 0,
+        channel,
+        string: 3,
+        key: 69,
+        velocity: 100,
+    });
+    let heard = render(&mut engine, 0.4);
+    assert!(rms(seconds(&heard, 0.1, 0.4)) > 1e-3);
+    // An A4 sine: the pure tone of the font.
+    let window = seconds(&heard, 0.1, 0.4);
+    assert!(power(window, 440.0) > 100.0 * power(window, 880.0));
+}

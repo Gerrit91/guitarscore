@@ -290,6 +290,40 @@ impl Guitars {
         }
     }
 
+    /// Starts or ends a note played live on the string of a track the strings play (a
+    /// monitored MIDI input). Allocates nothing: it runs in the audio callback.
+    pub(crate) fn live(&mut self, note: gscore_play::LiveNote) {
+        let Some(slot) = self
+            .slots
+            .iter()
+            .position(|slot| slot.is_some_and(|slot| slot.track == note.track))
+        else {
+            return;
+        };
+        let string = usize::from(note.string.max(1).saturating_sub(1)) % STRINGS;
+        let index = slot.saturating_mul(STRINGS).saturating_add(string);
+        let Some(voice) = self.voices.get_mut(index) else {
+            return;
+        };
+        if note.velocity > 0 {
+            voice.set_level(1.0);
+            voice.pluck(Pluck {
+                frequency: frequency(note.key, 0.0),
+                velocity: f32::from(note.velocity.min(127)) / 127.0,
+                attack: strike_of(Attack::Picked),
+                palm_mute: false,
+                dead: false,
+                harmonic: false,
+            });
+        } else {
+            voice.release(Release::Natural);
+        }
+        // The sequence's own note on that string is over.
+        if let Some(playing) = self.playing.get_mut(index) {
+            *playing = None;
+        }
+    }
+
     fn voice_index(&self, note: &PlayedNote) -> Option<usize> {
         let slot = self
             .slots

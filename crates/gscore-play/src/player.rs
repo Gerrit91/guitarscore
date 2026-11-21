@@ -58,6 +58,23 @@ pub trait Player {
     /// Swaps in a rebuilt `sequence` at the current position without stopping or silencing
     /// (see [`Scheduler::replace`]); like [`Player::load`] if nothing is loaded.
     fn replace(&mut self, sequence: Arc<Sequence>) -> Result<(), PlayError>;
+    /// Starts or ends a note played live beside the sequence (monitoring a MIDI input).
+    /// Outputs without strings of their own play it as a note on its channel.
+    fn live_note(&mut self, note: LiveNote) -> Result<(), PlayError> {
+        let event = if note.velocity > 0 {
+            MidiEvent::NoteOn {
+                channel: note.channel,
+                key: note.key,
+                velocity: note.velocity,
+            }
+        } else {
+            MidiEvent::NoteOff {
+                channel: note.channel,
+                key: note.key,
+            }
+        };
+        self.send_event(event)
+    }
     /// The current position in ticks.
     fn position(&self) -> u64;
     /// The position for the screen: like [`Player::position`], but moving smoothly from
@@ -68,6 +85,24 @@ pub trait Player {
     }
     /// Playing, paused or stopped.
     fn state(&self) -> PlayState;
+}
+
+/// A note played live beside the sequence: a MIDI input monitored through a track's own
+/// sound. The modelled strings play it on the track's string when the loaded sequence has
+/// the track; any other output plays it on `channel`, which the caller set up with the
+/// track's sound.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct LiveNote {
+    /// The track's index in the loaded sequence.
+    pub track: usize,
+    /// The channel it sounds on when no strings play it.
+    pub channel: crate::Channel,
+    /// The string (1 is the highest).
+    pub string: u8,
+    /// The key (MIDI note number).
+    pub key: u8,
+    /// How hard; 0 ends the note.
+    pub velocity: u8,
 }
 
 /// Allowed tempo scale.

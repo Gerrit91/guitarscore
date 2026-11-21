@@ -79,6 +79,15 @@ impl Playback {
 
     /// Loads and plays `excerpt` in place of the song.
     pub(super) fn play_excerpt(&mut self, excerpt: Arc<Sequence>) -> Result<(), String> {
+        self.load_excerpt(excerpt, true)
+    }
+
+    /// Loads `excerpt` in place of the song, and plays it with `play`.
+    pub(super) fn load_excerpt(
+        &mut self,
+        excerpt: Arc<Sequence>,
+        play: bool,
+    ) -> Result<(), String> {
         self.end_audition();
         self.sync_midi_delay();
         let (primary, midi) = self.route_sequences(&excerpt);
@@ -86,7 +95,9 @@ impl Playback {
         let rest = self.preview.unwrap_or_else(|| self.output_position());
         self.transport_all(|player| player.stop())?;
         self.load_sequences(Some(primary), &midi)?;
-        self.transport_all(|player| player.play())?;
+        if play {
+            self.transport_all(|player| player.play())?;
+        }
         self.preview_sequence = Some(excerpt);
         // The song's sequence is no longer loaded: the next play loads it again.
         self.sequence = None;

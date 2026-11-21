@@ -278,9 +278,67 @@ pub enum ActionId {
     CloseTab,
     /// Quit the app (asking about unsaved changes first).
     Quit,
+    /// Switch step entry on or off: every note or chord entered moves the cursor on.
+    ToggleStepEntry,
+    /// Step entry: leave the mode (the step-entry keys only).
+    LeaveStepEntry,
+    /// Step entry: a note by its name (`c` to `b`), on the string the fingering picks; the
+    /// letter comes from the key, as `enter_fret`'s digit does.
+    StepNote,
+    /// Step entry: a note by its name added to the beat entered last (a chord).
+    StepChordNote,
+    /// Step entry: a fret on the cursor's string that keeps the beat open for more notes
+    /// (a chord); the digit comes from the key.
+    EnterChordFret,
+    /// Step entry: a rest of the entry length.
+    StepRest,
+    /// Step entry: the note entered last a semitone higher.
+    StepSemitoneUp,
+    /// Step entry: the note entered last a semitone lower.
+    StepSemitoneDown,
+    /// Step entry: the note entered last an octave higher.
+    StepOctaveUp,
+    /// Step entry: the note entered last an octave lower.
+    StepOctaveDown,
+    /// Step entry: the note entered last on the next higher string with the same pitch.
+    StepStringUp,
+    /// Step entry: the note entered last on the next lower string with the same pitch.
+    StepStringDown,
 }
 
 impl ActionId {
+    /// True for the actions bound only while step entry is on: their keys (letters among
+    /// them) run other actions otherwise.
+    pub fn step_entry_only(self) -> bool {
+        matches!(
+            self,
+            ActionId::LeaveStepEntry
+                | ActionId::StepNote
+                | ActionId::StepChordNote
+                | ActionId::EnterChordFret
+                | ActionId::StepRest
+                | ActionId::StepSemitoneUp
+                | ActionId::StepSemitoneDown
+                | ActionId::StepOctaveUp
+                | ActionId::StepOctaveDown
+                | ActionId::StepStringUp
+                | ActionId::StepStringDown
+        )
+    }
+
+    /// True for actions whose keys are fixed because the key is their parameter: the
+    /// digits of `enter_fret` and `enter_chord_fret`, the letters of `step_note` and
+    /// `step_chord_note`. They cannot be rebound one key at a time.
+    pub fn has_fixed_keys(self) -> bool {
+        matches!(
+            self,
+            ActionId::EnterFret
+                | ActionId::EnterChordFret
+                | ActionId::StepNote
+                | ActionId::StepChordNote
+        )
+    }
+
     /// True for the edit palette's actions (note values, rests, ties, effects). The app runs
     /// them like a click on their palette tile; the editor itself does nothing for them.
     pub fn is_palette(self) -> bool {
@@ -732,6 +790,54 @@ pub const ACTIONS: &[ActionInfo] = &[
     info(ActionId::OpenSettings, "open_settings", "Settings…"),
     info(ActionId::CloseTab, "close_tab", "Close tab"),
     info(ActionId::Quit, "quit", "Quit"),
+    info(ActionId::ToggleStepEntry, "toggle_step_entry", "Step entry"),
+    info(
+        ActionId::LeaveStepEntry,
+        "leave_step_entry",
+        "Leave step entry",
+    ),
+    info(ActionId::StepNote, "step_note", "Note by name"),
+    info(
+        ActionId::StepChordNote,
+        "step_chord_note",
+        "Add note by name to the chord",
+    ),
+    info(
+        ActionId::EnterChordFret,
+        "enter_chord_fret",
+        "Enter fret into the chord",
+    ),
+    info(ActionId::StepRest, "step_rest", "Enter rest"),
+    info(
+        ActionId::StepSemitoneUp,
+        "step_semitone_up",
+        "Last note a semitone up",
+    ),
+    info(
+        ActionId::StepSemitoneDown,
+        "step_semitone_down",
+        "Last note a semitone down",
+    ),
+    info(
+        ActionId::StepOctaveUp,
+        "step_octave_up",
+        "Last note an octave up",
+    ),
+    info(
+        ActionId::StepOctaveDown,
+        "step_octave_down",
+        "Last note an octave down",
+    ),
+    info(
+        ActionId::StepStringUp,
+        "step_string_up",
+        "Last note to the higher string",
+    ),
+    info(
+        ActionId::StepStringDown,
+        "step_string_down",
+        "Last note to the lower string",
+    ),
 ];
 
 const fn info(action: ActionId, id: &'static str, label: &'static str) -> ActionInfo {
@@ -771,6 +877,67 @@ impl fmt::Display for ActionId {
     }
 }
 
+/// A note name: the letters C to B, without accidental.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Letter {
+    /// C.
+    C,
+    /// D.
+    D,
+    /// E.
+    E,
+    /// F.
+    F,
+    /// G.
+    G,
+    /// A.
+    A,
+    /// B.
+    B,
+}
+
+impl Letter {
+    /// The letter a typed character names (either case), if it names one.
+    pub fn from_char(c: char) -> Option<Letter> {
+        Some(match c.to_ascii_lowercase() {
+            'c' => Letter::C,
+            'd' => Letter::D,
+            'e' => Letter::E,
+            'f' => Letter::F,
+            'g' => Letter::G,
+            'a' => Letter::A,
+            'b' => Letter::B,
+            _ => return None,
+        })
+    }
+
+    /// Its position from C (C is 0, B is 6).
+    pub fn index(self) -> usize {
+        match self {
+            Letter::C => 0,
+            Letter::D => 1,
+            Letter::E => 2,
+            Letter::F => 3,
+            Letter::G => 4,
+            Letter::A => 5,
+            Letter::B => 6,
+        }
+    }
+
+    /// The pitch class of the natural note (C is 0).
+    pub fn pitch_class(self) -> u8 {
+        match self {
+            Letter::C => 0,
+            Letter::D => 2,
+            Letter::E => 4,
+            Letter::F => 5,
+            Letter::G => 7,
+            Letter::A => 9,
+            Letter::B => 11,
+        }
+    }
+}
+
 /// An action ready to run: the id plus what the key supplied.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Action {
@@ -778,6 +945,15 @@ pub enum Action {
     Plain(ActionId),
     /// A fret digit (0-9).
     Digit(u8),
+    /// Step entry: a fret digit that keeps the beat open for a chord.
+    ChordDigit(u8),
+    /// Step entry: a note by name, as a new beat or (`chord`) added to the last one.
+    Note {
+        /// The note's letter.
+        letter: Letter,
+        /// Whether it joins the beat entered last.
+        chord: bool,
+    },
 }
 
 impl Action {
@@ -786,6 +962,9 @@ impl Action {
         match self {
             Action::Plain(id) => id,
             Action::Digit(_) => ActionId::EnterFret,
+            Action::ChordDigit(_) => ActionId::EnterChordFret,
+            Action::Note { chord: false, .. } => ActionId::StepNote,
+            Action::Note { chord: true, .. } => ActionId::StepChordNote,
         }
     }
 }
@@ -807,6 +986,6 @@ mod tests {
             );
         }
         assert_eq!(ActionId::from_id("no_such_action"), None);
-        assert_eq!(ACTIONS.len(), 131, "one entry per ActionId variant");
+        assert_eq!(ACTIONS.len(), 143, "one entry per ActionId variant");
     }
 }

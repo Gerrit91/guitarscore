@@ -21,23 +21,27 @@ mod command;
 mod cursor;
 mod editor;
 mod effect_text;
+mod fingering;
 mod info;
 mod keymap;
 mod parse;
 mod selection;
+mod step_entry;
 mod tab_editor;
 mod technique_text;
 #[cfg(any(test, feature = "test-support"))]
 pub mod testing;
 
-pub use action::{ACTIONS, Action, ActionId, ActionInfo};
+pub use action::{ACTIONS, Action, ActionId, ActionInfo, Letter};
 pub use command::{Command, Recorded};
 pub use cursor::Cursor;
 pub use editor::{DEFAULT_HISTORY_BYTES, DEFAULT_HISTORY_LIMIT, EditError, Editor, HistoryEntry};
+pub use fingering::{FingeringError, Neck, Place, hand_before, pitch_name};
 pub use info::{COMMANDS, CommandInfo, ParamInfo, find_command};
 pub use keymap::{DEFAULT_KEYMAP, Key, KeyCombo, Keymap, KeymapError, Modifiers, NamedKey};
 pub use parse::{ParseError, parse_line};
 pub use selection::{BeatSpot, MAX_PASTE_COPIES, PasteOptions, Selection};
+pub use step_entry::StepInput;
 pub use tab_editor::{FRET_DIGIT_WINDOW_MS, Outcome, Request, TabEditor};
 
 // The integration tests save edited songs again with `gscore-io`; this marks the

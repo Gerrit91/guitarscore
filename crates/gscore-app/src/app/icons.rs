@@ -102,6 +102,8 @@ pub(crate) enum Icon {
     StompBox,
     /// A filter (a funnel): narrows a list to what matches.
     Filter,
+    /// Step entry (a note with an arrow after it: each note moves the cursor on).
+    StepEntry,
 }
 
 /// The size of the compact icon buttons in the panels and the toolbar.
@@ -908,6 +910,30 @@ pub(crate) fn paint(painter: &Painter, rect: Rect, color: Color32, icon: Icon) {
                 })
                 .collect();
             painter.add(Shape::line(wave, stroke));
+        }
+        Icon::StepEntry => {
+            // A note (a slanted head with its stem) and a chevron after it.
+            let head = pos2(center.x - size * 0.22, center.y + size * 0.2);
+            painter.add(egui::epaint::EllipseShape::filled(
+                head,
+                vec2(size * 0.15, size * 0.11),
+                stroke.color,
+            ));
+            let stem_x = head.x + size * 0.13;
+            painter.line_segment(
+                [pos2(stem_x, head.y), pos2(stem_x, center.y - size * 0.38)],
+                stroke,
+            );
+            let tip = pos2(center.x + size * 0.42, center.y);
+            let reach = size * 0.17;
+            painter.add(Shape::line(
+                vec![
+                    pos2(tip.x - reach, tip.y - reach),
+                    tip,
+                    pos2(tip.x - reach, tip.y + reach),
+                ],
+                stroke,
+            ));
         }
         Icon::Fretboard => {
             // Three strings crossed by three frets, with one note on the middle string.

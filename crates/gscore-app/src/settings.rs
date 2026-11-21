@@ -780,6 +780,9 @@ pub struct Settings {
     pub shortcut_overrides: Vec<ShortcutSetting>,
     /// Whether a fret typed into the score is played back at once.
     pub audition_notes: bool,
+    /// Whether a typed fret that a second digit may still change (1 and 2 on a 24-fret
+    /// neck) is heard only once it is complete, instead of digit by digit.
+    pub wait_for_whole_frets: bool,
     /// Whether every other row of the song grid has a lighter background (off by default).
     pub grid_stripes: bool,
     /// Whether stopping playback puts the cursor (and selection) back where playback
@@ -836,6 +839,17 @@ pub struct Settings {
     pub master_chain: crate::chain_settings::ChainSetting,
     /// The MIDI port chosen, if any.
     pub midi_port: Option<String>,
+    /// The MIDI input notes are entered from in step entry (M23), if any.
+    pub midi_input_port: Option<String>,
+    /// The one channel (1 to 16) whose notes are taken; `None`: every channel.
+    pub midi_input_channel: Option<u8>,
+    /// Whether the input is a MIDI guitar in mono mode (one channel per string), whose
+    /// notes are entered on their own string and fret.
+    pub midi_guitar: bool,
+    /// The channel (1 to 16) of a MIDI guitar's string 1; the next strings follow.
+    pub midi_guitar_first_channel: u8,
+    /// Whether incoming notes are heard at once through the track's sound.
+    pub midi_monitor: bool,
     /// Bend shapes saved as presets in the bend editor.
     pub bend_presets: Vec<ShapePreset>,
     /// Whammy shapes saved as presets in the whammy editor.
@@ -885,6 +899,7 @@ impl Default for Settings {
             keymap_path: None,
             shortcut_overrides: Vec::new(),
             audition_notes: true,
+            wait_for_whole_frets: true,
             grid_stripes: false,
             return_on_stop: true,
             flowing_cursor: true,
@@ -911,6 +926,11 @@ impl Default for Settings {
             string_presets: Vec::new(),
             drum_parts: Vec::new(),
             midi_port: None,
+            midi_input_port: None,
+            midi_input_channel: None,
+            midi_guitar: false,
+            midi_guitar_first_channel: 1,
+            midi_monitor: true,
             bend_presets: Vec::new(),
             whammy_presets: Vec::new(),
             check_for_updates: None,

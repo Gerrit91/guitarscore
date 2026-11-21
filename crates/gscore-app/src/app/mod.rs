@@ -40,6 +40,8 @@ mod kit_room;
 mod lyrics_editor;
 mod master_chain_window;
 mod metronome;
+#[cfg(not(target_arch = "wasm32"))]
+mod midi_input;
 mod new_song;
 mod new_track;
 mod note_tools;
@@ -128,8 +130,13 @@ pub struct GuitarScoreApp {
     /// The window title last sent, to send a change once.
     applied_title: String,
     playback: Playback,
+    /// The MIDI input notes are entered from (M23).
+    #[cfg(not(target_arch = "wasm32"))]
+    midi_inputs: midi_input::MidiInputs,
     keymap: Keymap,
     keys: KeyReader,
+    /// A typed fret (or step-entry beat) held back until no second digit can change it.
+    deferred_audition: Option<editing::DeferredAudition>,
     /// A question for the user (unsaved changes, a lossy save), shown as a window.
     dialog: Option<files::Dialog>,
     /// What to do once the save that is running has succeeded.
@@ -330,8 +337,11 @@ impl GuitarScoreApp {
             applied_interface_zoom: None,
             applied_title: String::new(),
             playback: Playback::default(),
+            #[cfg(not(target_arch = "wasm32"))]
+            midi_inputs: midi_input::MidiInputs::default(),
             keymap,
             keys: KeyReader::default(),
+            deferred_audition: None,
             dialog: None,
             after_save: None,
             saving_tab: None,
@@ -843,6 +853,10 @@ impl eframe::App for GuitarScoreApp {
         // The Sound chain board's keys first, while it has the keyboard.
         self.take_sound_chain_keys(&ctx);
         self.handle_keys(&ctx);
+        self.step_entry_tick(&ctx);
+        self.deferred_audition_tick(&ctx);
+        #[cfg(not(target_arch = "wasm32"))]
+        self.poll_midi_input(&ctx);
         // A count-in that has finished starts the song it was counting in.
         self.poll_count_in();
         // Another tab may hold other choices of what plays its tracks, their MIDI-out
