@@ -216,6 +216,13 @@ pub struct StringSound {
     /// knobs gets the presets' values (the struct's default).
     pub pick_noise: f32,
     pub attack_pitch: f32,
+    /// The strings' inharmonicity and a fretted note's share of the sustain; a sound saved
+    /// before these knobs has none set: its kind's preset decides (see
+    /// [`StringSound::for_kind`]), and without one the model leaves them out.
+    #[serde(default)]
+    pub inharmonicity: Option<f32>,
+    #[serde(default)]
+    pub fretted_sustain: Option<f32>,
 }
 
 impl Default for StringSound {
@@ -249,6 +256,8 @@ impl From<gscore_guitar::StringModel> for StringSound {
             palm_mute: model.palm_mute,
             pick_noise: model.pick_noise,
             attack_pitch: model.attack_pitch,
+            inharmonicity: Some(model.inharmonicity),
+            fretted_sustain: Some(model.fretted_sustain),
         }
     }
 }
@@ -277,6 +286,8 @@ impl StringSound {
             palm_mute: self.palm_mute,
             pick_noise: self.pick_noise,
             attack_pitch: self.attack_pitch,
+            inharmonicity: self.inharmonicity.unwrap_or(0.0),
+            fretted_sustain: self.fretted_sustain.unwrap_or(1.0),
         }
         .sanitized()
     }
@@ -289,6 +300,12 @@ impl StringSound {
         if self.pickup == PickupSetting::Unset {
             self.pickup = preset.pickup.into();
             self.pickup_position = preset.pickup_position;
+        }
+        if self.inharmonicity.is_none() {
+            self.inharmonicity = Some(preset.inharmonicity);
+        }
+        if self.fretted_sustain.is_none() {
+            self.fretted_sustain = Some(preset.fretted_sustain);
         }
         self
     }
@@ -1251,6 +1268,36 @@ mod tests {
         assert_eq!(sound.model().palm_mute, 0.9);
         sound.palm_mute = 7.0;
         assert_eq!(sound.model().palm_mute, 1.0);
+    }
+
+    #[test]
+    fn sounds_saved_before_the_inharmonicity_get_their_kinds() {
+        use gscore_play::StringKind;
+        let text = serde_json::to_string(&StringSound::default()).unwrap_or_default();
+        let mut value: serde_json::Value = serde_json::from_str(&text).unwrap_or_default();
+        if let Some(sound) = value.as_object_mut() {
+            assert!(sound.remove("inharmonicity").is_some());
+            assert!(sound.remove("fretted_sustain").is_some());
+        }
+        let older: StringSound = serde_json::from_value(value).unwrap_or_default();
+        assert_eq!(older.inharmonicity, None);
+        // Without a kind the model leaves them out: no inharmonicity, every note as long.
+        assert_eq!(older.model().inharmonicity, 0.0);
+        assert_eq!(older.model().fretted_sustain, 1.0);
+        // For a kind, its preset's.
+        for kind in [StringKind::Electric, StringKind::Bass] {
+            let preset = gscore_audio::default_string_model(kind);
+            let model = older.for_kind(kind).model();
+            assert_eq!(model.inharmonicity, preset.inharmonicity, "{kind:?}");
+            assert_eq!(model.fretted_sustain, preset.fretted_sustain, "{kind:?}");
+        }
+        // A chosen value is kept.
+        let mut chosen = older;
+        chosen.inharmonicity = Some(3e-4);
+        assert_eq!(
+            chosen.for_kind(StringKind::Electric).inharmonicity,
+            Some(3e-4)
+        );
     }
 
     #[test]

@@ -68,6 +68,16 @@ pub struct StringModel {
     /// How sharp a full-strength pluck starts, in cents (it settles within about 50 ms;
     /// softer plucks start less sharp, by the square of their strength).
     pub attack_pitch: f32,
+    /// How inharmonic the strings are: the inharmonicity coefficient `B` of an open
+    /// string tuned to 110 Hz (a partial `n` sounds at `n f sqrt(1 + B n²)`). Lower open
+    /// strings get more and higher ones less (a heavier gauge), and a fretted note more,
+    /// with the square of how much shorter the string is; see
+    /// [`StringModel::inharmonicity_at`]. Measured on an electric guitar (2026-11-21):
+    /// about 1e-4. 0 leaves the stiffness to the plain `stiffness` allpasses.
+    pub inharmonicity: f32,
+    /// A fretted note's sustain as a share of an open string's at the same pitch (the
+    /// fingertip on the fret takes energy out of the string): measured about 0.6.
+    pub fretted_sustain: f32,
 }
 
 impl GuitarModel {
@@ -95,6 +105,8 @@ impl GuitarModel {
                 palm_mute: PALM_MUTE,
                 pick_noise: PICK_NOISE,
                 attack_pitch: ATTACK_PITCH,
+                inharmonicity: 0.3e-4,
+                fretted_sustain: 0.7,
             },
             GuitarModel::Steel => StringModel {
                 sustain: 9.0,
@@ -117,30 +129,39 @@ impl GuitarModel {
                 palm_mute: PALM_MUTE,
                 pick_noise: PICK_NOISE,
                 attack_pitch: ATTACK_PITCH,
+                inharmonicity: 0.8e-4,
+                fretted_sustain: 0.6,
             },
+            // Fitted to the owner's reference recordings (2026-11-21: a Schecter with a
+            // high-output bridge humbucker, its DI against these strings note by note:
+            // the spectrum and decay of each partial, open, fretted and palm-muted).
             GuitarModel::Electric => StringModel {
-                sustain: 8.0,
-                sustain_exponent: 0.4,
-                brilliance: 0.8,
+                sustain: 16.0,
+                sustain_exponent: 0.32,
+                brilliance: 1.35,
                 stiffness: -0.06,
                 stiffness_stages: 2,
-                pick_position: 0.12,
-                hardness: 0.6,
-                softness: 0.2,
-                // The humbucker's coil resonance: a peak near 3 kHz, then a steep roll-off.
-                tone: 3_000.0,
-                resonance: 1.8,
+                pick_position: 0.08,
+                hardness: 0.67,
+                softness: 0.24,
+                // A loaded high-output humbucker's coil resonance: a soft peak near
+                // 1.35 kHz, then a steep roll-off.
+                tone: 1_350.0,
+                resonance: 1.45,
                 level: 0.35,
-                bridge: 0.7,
-                low_cut: 60.0,
-                second: 0.4,
+                bridge: 0.9,
+                low_cut: 70.0,
+                second: 0.05,
                 detune: 1.0,
                 // A humbucker at the bridge, as most rock guitars are played.
                 pickup: crate::Pickup::Humbucker,
+                // The fit put it at 0.099; the bridge's standard place is as close.
                 pickup_position: crate::pickup_positions::BRIDGE,
                 palm_mute: PALM_MUTE,
                 pick_noise: PICK_NOISE,
                 attack_pitch: ATTACK_PITCH,
+                inharmonicity: INHARMONICITY,
+                fretted_sustain: FRETTED_SUSTAIN,
             },
             GuitarModel::Bass => StringModel {
                 sustain: 7.0,
@@ -163,6 +184,8 @@ impl GuitarModel {
                 palm_mute: PALM_MUTE,
                 pick_noise: PICK_NOISE,
                 attack_pitch: ATTACK_PITCH,
+                inharmonicity: 1.5e-4,
+                fretted_sustain: 0.6,
             },
         }
     }
@@ -175,6 +198,13 @@ const PALM_MUTE: f32 = 0.5;
 /// bass's click softer and duller).
 const PICK_NOISE: f32 = 0.5;
 const ATTACK_PITCH: f32 = 4.0;
+/// The electric guitar's inharmonicity and fretted sustain, measured on the owner's
+/// reference recordings (2026-11-21, `docs/reference-recordings.md`).
+const INHARMONICITY: f32 = 1.0e-4;
+const FRETTED_SUSTAIN: f32 = 0.6;
+/// How the inharmonicity of an open string follows its pitch: `(110 / f) ^ this` (a
+/// lower string is a heavier gauge). Measured: low E 1.5e-4, high E 0.2e-4 (2026-11-21).
+const INHARMONICITY_EXPONENT: f32 = 1.4;
 
 /// The range of every knob, for user interfaces and for [`StringModel::sanitized`]:
 /// `(lowest, highest)`.
@@ -206,6 +236,10 @@ pub mod ranges {
     pub const PICK_NOISE: (f32, f32) = (0.0, 1.0);
     /// Cents.
     pub const ATTACK_PITCH: (f32, f32) = (0.0, 20.0);
+    /// The coefficient `B` of an open string at 110 Hz.
+    pub const INHARMONICITY: (f32, f32) = (0.0, 2.0e-3);
+    /// Share of the open string's sustain.
+    pub const FRETTED_SUSTAIN: (f32, f32) = (0.2, 1.0);
 }
 
 impl StringModel {
@@ -213,6 +247,16 @@ impl StringModel {
     pub(crate) fn sustain_at(&self, frequency: f32) -> f32 {
         let ratio = (110.0 / frequency.max(1.0)).powf(self.sustain_exponent);
         (self.sustain * ratio).clamp(0.2, 30.0)
+    }
+
+    /// The inharmonicity coefficient `B` of a note at `frequency` on a string whose open
+    /// pitch is `open` (both Hz): the open string's, from its pitch, times the square of how
+    /// much shorter the fretting makes it.
+    pub fn inharmonicity_at(&self, open: f32, frequency: f32) -> f32 {
+        let open = open.clamp(8.0, 5_000.0);
+        let frequency = frequency.clamp(open, 20_000.0);
+        let string = self.inharmonicity * (110.0 / open).powf(INHARMONICITY_EXPONENT);
+        (string * (frequency / open).powi(2)).clamp(0.0, 0.05)
     }
 
     /// This model with every value in its usable range (a broken parameter must not break
@@ -250,6 +294,8 @@ impl StringModel {
             palm_mute: fit(self.palm_mute, ranges::PALM_MUTE, PALM_MUTE),
             pick_noise: fit(self.pick_noise, ranges::PICK_NOISE, PICK_NOISE),
             attack_pitch: fit(self.attack_pitch, ranges::ATTACK_PITCH, ATTACK_PITCH),
+            inharmonicity: fit(self.inharmonicity, ranges::INHARMONICITY, 0.0),
+            fretted_sustain: fit(self.fretted_sustain, ranges::FRETTED_SUSTAIN, 1.0),
         }
     }
 }

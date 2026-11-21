@@ -426,6 +426,8 @@ impl Writer {
             palm_mute,
             pick_noise,
             attack_pitch,
+            inharmonicity,
+            fretted_sustain,
         } = *model;
         for value in [sustain, sustain_exponent, brilliance, stiffness] {
             self.f32(value);
@@ -446,7 +448,14 @@ impl Writer {
             self.f32(value);
         }
         self.u8(code_of(&PICKUPS, &pickup));
-        for value in [pickup_position, palm_mute, pick_noise, attack_pitch] {
+        for value in [
+            pickup_position,
+            palm_mute,
+            pick_noise,
+            attack_pitch,
+            inharmonicity,
+            fretted_sustain,
+        ] {
             self.f32(value);
         }
     }
@@ -686,7 +695,14 @@ impl<'a> Reader<'a> {
             detune,
         ] = self.floats()?;
         let pickup = choice_of(&PICKUPS, self.u8()?, "pickup")?;
-        let [pickup_position, palm_mute, pick_noise, attack_pitch] = self.floats()?;
+        let [
+            pickup_position,
+            palm_mute,
+            pick_noise,
+            attack_pitch,
+            inharmonicity,
+            fretted_sustain,
+        ] = self.floats()?;
         Ok(StringModel {
             sustain,
             sustain_exponent,
@@ -708,6 +724,8 @@ impl<'a> Reader<'a> {
             palm_mute,
             pick_noise,
             attack_pitch,
+            inharmonicity,
+            fretted_sustain,
         })
     }
 

@@ -6746,3 +6746,21 @@ Fourth round, after the owner's iPhone check (preview deploy):
   columns from 640 pt. The practice files are split by part (controls, header, drawer,
   widgets).
 
+## 2026-11-21: M22, the electric strings fitted to the owner's recordings
+
+The owner's first reference recordings (DI and Quad Cortex reamps, outside the repo) were
+analysed: the DI is clean (-88 dBFS floor, no gate, dynamics apart); the clean reamp clips
+and the preset has a gate; 04 and 05 stopped early (a playback stop on the owner's Windows
+machine, not reproduced here: the headless app played 04 through bar 18, and offline
+renders at every rate and buffer size play through). A preview (the DI through
+GuitarScore's own amp and cab, and the same with an EQ matched to the Quad Cortex) showed
+the amp and cab are good enough; the strings were the gap.
+
+The string model was then fitted to the DI (see `docs/guitar-modelling.md`, "Fitted to the
+reference recordings"): inharmonicity per string and fret (new knob), shorter fretted notes
+(new knob), a palm mute that keeps the pick's attack, and the electric preset's knobs
+fitted. `render_notes` (a `gscore-guitar` example) renders single notes for such fits. The
+Sound chain window's String tab has the two new knobs; the browser's wire format carries
+them. Three palm-mute tests asked for the old, too short and dark mute and now ask for the
+measured one.
+

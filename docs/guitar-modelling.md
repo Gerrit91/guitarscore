@@ -59,7 +59,7 @@ The score already has every technique; the model plays each one by changing para
 |---|---|
 | Bend, slide, vibrato, whammy | change the delay length while the note sounds |
 | Hammer-on, pull-off, tapping | change the length without a new pluck (keeps the energy) |
-| Palm mute | a shelving loss filter: the highs go at once, the pitch and low harmonics ring on |
+| Palm mute | a shelving loss filter: the pick's bright attack, its highs gone within about 0.1 s, the pitch and low harmonics ring on (fitted 2026-11-21) |
 | Dead note | very strong damping plus a noise burst |
 | Natural, artificial harmonic | damp at the node (12th fret: middle of the line) |
 | Let ring vs. staccato | damp or not when the next note starts on that string |
@@ -259,6 +259,50 @@ described in the literature below:
 - **Not yet:** coupling (step 3), noises and feel (step 4). Everything is one generic string model now; a
   distorted part sounds distorted once its chain has an Amp block (below). Harmonics play the
   harmonic's pitch with a purer pluck rather than damping at a node.
+
+## Fitted to the reference recordings (2026-11-21)
+
+The owner's first electric recordings (`docs/reference-recordings.md`; a Schecter with a
+high-output bridge humbucker, DI through an RNDI) were compared with the string model note
+by note: the 54 single notes of `01` and the light and heavy palm mutes of `03`, rendered
+from the same tabs with `cargo run --release -p gscore-guitar --example render_notes`.
+Measured the same way on both: each partial's frequency (the inharmonicity `B`), its level
+from 20 ms to 5 s (spectrum and decay per band, open and fretted apart), and for palm
+mutes each partial's time to fall 20 dB. The knobs were then fitted (Nelder-Mead over 13 of
+them) and the structure changed where no knob could reach. The owner's verdict before
+this: his DI through GuitarScore's own amp and cab sounded right, the strings did not.
+
+- **Inharmonicity per string** (new `inharmonicity`, B of an open string at 110 Hz, 1e-4
+  for the electric): an open string's B follows its pitch as `(110 / f) ^ 1.4` (measured:
+  low E 1.5e-4, high E 0.2e-4; the plain G is stiffer than that), and a fretted note's with
+  the square of how much shorter the string is (fret 12: four times). The voice learns
+  the open string's pitch from the note's fret (`StringVoice::set_open`); the four
+  stiffness allpasses' coefficient is fitted per note to the target partials (a golden
+  search, at the pluck only). The old `stiffness` knobs still apply when it is 0. The old
+  allpasses made high notes inharmonic and low ones not at all: the reverse of a guitar.
+- **Fretted notes ring shorter** (new `fretted_sustain`, 0.6): measured below 400 Hz,
+  open strings fall 4.3 dB/s, fretted ones 6.6-7.7.
+- **Palm mute:** a real mute keeps the pick's bright attack (its highs at 600 Hz-2.5 kHz
+  only 7-15 dB under the note's loudest partial in the first 20 ms) and loses them within
+  about 0.1 s, while the low E's fundamental rings about half a second (20 dB). Light and
+  heavy differ little; heavy is a few dB darker and a little shorter. Before, the mute took
+  everything above the 3rd to 8th harmonic at once and the note was 130 dB down after a
+  second. Now the shelf keeps 3 harmonics flat (`PALM_KEEPS`), the highs at 2 kHz ring
+  0.13 s light to 0.07 s heavy, the fundamental 2.0 to 1.6 s (low E); dark strings (a
+  brilliance under 0.5 s, as the bass) are muted by their own loss filter instead, which
+  already takes their top harder.
+- **The fitted electric preset:** sustain 16 s (exponent 0.32), brilliance 1.35 s, pick at
+  0.08, hardness 0.67, roundness 0.24, coil tone 1350 Hz with resonance 1.45, bridge 0.9,
+  low cut 70 Hz, second vibration 0.05. Against the DI: the spectrum of open notes within
+  about 2 dB per band (was up to 9), the palm mutes' within 1-5 dB; the low partials'
+  decay close.
+- **Saved tones:** a sound saved before the two knobs gets its kind's values when it is
+  read for a kind (as the pickup); without a kind it leaves them out (0 and 1).
+- **Still apart:** partials at 1-2 kHz decay about twice as fast as measured (the one-pole
+  loss filter's shape: a guitar's loss rises about as `f^1.2`, the filter's as `f²`); the
+  fit all but switched the second vibration off (its faster decay did not match the
+  recordings); the velocity steps (measured p to mf 6 dB, mf to ff 1 dB); the clean amp
+  in the recordings was crunchy, so the clean tone is the least checked.
 
 ## The effect chain (2026-11-06)
 

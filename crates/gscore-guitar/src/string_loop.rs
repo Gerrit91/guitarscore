@@ -13,6 +13,12 @@ use crate::filters::{
 
 /// Most allpass stages for stiffness.
 pub(crate) const MAX_STIFFNESS_STAGES: usize = 4;
+/// The partials an inharmonicity is fitted on: up to this many, and up to this frequency
+/// (Hz) or 40 % of the sample rate.
+const DISPERSION_PARTIALS: usize = 16;
+const DISPERSION_TOP: f32 = 5_000.0;
+/// The steps of the coefficient's search (golden section): a few millicents.
+const DISPERSION_STEPS: usize = 30;
 /// The frequency the high decay time is measured at, Hz.
 const BRILLIANCE_AT: f32 = 2_000.0;
 /// The most the loop may amplify per pass: the loop's zero-frequency mode must decay, so a
@@ -20,6 +26,67 @@ const BRILLIANCE_AT: f32 = 2_000.0;
 /// brilliance asked for would need more, the highs are relaxed instead (see
 /// [`Loop::update`]).
 const MAX_LOOP_GAIN: f32 = 0.999_95;
+
+/// The coefficient of [`MAX_STIFFNESS_STAGES`] stiffness allpasses that makes a loop at
+/// `frequency` inharmonic by `b` (partial `n` at `n f sqrt((1 + b n²) / (1 + b))`, the
+/// fundamental kept exact by the tuning): the coefficient whose phase delay, falling with
+/// frequency, shortens the loop for each partial by what its target needs, fitted in the
+/// least squares over the first partials. 0 (no allpass) for no inharmonicity. A search,
+/// so made once per note (a bend keeps it). Allocates nothing.
+pub(crate) fn dispersion(sample_rate: f32, frequency: f32, b: f32) -> f32 {
+    // Not a number counts as none too.
+    let usable = |value: f32| value.is_finite() && value > 0.0;
+    if !usable(b) || !usable(frequency) || !usable(sample_rate) {
+        return 0.0;
+    }
+    let w1 = TAU * frequency / sample_rate;
+    let period = TAU / w1;
+    let top = DISPERSION_TOP.min(0.4 * sample_rate);
+    let partials = ((top / frequency) as usize).min(DISPERSION_PARTIALS);
+    if partials < 2 {
+        return 0.0;
+    }
+    let stages = MAX_STIFFNESS_STAGES as f32;
+    let error = |c: f32| {
+        let at_fundamental = allpass_delay(c, w1);
+        let mut sum = 0.0_f32;
+        for n in 2..=partials {
+            let n = n as f32;
+            let wn = w1 * n * ((1.0 + b * n * n) / (1.0 + b)).sqrt();
+            if wn >= 3.0 {
+                break;
+            }
+            // How much shorter the loop must be for this partial, and how much shorter the
+            // allpasses make it.
+            let wanted = period - TAU * n / wn;
+            let made = stages * (at_fundamental - allpass_delay(c, wn));
+            sum += (made - wanted) * (made - wanted);
+        }
+        sum
+    };
+    let ratio = 0.5 * (5.0_f32.sqrt() - 1.0);
+    let (mut lo, mut hi) = (-0.95_f32, 0.0_f32);
+    let mut a = hi - ratio * (hi - lo);
+    let mut c = lo + ratio * (hi - lo);
+    let (mut fa, mut fc) = (error(a), error(c));
+    for _ in 0..DISPERSION_STEPS {
+        if fa < fc {
+            hi = c;
+            c = a;
+            fc = fa;
+            a = hi - ratio * (hi - lo);
+            fa = error(a);
+        } else {
+            lo = a;
+            a = c;
+            fa = fc;
+            c = lo + ratio * (hi - lo);
+            fc = error(c);
+        }
+    }
+    let best = 0.5 * (lo + hi);
+    if best.is_finite() { best } else { 0.0 }
+}
 
 /// What a loop is tuned to: its pitch, how long its fundamental and its highs around
 /// 2 kHz take to fall 60 dB, its stiffness, and where a palm keeps the low end (`corner`,

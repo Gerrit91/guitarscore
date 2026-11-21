@@ -211,6 +211,9 @@ fn a_high_note_keeps_the_sustain_its_model_asks_for() {
         palm_mute: 0.698_193_3,
         pick_noise: 0.278_939_07,
         attack_pitch: 0.676_427_36,
+        // The preset as it was then: no inharmonicity, every note rings as long.
+        inharmonicity: 0.0,
+        fretted_sustain: 1.0,
     };
     for hz in [988.0_f32, 1_175.0, 1_318.5] {
         let mut voice = StringVoice::new(RATE, 20.0, model);
@@ -247,8 +250,11 @@ fn palm_mutes_and_dead_notes_are_short() {
         let out = render(&mut voice, 1.0, |_| {});
         let attack = rms(seconds(&out, 0.0, 0.05));
         assert!(attack > 1e-3, "the strike is heard");
+        // A dead note is gone; a palm-muted low E still hums a little (the owner's
+        // recordings, 2026-11-21: its fundamental is 25-35 dB down after a second).
+        let left = if dead { 0.01 } else { 0.1 };
         assert!(
-            rms(seconds(&out, 0.7, 1.0)) < attack * 0.01,
+            rms(seconds(&out, 0.7, 1.0)) < attack * left,
             "palm {palm_mute} dead {dead}: dies away"
         );
     }
@@ -373,9 +379,12 @@ fn no_parameters_make_nan_or_runaway_output() {
             palm_mute: random.wild(),
             pick_noise: random.wild(),
             attack_pitch: random.wild(),
+            inharmonicity: random.wild(),
+            fretted_sustain: random.wild(),
         };
         let rate = [8_000.0, 44_100.0, 192_000.0, random.wild()][round % 4];
         let mut voice = StringVoice::new(rate, random.wild(), model);
+        voice.set_open(random.wild());
         let mut out = vec![0.0_f32; BLOCK];
         for step in 0..40 {
             match (random.next() * 6.0) as u32 {
@@ -554,10 +563,17 @@ fn a_palm_muted_note_keeps_its_strength_pitch_and_low_end() {
         assert!(fall < 40.0, "{case}: the fundamental falls {fall:.1} dB");
         assert!(fall > 5.0, "{case}: but it is muted ({fall:.1} dB)");
         falls.push(fall);
-        // The hand takes the highs: far less above 3 kHz than the open note.
-        let highs = db(power_above(seconds(&muted, 0.02, 0.1), 3_000.0)
-            / power_above(seconds(&open, 0.02, 0.1), 3_000.0));
-        assert!(highs < -20.0, "{case}: highs {highs:.1} dB against open");
+        // The hand takes some of the highs, but not the pick's bite: a real mute's attack
+        // stays bright, its highs gone within about 0.1 s (the owner's recordings,
+        // 2026-11-21). Measured after a few periods even of a low bass note (the palm
+        // damps the wave as it passes, so the first periods are as bright as an open
+        // note's).
+        let highs = db(power_above(seconds(&muted, 0.03, 0.15), 3_000.0)
+            / power_above(seconds(&open, 0.03, 0.15), 3_000.0));
+        assert!(
+            (-40.0..-3.0).contains(&highs),
+            "{case}: highs {highs:.1} dB against open"
+        );
         // The same pitch: the damping does not detune it.
         let off = cents_off(seconds(&muted, 0.05, 0.35), hz);
         assert!(off.abs() < 2.0, "{case}: {off:.2} cents off");
@@ -595,8 +611,10 @@ fn the_palm_mute_knob_goes_from_light_to_heavy() {
         light.0 < middle.0 && middle.0 < heavy.0,
         "heavier falls faster: {light:?} {middle:?} {heavy:?}"
     );
+    // A little darker (measured: a heavy mute's attack is only a few dB darker than a
+    // light one's).
     assert!(
-        light.1 > middle.1 + 6.0 && middle.1 > heavy.1 + 6.0,
+        light.1 > middle.1 + 1.5 && middle.1 > heavy.1 + 1.5,
         "and is darker: {light:?} {middle:?} {heavy:?}"
     );
     assert!(light.0 > 1.0, "even light is a mute: {light:?}");
@@ -741,4 +759,73 @@ fn fortississimo_is_only_a_little_louder_than_forte() {
     let db = 20.0 * (fff / forte).log10();
     eprintln!("f to fff: {db:.2} dB");
     assert!(db > 1.5 && db < 3.0, "f to fff: {db:.2} dB");
+}
+
+/// The inharmonicity `B` a voice plays a note with, measured from how sharp its 8th
+/// partial is against the fundamental.
+fn measured_inharmonicity(open: f32, hz: f32, model: StringModel) -> f64 {
+    let mut voice = StringVoice::new(RATE, 20.0, model);
+    voice.set_open(open);
+    voice.pluck(pick(hz));
+    let out = render(&mut voice, 1.3, |_| {});
+    let window = seconds(&out, 0.3, 1.3);
+    let fundamental = cents_off(window, hz);
+    let eighth = cents_off(window, hz * 8.0);
+    let r = ((eighth - fundamental) / 1200.0).exp2();
+    // r² = (1 + 64 B) / (1 + B)
+    (r * r - 1.0) / (64.0 - r * r)
+}
+
+#[test]
+fn inharmonicity_follows_the_string_and_the_fret() {
+    // Measured on an electric guitar (2026-11-21): the open low E about 1.5e-4, its 12th
+    // fret four times that, the open high E about 0.2e-4.
+    let model = GuitarModel::Electric.strings();
+    let (low_e, high_e) = (frequency(40, 0.0), frequency(64, 0.0));
+    let open = measured_inharmonicity(low_e, low_e, model);
+    let fret_12 = measured_inharmonicity(low_e, low_e * 2.0, model);
+    let high = measured_inharmonicity(high_e, high_e, model);
+    let expected = f64::from(model.inharmonicity_at(low_e, low_e));
+    assert!(
+        (open / expected - 1.0).abs() < 0.3,
+        "open low E: {open:.2e} against {expected:.2e}"
+    );
+    assert!(
+        (fret_12 / open - 4.0).abs() < 1.2,
+        "fret 12 against open: {fret_12:.2e} against {open:.2e}"
+    );
+    assert!(high < open / 4.0, "high E {high:.2e}, low E {open:.2e}");
+    // Without it, the plain stiffness knobs: none at all here.
+    let ideal = StringModel {
+        inharmonicity: 0.0,
+        stiffness: 0.0,
+        stiffness_stages: 0,
+        ..model
+    };
+    let none = measured_inharmonicity(low_e, low_e, ideal);
+    assert!(none.abs() < 2e-5, "an ideal string: {none:.2e}");
+}
+
+#[test]
+fn a_fretted_note_rings_shorter_than_an_open_string() {
+    // The same A (110 Hz): the open A string, and the low E at the 5th fret.
+    let hz = frequency(45, 0.0);
+    let model = GuitarModel::Electric.strings();
+    let fall = |open: f32| {
+        let mut voice = StringVoice::new(RATE, 20.0, model);
+        voice.set_open(open);
+        voice.pluck(pick(hz));
+        let out = render(&mut voice, 3.0, |_| {});
+        // dB per second the fundamental falls between 0.5 and 2.5 s.
+        10.0 * (power_at(seconds(&out, 0.5, 0.9), hz) / power_at(seconds(&out, 2.5, 2.9), hz))
+            .log10()
+            / 2.0
+    };
+    let (open, fretted) = (fall(hz), fall(frequency(40, 0.0)));
+    let ratio = fretted / open;
+    let expected = 1.0 / f64::from(model.fretted_sustain);
+    assert!(
+        (ratio / expected - 1.0).abs() < 0.25,
+        "fretted {fretted:.1} dB/s, open {open:.1} dB/s: {ratio:.2} against {expected:.2}"
+    );
 }
