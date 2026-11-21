@@ -91,3 +91,36 @@ fn a_window_tile_puts_the_drawer_away_and_a_second_tap_shuts_its_window() {
     );
     assert!(harness.query_by_label("More controls").is_some());
 }
+
+#[test]
+fn the_speed_tile_changes_the_playback_speed() {
+    let mut harness = practice(egui::vec2(1180.0, 820.0));
+    let before = harness.state().playback().speed();
+    harness.get_by_label("Faster").click();
+    harness.run_steps(4);
+    assert!(harness.state().playback().speed() > before);
+}
+
+#[test]
+fn the_player_sits_in_the_middle_of_the_header() {
+    for width in [1180.0, 820.0] {
+        let harness = practice(egui::vec2(width, 820.0));
+        let play = harness.get_by_role_and_label(Role::Button, "Play").rect();
+        assert!(
+            (play.center().x - width / 2.0).abs() < 1.0,
+            "play at {} of {width}",
+            play.center().x
+        );
+    }
+}
+
+#[test]
+fn the_floating_drawer_is_as_wide_shut_as_open() {
+    let mut harness = practice(egui::vec2(1180.0, 820.0));
+    let open = harness.get_by_label("Fewer controls").rect();
+    harness.get_by_label("Fewer controls").click();
+    harness.run_steps(4);
+    let shut = harness.get_by_label("More controls").rect();
+    assert!((open.width() - shut.width()).abs() < 1.0);
+    assert!((open.right() - shut.right()).abs() < 1.0);
+}

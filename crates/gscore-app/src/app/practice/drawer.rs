@@ -4,7 +4,7 @@
 //!
 //! A chevron on top pulls it up and puts it away. On a phone it sits in the bottom bar
 //! above the player; from [`FLOATING`] on it floats in a card over the score's corner,
-//! only as wide as its tiles. A tile that opens a window (or a file dialog) puts the
+//! only as wide as its tiles (shut, only the chevron is left, as wide). A tile that opens a window (or a file dialog) puts the
 //! drawer away first, so the two do not overlap; a second tap on it while its window is
 //! open shuts the window again.
 
@@ -24,8 +24,8 @@ const COLUMNS: usize = 5;
 /// The largest a tile gets; on a phone they share the width.
 const TILE: Vec2 = vec2(72.0, 56.0);
 const TILE_GAP: f32 = 10.0;
-/// The handle's height, and its width on the shut floating drawer.
-const HANDLE: Vec2 = vec2(72.0, 24.0);
+/// The handle's height.
+const HANDLE: f32 = 24.0;
 
 /// The tiles.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -48,26 +48,25 @@ enum Item {
 /// Where each tile sits: its column, its row and how many columns it spans.
 const LAYOUT: &[(Item, usize, usize, usize)] = &[
     (Item::Loop, 0, 0, 1),
-    (Item::Speed, 1, 0, 2),
-    (Item::Trainer, 3, 0, 1),
-    (Item::CountIn, 4, 0, 1),
-    (Item::Click, 0, 1, 1),
-    (Item::Mute, 1, 1, 1),
-    (Item::Solo, 2, 1, 1),
-    (Item::Transpose, 3, 1, 1),
-    (Item::Size, 4, 1, 1),
-    (Item::Tuner, 0, 2, 1),
-    (Item::Settings, 1, 2, 1),
-    (Item::Save, 2, 2, 1),
-    (Item::Open, 3, 2, 1),
+    (Item::Speed, 1, 0, 3),
+    (Item::Trainer, 4, 0, 1),
+    (Item::CountIn, 0, 1, 1),
+    (Item::Click, 1, 1, 1),
+    (Item::Mute, 2, 1, 1),
+    (Item::Solo, 3, 1, 1),
+    (Item::Transpose, 4, 1, 1),
+    (Item::Size, 0, 2, 1),
+    (Item::Tuner, 1, 2, 1),
+    (Item::Settings, 2, 2, 1),
+    (Item::Save, 3, 2, 1),
+    (Item::Open, 4, 2, 1),
 ];
 const ROWS: usize = 3;
 
 impl GuitarScoreApp {
     /// The drawer inside the bottom bar (a phone): the handle, then the tiles while open.
     pub(super) fn practice_drawer_inline(&mut self, ui: &mut egui::Ui) {
-        let (strip, _) =
-            ui.allocate_exact_size(vec2(ui.available_width(), HANDLE.y), Sense::hover());
+        let (strip, _) = ui.allocate_exact_size(vec2(ui.available_width(), HANDLE), Sense::hover());
         self.practice.drawer = handle(ui, strip, self.practice.drawer);
         if self.practice.drawer {
             let width = ui.available_width();
@@ -83,15 +82,12 @@ impl GuitarScoreApp {
         let tokens = style::context_tokens(ctx);
         let anchor = Pos2::new(ctx.content_rect().right() - 12.0, bottom - 12.0);
         let open = self.practice.drawer;
-        let margin = if open {
-            egui::Margin {
-                left: 14,
-                right: 14,
-                top: 2,
-                bottom: 14,
-            }
-        } else {
-            egui::Margin::same(2)
+        // Shut, it is as wide as open: only the tiles are left out.
+        let margin = egui::Margin {
+            left: 14,
+            right: 14,
+            top: 2,
+            bottom: if open { 14 } else { 2 },
         };
         egui::Area::new(egui::Id::unique("practice_drawer"))
             .order(egui::Order::Foreground)
@@ -105,13 +101,9 @@ impl GuitarScoreApp {
                     .corner_radius(14.0)
                     .inner_margin(margin)
                     .show(ui, |ui| {
-                        let width = if open {
-                            grid_width(f32::INFINITY)
-                        } else {
-                            HANDLE.x
-                        };
+                        let width = grid_width(f32::INFINITY);
                         let (strip, _) =
-                            ui.allocate_exact_size(vec2(width, HANDLE.y), Sense::hover());
+                            ui.allocate_exact_size(vec2(width, HANDLE), Sense::hover());
                         self.practice.drawer = handle(ui, strip, open);
                         if open {
                             self.practice_tiles(ui, width);

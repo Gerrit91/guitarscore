@@ -134,8 +134,8 @@ fn control_height(control: Control) -> f32 {
 }
 
 impl GuitarScoreApp {
-    /// The header: the song and where playback is, then (on a wide screen) the controls,
-    /// the shown track and the menu.
+    /// The header: the song and where playback is on the left, the player in the middle
+    /// (on a wide screen), the shown track and the menu on the right.
     pub(super) fn practice_header(&mut self, ui: &mut egui::Ui, shape: Shape, has_song: bool) {
         let height = if shape == Shape::Bar { PLAY } else { TARGET };
         let (row, _) = ui.allocate_exact_size(vec2(ui.available_width(), height), Sense::hover());
@@ -143,16 +143,19 @@ impl GuitarScoreApp {
         if has_song {
             right.push(&[Control::Chip]);
         }
-        if shape == Shape::Bar {
-            right.push(PLAYER);
-        }
         right.push(&[Control::Menu]);
-        let width = packed_width(&right);
-        let placed = pack(row.right() - width, row.center().y, &right);
+        let right_width = packed_width(&right);
+        let mut placed = pack(row.right() - right_width, row.center().y, &right);
+        let mut title_right = row.right() - right_width - GROUP_GAP;
+        if has_song && shape == Shape::Bar {
+            let left = row.center().x - packed_width(&[PLAYER]) / 2.0;
+            placed.extend(pack(left, row.center().y, &[PLAYER]));
+            title_right = title_right.min(left - GROUP_GAP);
+        }
         // The song and where playback is, in what is left on the left.
         let title_room = Rect::from_min_max(
             row.left_top() + vec2(6.0, 0.0),
-            Pos2::new(row.right() - width - GROUP_GAP, row.bottom()),
+            Pos2::new(title_right, row.bottom()),
         );
         self.practice_title_block(ui, title_room);
         for (control, rect) in placed {
