@@ -22,8 +22,10 @@ impl GuitarScoreApp {
         ui.add_enabled(enabled, button).clicked()
     }
 
-    pub(super) fn menu_bar(&mut self, ui: &mut egui::Ui) {
+    /// The menu bar; returns where its last menu ends (the title is kept clear of it).
+    pub(super) fn menu_bar(&mut self, ui: &mut egui::Ui) -> f32 {
         let mut choices = Vec::new();
+        let mut end = ui.cursor().left();
         egui::MenuBar::new().ui(ui, |ui| {
             ui.menu_button("File", |ui| {
                 if self.action_button(ui, ActionId::NewSong, true) {
@@ -355,9 +357,11 @@ impl GuitarScoreApp {
                     ui.close();
                 }
             });
+            end = ui.cursor().left();
         });
         let ctx = ui.ctx().clone();
         self.run_menu_choices(choices, &ctx);
+        end
     }
 
     /// The keys bound to `action`, as a tooltip suffix: " (ctrl+s)".
@@ -470,20 +474,28 @@ impl GuitarScoreApp {
                 (counts, page, at)
             });
             if let Some((counts, page, at)) = texts {
+                // A narrow window (a phone) keeps what matters most and leaves the rest
+                // out, so nothing runs over the file name: the zoom, then the cursor.
+                let width = ui.max_rect().width();
+                let (show_at, show_rest) = (width >= 600.0, width >= 900.0);
                 ui.with_layout(UiLayout::right_to_left(Align::Center), |ui| {
                     if audio_load(ui, load, rate) {
                         ui.separator();
                     }
                     // The score's zoom, left of the audio load.
                     self.status_zoom(ui);
-                    ui.separator();
-                    ui.label(counts);
-                    ui.separator();
-                    if let Some(page) = page {
-                        ui.label(page);
+                    if show_rest {
                         ui.separator();
+                        ui.label(counts);
+                        if let Some(page) = page {
+                            ui.separator();
+                            ui.label(page);
+                        }
                     }
-                    ui.label(at);
+                    if show_at {
+                        ui.separator();
+                        ui.label(at);
+                    }
                 });
             }
         });

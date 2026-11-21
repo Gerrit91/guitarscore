@@ -164,6 +164,9 @@ pub struct GuitarScoreApp {
     rescue: web_rescue::Rescue,
     /// The practice view for phones and tablets (M25).
     practice: practice::PracticeState,
+    /// Which side panels were shown last frame (edit palette, track panel): on a narrow
+    /// window the one just opened wins.
+    seen_panels: (bool, bool),
     /// Where documents' recovery journals go; `None` keeps no journal.
     recovery_dir: Option<PathBuf>,
     /// Whether the recovery directory was searched for crashed documents yet.
@@ -250,6 +253,23 @@ fn panel_width(stored: Option<f32>, default: f32, room: f32) -> f32 {
     match stored {
         Some(width) if width.is_finite() => width.clamp(200.0, room),
         _ => default.clamp(200.0, room),
+    }
+}
+
+/// Below this window width only one side panel is shown at a time.
+const ONE_SIDE_PANEL_BELOW: f32 = 900.0;
+
+/// The side panels to show (edit palette, track panel) when `shown` are asked for and
+/// `seen` were shown last frame. On a `narrow` window only one: the one just opened, or
+/// the edit palette when both were asked for at once (at the start).
+fn one_side_panel(narrow: bool, shown: (bool, bool), seen: (bool, bool)) -> (bool, bool) {
+    if !narrow || !(shown.0 && shown.1) {
+        return shown;
+    }
+    if seen == (true, false) {
+        (false, true)
+    } else {
+        (true, false)
     }
 }
 
@@ -357,6 +377,7 @@ impl GuitarScoreApp {
             #[cfg(target_arch = "wasm32")]
             rescue: web_rescue::Rescue::default(),
             practice: practice::PracticeState::default(),
+            seen_panels: (false, false),
             may_close: false,
             recovery_dir,
             recovery_searched: false,
@@ -885,6 +906,15 @@ impl GuitarScoreApp {
         if self.notice.is_some() {
             egui::Panel::top("notice").show(ui, |ui| self.notice_bar(ui));
         }
+        // A narrow window (a phone) has room for the score and one side panel only.
+        let (edit, track) = one_side_panel(
+            ui.available_width() < ONE_SIDE_PANEL_BELOW,
+            (self.view.show_edit_panel, self.view.show_track_panel),
+            self.seen_panels,
+        );
+        self.view.show_edit_panel = edit;
+        self.view.show_track_panel = track;
+        self.seen_panels = (edit, track);
         if self.view.show_track_panel && self.document().is_some() {
             // Never wider than leaves the edit palette and the score their room: a stored
             // width (or a broken one) must not cover the window and put the edge out of
@@ -1101,6 +1131,19 @@ impl eframe::App for GuitarScoreApp {
 mod tests {
     use super::*;
     use crate::settings::Settings;
+
+    #[test]
+    fn a_narrow_window_shows_one_side_panel_the_one_just_opened() {
+        let both = (true, true);
+        assert_eq!(one_side_panel(false, both, (true, false)), both);
+        // The track panel was just opened beside the palette: it wins.
+        assert_eq!(one_side_panel(true, both, (true, false)), (false, true));
+        // The palette was just opened beside the track panel: it wins.
+        assert_eq!(one_side_panel(true, both, (false, true)), (true, false));
+        // Both at the start: the palette.
+        assert_eq!(one_side_panel(true, both, (false, false)), (true, false));
+        assert_eq!(one_side_panel(true, (false, true), both), (false, true));
+    }
 
     #[test]
     fn loaded_settings_restore_the_view() {

@@ -6727,3 +6727,22 @@ both builds on one origin in headless Chromium, and `cargo xtask web --smoke` pa
 practice view's two checkboxes (speed trainer, keep the screen on) are switches on a
 finger-sized row.
 
+Fourth round, after the owner's iPhone check (preview deploy):
+- No sound on iOS: Safari starts Web Audio only inside a tap, and the app handles a tap in
+  its next frame. The page now resumes the player's AudioContext (`guitarscoreAudio`, set
+  by `WebPlayer::start`) in its own `touchend`/`click`/`keydown` handler, plays one silent
+  sample the first time, and asks for `navigator.audioSession.type = "playback"` so the
+  ringer switch does not mute it. Not yet confirmed on the phone.
+- The browser's bottom bar covered the player: the canvas was `100vh`, which on iOS reaches
+  under Safari's bar. It is now fixed to the visible area, inside the safe-area insets.
+- The full interface on a phone: the toolbar's groups go to rows of their own when they do
+  not fit side by side (`ToolbarRows`), the player leaves out to start/end below 420 pt,
+  the title is drawn only where it clears the menus, the status bar keeps the zoom (and
+  the cursor from 600 pt), and below 900 pt only one side panel shows (the one opened
+  last; the palette at the start).
+- The practice view's bottom bar has a handle (as Songsterr has): a tap or a swipe up
+  shows the shown track's mute and solo, the transposition, the count-in's length, the
+  score size, and the tuner, settings, saving (a download in the browser) and opening; two
+  columns from 640 pt. The practice files are split by part (controls, header, drawer,
+  widgets).
+

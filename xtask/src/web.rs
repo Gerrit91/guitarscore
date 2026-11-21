@@ -277,13 +277,23 @@ fn copy_tree(from: &Path, to: &Path) -> Result<(), String> {
 
 /// Gives the service worker a cache name unique to this build, so returning visitors get
 /// the new files instead of the previous cache.
+///
+/// With `SOURCE_DATE_EPOCH` set (the reproducible-builds convention; the release and
+/// preview workflows set it to the commit's time) the name comes from that instead of the
+/// clock: the release, rebuilt for the site's root on every preview deploy, then keeps its
+/// name and its visitors are not offered the same version again.
 fn stamp_service_worker(out: &Path) -> Result<(), String> {
     let path = out.join("sw.js");
     let text = std::fs::read_to_string(&path)
         .map_err(|e| format!("cannot read {}: {e}", path.display()))?;
-    let seconds = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_or(0, |d| d.as_secs());
+    let seconds = std::env::var("SOURCE_DATE_EPOCH")
+        .ok()
+        .and_then(|value| value.trim().parse::<u64>().ok())
+        .unwrap_or_else(|| {
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map_or(0, |d| d.as_secs())
+        });
     let version = format!("{}-{seconds}", env!("CARGO_PKG_VERSION"));
     let text = text.replace("__VERSION__", &version);
     std::fs::write(&path, text).map_err(|e| format!("cannot write {}: {e}", path.display()))

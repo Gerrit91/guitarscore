@@ -103,6 +103,9 @@ impl WebPlayer {
     pub fn start() -> Result<Self, PlayError> {
         let context = AudioContext::new()
             .map_err(|_| PlayError::Device("the browser blocked audio output".to_owned()))?;
+        // The page resumes it inside a tap or key press (`web/index.html`): iOS Safari lets
+        // audio start only there, and the app's frame runs a moment after the tap.
+        let _ = js_sys::Reflect::set(&js_sys::global(), &"guitarscoreAudio".into(), &context);
         let shared = Rc::new(Shared::default());
         let player = WebPlayer {
             shared: Rc::clone(&shared),

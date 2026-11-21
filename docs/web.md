@@ -73,9 +73,13 @@ The app crate is the same on both platforms. Native-only pieces are behind
   (`gscore-app/src/song_store.rs`: up to 768 KiB each, 8 songs, 3 MiB together, the oldest
   go first), so the recent list opens it again without the file picker. Recent entries
   without a copy are dropped from the list.
-- A preview for real devices: Actions › Preview › Run workflow (from the default branch,
-  naming the branch) deploys the latest release at the site's root and the branch's build
-  under `preview/` (`.github/workflows/preview.yml`); the next release ends it. Both share
+- A preview for real devices (`.github/workflows/preview.yml`): every push to main deploys
+  the latest release at the site's root and main's build under `preview/`; Actions ›
+  Preview › Run workflow (from the default branch) previews another branch instead. A
+  release deploys only the root, so the preview runs again after the Release workflow.
+  Both builds name their service worker's cache after the commit's time
+  (`SOURCE_DATE_EPOCH`), so rebuilding the release for the root does not offer its
+  visitors an update. Both share
   `localStorage`; each has its own service worker and caches (`web/sw.js` keeps to its
   scope). A release from before the scoped worker (up to v0.2.8) still answers for
   `preview/` on a device that visited the root: clear the site's data there once.
