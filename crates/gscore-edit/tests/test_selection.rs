@@ -1183,3 +1183,84 @@ fn pasting_bars_repeats_them_and_takes_only_the_attributes_asked_for() {
         );
     }
 }
+
+/// Copying one track's bars and pasting them in another track used to write them back
+/// into the track they were copied from: the other track stayed empty.
+#[test]
+fn bars_of_one_track_paste_into_the_track_pasted_into() {
+    let mut e = TabEditor::new(
+        testing::song(&[GUITAR_6, GUITAR_6], 3).unwrap(),
+        TrackIndex::new(0),
+    );
+    e.execute_command(Command::SetFret {
+        at: at(0, 0),
+        string: StringNumber::new(2).unwrap(),
+        fret: gscore_model::Fret::new(5).unwrap(),
+    })
+    .unwrap();
+    let second = |measure| BeatPosition {
+        track: TrackIndex::new(1),
+        ..at(measure, 0)
+    };
+    e.set_selection(Some(Selection::Measures {
+        anchor: MeasureIndex::new(0),
+        focus: MeasureIndex::new(0),
+        track: Some(TrackIndex::new(0)),
+    }));
+    plain(&mut e, ActionId::Copy);
+
+    // The second track's bar 2 selected (a click in the score, or its grid row).
+    e.set_selection(Some(Selection::Measures {
+        anchor: MeasureIndex::new(1),
+        focus: MeasureIndex::new(1),
+        track: Some(TrackIndex::new(1)),
+    }));
+    assert_eq!(plain(&mut e, ActionId::Paste), Outcome::Edited);
+    assert_eq!(notes_at(&e, second(1)), vec![(2, 5)]);
+    assert!(
+        notes_at(&e, at(1, 0)).is_empty(),
+        "the first track is left alone"
+    );
+    assert_eq!(e.cursor().track, TrackIndex::new(1));
+
+    // Only the cursor in the second track, through the Paste bars dialog's path.
+    e.set_selection(None);
+    e.set_cursor(Cursor {
+        track: TrackIndex::new(1),
+        ..e.cursor()
+    });
+    e.paste_measures_overwriting(MeasureIndex::new(2)).unwrap();
+    assert_eq!(notes_at(&e, second(2)), vec![(2, 5)]);
+    assert!(notes_at(&e, at(2, 0)).is_empty());
+}
+
+/// What was copied in one song pastes in another (the app hands the clipboard over when
+/// another tab is shown); copied bars do not count as standing on their source there.
+#[test]
+fn a_clipboard_handed_to_another_song_pastes_there() {
+    let mut from = editor(2);
+    from.execute_command(Command::SetFret {
+        at: at(0, 0),
+        string: StringNumber::new(1).unwrap(),
+        fret: gscore_model::Fret::new(7).unwrap(),
+    })
+    .unwrap();
+    let bar = Selection::Measures {
+        anchor: MeasureIndex::new(0),
+        focus: MeasureIndex::new(0),
+        track: None,
+    };
+    from.set_selection(Some(bar));
+    plain(&mut from, ActionId::Copy);
+
+    let mut to = editor(2);
+    to.set_clipboard(from.clipboard());
+    to.set_selection(Some(bar));
+    assert_eq!(plain(&mut to, ActionId::Paste), Outcome::Edited);
+    assert_eq!(
+        to.song().measure_count(),
+        2,
+        "written over, not inserted after"
+    );
+    assert_eq!(notes_at(&to, at(0, 0)), vec![(1, 7)]);
+}

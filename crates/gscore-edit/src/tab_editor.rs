@@ -13,7 +13,7 @@ use crate::action::{Action, ActionId};
 use crate::command::{Command, Recorded};
 use crate::cursor::Cursor;
 use crate::editor::{EditError, Editor};
-use crate::selection::{Clipboard, Selection};
+use crate::selection::{Clip, Selection};
 
 /// How long after a fret digit a second digit still joins it (`1` then `2` is fret 12).
 pub const FRET_DIGIT_WINDOW_MS: u64 = 500;
@@ -96,7 +96,7 @@ pub struct TabEditor {
     /// The selected beats or measures, if any.
     pub(crate) selection: Option<Selection>,
     /// What was last copied or cut.
-    pub(crate) clipboard: Clipboard,
+    pub(crate) clipboard: Clip,
     /// What changed the song since [`TabEditor::take_applied`] was last called, in order:
     /// commands (marked when merged into the undo step before), `undo` and `redo`. The
     /// recovery journal records these; replaying them with [`TabEditor::replay`] gives the
@@ -121,7 +121,7 @@ impl TabEditor {
             entry_value: default_entry_value(),
             last_command: None,
             selection: None,
-            clipboard: Clipboard::default(),
+            clipboard: Clip::default(),
             applied: Vec::new(),
         }
     }

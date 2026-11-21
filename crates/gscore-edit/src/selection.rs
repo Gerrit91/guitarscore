@@ -13,7 +13,8 @@ use gscore_model::{
 mod clipboard;
 mod paste;
 
-pub(crate) use clipboard::Clipboard;
+pub(crate) use clipboard::Clip;
+pub use clipboard::Clipboard;
 
 use crate::command::Command;
 use crate::cursor::Cursor;

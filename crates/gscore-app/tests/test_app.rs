@@ -4830,3 +4830,47 @@ fn page_down_and_page_up_scroll_the_score_by_a_view_and_leave_the_cursor() {
     );
     assert_eq!(cursor(&harness), at);
 }
+
+/// Bars copied in one open song paste in another: each song's editor had a clipboard of
+/// its own, so a paste in the other tab found nothing.
+#[test]
+fn bars_copied_in_one_tab_paste_in_another() {
+    let mut harness = app_with(Some(testdata("basic/multi_staff.gp")));
+    let ctx = harness.ctx.clone();
+    let first_bar = |harness: &Harness<'static, GuitarScoreApp>| {
+        let at = gscore_model::BeatPosition {
+            staff: gscore_model::StaffIndex::new(0),
+            track: gscore_model::TrackIndex::new(0),
+            measure: gscore_model::MeasureIndex::new(0),
+            voice: gscore_model::VoiceIndex::new(0),
+            beat: gscore_model::BeatIndex::new(0),
+        };
+        let song = harness.state().document().unwrap().song();
+        song.beat(at).map_or_else(Vec::new, |beat| {
+            beat.notes()
+                .map(|note| (note.string().unwrap().get(), note.fret().unwrap().get()))
+                .collect::<Vec<_>>()
+        })
+    };
+    let select_first_bar = |harness: &mut Harness<'static, GuitarScoreApp>| {
+        let cell = harness.get_by_label("Song grid").rect().left_top() + egui::vec2(12.0, 12.0);
+        left_click_at(harness, cell);
+        click_with(harness, cell, egui::Modifiers::SHIFT);
+    };
+    let source = first_bar(&harness);
+    assert!(!source.is_empty(), "the first bar has notes");
+    select_first_bar(&mut harness);
+    harness.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::C);
+    harness.run();
+
+    harness
+        .state_mut()
+        .open(testdata("basic/note_lengths.gp"), &ctx);
+    settle(&mut harness);
+    assert_eq!(harness.state().tab_count(), 2);
+    assert_ne!(first_bar(&harness), source);
+    select_first_bar(&mut harness);
+    harness.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::V);
+    harness.run();
+    assert_eq!(first_bar(&harness), source, "pasted in the other song");
+}
