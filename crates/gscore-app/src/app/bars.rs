@@ -197,6 +197,17 @@ impl GuitarScoreApp {
                 ui.checkbox(&mut self.view.show_track_panel, "Track panel");
                 ui.checkbox(&mut self.view.show_edit_panel, "Edit palette");
                 if ui
+                    .button("Practice view")
+                    .on_hover_text(
+                        "For phones and tablets: the score, play, loop and speed, sized for a \
+                         finger; its menu leads back here",
+                    )
+                    .clicked()
+                {
+                    self.set_practice_view(super::PracticeChoice::On);
+                    ui.close();
+                }
+                if ui
                     .button("Reset panel sizes")
                     .on_hover_text("The side panels and the song grid go back to their usual sizes")
                     .clicked()

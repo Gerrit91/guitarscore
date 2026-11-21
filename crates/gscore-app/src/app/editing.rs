@@ -906,7 +906,7 @@ impl GuitarScoreApp {
     /// Moves the cursor to the first beat of `measure` and, while playing or paused, moves
     /// the player there too. `at_end` seeks to the very end of the score instead of the
     /// measure's start.
-    fn goto_measure(&mut self, measure: usize, at_end: bool) {
+    pub(super) fn goto_measure(&mut self, measure: usize, at_end: bool) {
         let Some(tab) = self.tabs.get_mut(self.active) else {
             return;
         };

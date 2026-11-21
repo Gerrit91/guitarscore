@@ -1007,7 +1007,7 @@ fn paint_cross(painter: &egui::Painter, rect: Rect, ink: egui::Color32) {
 
 /// Whether `speed` differs from the written tempo as the speed control shows it (whole
 /// percent): the number turns blue then.
-fn off_tempo(speed: f32) -> bool {
+pub(super) fn off_tempo(speed: f32) -> bool {
     (speed * 100.0).round() != 100.0
 }
 

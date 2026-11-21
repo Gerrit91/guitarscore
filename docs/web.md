@@ -69,6 +69,14 @@ The app crate is the same on both platforms. Native-only pieces are behind
   with the same "missing or broken falls back to defaults, and says why" behaviour as the
   files on the desktop. The settings window and keymap continue to work; a keymap file is
   not read in the browser.
+- Recent songs: a song opened, dropped or saved is copied into `localStorage`
+  (`gscore-app/src/song_store.rs`: up to 768 KiB each, 8 songs, 3 MiB together, the oldest
+  go first), so the recent list opens it again without the file picker. Recent entries
+  without a copy are dropped from the list.
+- Phones and tablets: below 900 CSS pixels the app shows the practice view
+  (`app/practice.rs`, M25) instead of the full interface; its menu leads to the full
+  interface, View › Practice view back. While a song plays the page holds a Screen Wake
+  Lock (`app/wake_lock.rs`), if the browser offers one.
 - The recovery journal is still file-based, so the browser build starts without one. This
   is the main missing browser feature (see `docs/gaps.md`); saving is unaffected.
 - Threads: a wasm instance has none, so opening imports on the UI thread after the bytes

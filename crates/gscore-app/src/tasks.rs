@@ -293,7 +293,12 @@ impl Tasks {
         _options: RecoveryOptions,
         ctx: &egui::Context,
     ) -> Result<(), String> {
-        let Some(bytes) = self.picked_bytes.remove(&path) else {
+        // A picked file's bytes, or the copy the browser kept of a recent song.
+        let bytes = self.picked_bytes.remove(&path).or_else(|| {
+            path.file_name()
+                .and_then(|name| crate::song_store::load(&name.to_string_lossy()))
+        });
+        let Some(bytes) = bytes else {
             return Err(format!(
                 "cannot read {}: in the browser, choose the file again",
                 path.display()
@@ -311,6 +316,7 @@ impl Tasks {
         ctx: &egui::Context,
     ) -> Result<(), String> {
         let source = path.clone();
+        keep_song(&path, &bytes);
         let result = catch_unwind(AssertUnwindSafe(|| {
             gscore_session::open_bytes(&source, bytes).map(|(imported, _)| Opened {
                 song: Box::new(imported.song),
@@ -384,6 +390,7 @@ impl Tasks {
         wasm_bindgen_futures::spawn_local(async move {
             let event = match file.bytes_async().await {
                 Ok(bytes) => match catch_unwind(AssertUnwindSafe(|| {
+                    keep_song(&path, &bytes);
                     gscore_session::open_bytes(&path, bytes).map(|(imported, _)| Opened {
                         song: Box::new(imported.song),
                         format: imported.format,
@@ -972,6 +979,8 @@ impl Tasks {
             let result = match gscore_session::save_bytes(&song, options) {
                 Ok((bytes, losses)) => match download(&name, &bytes) {
                     Ok(()) => {
+                        // The recent songs open what was saved last.
+                        crate::song_store::keep(&name, &bytes);
                         let mut message = format!("Saved {name}");
                         if !losses.is_empty() {
                             message.push_str(&format!(
@@ -1062,6 +1071,15 @@ impl Tasks {
         let event = catch_unwind(AssertUnwindSafe(job)).unwrap_or(Event::Failed(failed));
         self.deliver(event, ctx);
         Ok(())
+    }
+}
+
+/// Keeps a browser copy of the song opened from `path` (its file name), for the recent
+/// songs (`song_store`).
+#[cfg(target_arch = "wasm32")]
+fn keep_song(path: &std::path::Path, bytes: &[u8]) {
+    if let Some(name) = path.file_name() {
+        crate::song_store::keep(&name.to_string_lossy(), bytes);
     }
 }
 

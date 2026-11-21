@@ -415,6 +415,8 @@ commands. Details of every step are in `docs/devlog.md`; known shortfalls in
     gestures driven in the browser smoke test, playback started by a tap.
   - **Done when:** the owner can open a song on a phone, loop a passage at a lower speed
     and play along, without zooming the page by hand or opening a menu meant for a mouse.
+  - *Steps 2 and 3 implemented 2026-11-21* (branch `m25-practice-view`, `docs/devlog.md`):
+    checked in headless Chromium only; real devices, touch tests and snapshots still open.
 
 ### Still open from earlier milestones
 
