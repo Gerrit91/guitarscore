@@ -9,7 +9,8 @@ use super::*;
 // Note export
 // ---------------------------------------------------------------------------
 
-pub(super) fn build_note_xml(note: &Note, note_id: i32) -> String {
+/// `tie_origin`: a tie starts from this note (the next note on its string is tied to it).
+pub(super) fn build_note_xml(note: &Note, note_id: i32, tie_origin: bool) -> String {
     let mut s = format!("<Note id=\"{note_id}\"><Properties>");
 
     s.push_str(&format!(
@@ -95,8 +96,13 @@ pub(super) fn build_note_xml(note: &Note, note_id: i32) -> String {
 
     s.push_str("</Properties>");
 
-    if note.kind == NoteType::Tie {
-        s.push_str("<Tie destination=\"true\" />");
+    // As Guitar Pro writes it: both ends of a tie are marked, a note in the middle of a
+    // chain of ties is both. A destination without its origin is struck anew in Guitar Pro.
+    let tie_destination = note.kind == NoteType::Tie;
+    if tie_origin || tie_destination {
+        s.push_str(&format!(
+            "<Tie origin=\"{tie_origin}\" destination=\"{tie_destination}\" />"
+        ));
     }
     if note.effect.vibrato {
         if note.effect.wide_vibrato {

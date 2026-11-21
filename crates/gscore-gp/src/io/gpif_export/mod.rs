@@ -15,10 +15,12 @@ mod helpers;
 mod notes;
 #[cfg(test)]
 mod repeat_tests;
+mod ties;
 
 use beats::*;
 use helpers::*;
 use notes::*;
+use ties::TieOrigins;
 
 /// One bar to write: its id, voices, simile mark, clef and Guitar Pro's layout properties.
 struct BarXml {
@@ -392,6 +394,7 @@ impl WriteGpifInGpifStringOrder for Song {
             for (s_idx, measures) in staves.enumerate() {
                 // Velocity persists across all measures/voices of a staff
                 let mut prev_velocity: i16 = FORTE;
+                let origins = TieOrigins::of(measures);
 
                 for m_idx in 0..num_measures {
                     let bar_id = bar_id(first.saturating_add(s_idx), num_measures, m_idx)?;
@@ -403,7 +406,7 @@ impl WriteGpifInGpifStringOrder for Song {
                     })?;
                     let mut voice_ids: Vec<String> = Vec::new();
 
-                    for voice in &measure.voices {
+                    for (v_idx, voice) in measure.voices.iter().enumerate() {
                         // GuitarScore fix: a voice holding only placeholder beats (as GP3-5
                         // store unused voices) is empty; writing the placeholders made them
                         // real beats.
@@ -415,7 +418,12 @@ impl WriteGpifInGpifStringOrder for Song {
                         let voice_id = next_id(&mut next_voice_id)?;
                         let mut beat_ids: Vec<i32> = Vec::new();
 
-                        for beat in voice.beats.iter().filter(|b| b.status != BeatStatus::Empty) {
+                        for (b_idx, beat) in voice
+                            .beats
+                            .iter()
+                            .enumerate()
+                            .filter(|(_, b)| b.status != BeatStatus::Empty)
+                        {
                             let beat_id = next_id(&mut next_beat_id)?;
                             let rhythm_id = next_id(&mut next_rhythm_id)?;
                             beat_ids.push(beat_id);
@@ -437,6 +445,7 @@ impl WriteGpifInGpifStringOrder for Song {
                                 chord_id,
                                 &mut next_note_id,
                                 &mut prev_velocity,
+                                |string| origins.starts(m_idx, v_idx, b_idx, string),
                             )?;
                             beats_xml.push(export.beat_xml);
                             rhythms_xml.push(export.rhythm_xml);
