@@ -1,8 +1,8 @@
 //! The practice view for phones and tablets (M25): the score fitted to the width and
-//! moved by swiping, a slim header with the song and the shown track, and touch-sized
-//! controls at the bottom for playing along: play, the loop, the speed and the speed
-//! trainer, the count-in and the metronome. No side panels, no edit palette, no menus
-//! meant for a mouse.
+//! moved by swiping, a slim header with the song and the shown track, a touch-sized
+//! player, and a drawer of tiles for the rest: the loop, the speed and the speed
+//! trainer, the count-in, the metronome and more. No side panels, no edit palette, no
+//! menus meant for a mouse.
 //!
 //! A tap on a bar starts playback there; a second tap on a bar loops the bars between
 //! the two. The view is chosen by screen width in the browser (Settings: `auto`), or by
@@ -11,6 +11,7 @@
 mod controls;
 mod drawer;
 mod header;
+mod tiles;
 mod widgets;
 
 use egui::{FontFamily, FontId, RichText, vec2};
@@ -100,8 +101,8 @@ pub(super) struct PracticeState {
     pending: Option<(TabId, usize)>,
     /// Whether a bar was tapped yet: until then a hint says what a tap does.
     tapped: bool,
-    /// Whether the bottom bar is pulled up to show more (transposition, mute and solo,
-    /// count-in length, score size, tuner, settings, saving).
+    /// Whether the drawer is pulled up (the loop, the speed, the count-in, the click, mute
+    /// and solo, the transposition, the score's size, the tuner, settings, saving).
     pub(super) drawer: bool,
 }
 
@@ -195,11 +196,20 @@ impl GuitarScoreApp {
         if self.notice.is_some() {
             egui::Panel::top("notice").show(ui, |ui| self.notice_bar(ui));
         }
+        // From a tablet's width on, the drawer floats over the score's corner.
+        let floating = ctx.content_rect().width() >= drawer::FLOATING;
+        let mut bottom = ctx.content_rect().bottom();
         if has_song && shape.has_bottom() {
-            egui::Panel::bottom("practice_controls")
+            bottom = egui::Panel::bottom("practice_controls")
                 .resizable(false)
                 .frame(style::chrome_frame(&ctx, 8))
-                .show(ui, |ui| self.practice_controls(ui, shape));
+                .show(ui, |ui| self.practice_controls(ui, shape, floating))
+                .response
+                .rect
+                .top();
+        }
+        if has_song && floating {
+            self.practice_drawer_floating(&ctx, bottom);
         }
         egui::CentralPanel::default()
             .frame(style::canvas_frame(&ctx))

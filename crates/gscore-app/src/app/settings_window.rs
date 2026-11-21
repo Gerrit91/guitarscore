@@ -141,6 +141,13 @@ impl GuitarScoreApp {
         self.settings_window = Some(SettingsWindow::new(info, page));
     }
 
+    /// Closes the settings window as its close button does.
+    pub(super) fn close_settings_window(&mut self) {
+        if self.settings_window.take().is_some() {
+            self.save_settings();
+        }
+    }
+
     /// The settings window, if it is open.
     pub(super) fn show_settings_window(&mut self, ctx: &egui::Context) {
         let Some(mut window) = self.settings_window.take() else {

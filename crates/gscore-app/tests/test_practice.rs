@@ -1,0 +1,93 @@
+//! The practice view's drawer, driven through its accessibility tree: what it holds, and
+//! how its tiles that open windows behave.
+
+use std::path::PathBuf;
+use std::time::{Duration, Instant};
+
+use egui::accesskit::Role;
+use egui_kittest::Harness;
+use egui_kittest::kittest::Queryable;
+use gscore_app::{GuitarScoreApp, PracticeChoice};
+
+/// The practice view at `size` with a song open and the drawer pulled up.
+fn practice(size: egui::Vec2) -> Harness<'static, GuitarScoreApp> {
+    let file =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../testdata/basic/multi_staff.gp");
+    let mut harness = Harness::builder()
+        .with_size(size)
+        .build_eframe(|cc| GuitarScoreApp::new(&cc.egui_ctx, Some(file)));
+    let started = Instant::now();
+    while harness.state().is_busy() {
+        assert!(
+            started.elapsed() < Duration::from_secs(30),
+            "opening timed out"
+        );
+        harness.step();
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    harness.state_mut().set_practice_view(PracticeChoice::On);
+    harness.run_steps(4);
+    harness.get_by_label("More controls").click();
+    harness.run_steps(4);
+    harness
+}
+
+#[test]
+fn the_wide_header_holds_only_the_player_and_the_rest_is_in_the_drawer() {
+    for size in [egui::vec2(1180.0, 820.0), egui::vec2(390.0, 760.0)] {
+        let harness = practice(size);
+        for label in ["Previous bar", "Play", "Next bar"] {
+            assert!(
+                harness.query_by_label(label).is_some(),
+                "{label} at {size:?}"
+            );
+        }
+        for label in ["Loop", "Speed trainer", "Count-in", "Metronome", "Faster"] {
+            assert!(
+                harness.query_by_label(label).is_some(),
+                "{label} at {size:?}"
+            );
+        }
+        assert!(harness.query_by_label("Fewer controls").is_some());
+    }
+}
+
+#[test]
+fn the_count_in_is_switched_on_and_off_in_the_drawer() {
+    let mut harness = practice(egui::vec2(1180.0, 820.0));
+    let before = harness.state().playback().count_in();
+    for expected in [!before, before] {
+        harness.get_by_label("Count-in").click();
+        harness.run_steps(4);
+        harness.get_by_label("Count in before playing").click();
+        harness.run_steps(4);
+        assert_eq!(harness.state().playback().count_in(), expected);
+        harness.key_press(egui::Key::Escape);
+        harness.run_steps(4);
+    }
+}
+
+#[test]
+fn a_window_tile_puts_the_drawer_away_and_a_second_tap_shuts_its_window() {
+    let mut harness = practice(egui::vec2(1180.0, 820.0));
+    harness.get_by_role_and_label(Role::Button, "Tuner").click();
+    harness.run_steps(4);
+    assert!(
+        harness.query_by_label("More controls").is_some(),
+        "the drawer is put away"
+    );
+    assert!(harness.query_by_label("Fewer controls").is_none());
+    assert!(
+        harness.query_by_label("440.00 Hz").is_some(),
+        "the tuner is open"
+    );
+    harness.get_by_label("More controls").click();
+    harness.run_steps(4);
+    harness.get_by_role_and_label(Role::Button, "Tuner").click();
+    harness.run_steps(4);
+    assert!(
+        harness.query_by_label("440.00 Hz").is_none(),
+        "the tuner is shut again"
+    );
+    assert!(harness.query_by_label("More controls").is_some());
+}

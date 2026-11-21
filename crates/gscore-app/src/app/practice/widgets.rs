@@ -46,30 +46,6 @@ impl GuitarScoreApp {
             self.set_playback_speed(chosen);
         }
     }
-
-    /// The speed trainer: highlighted while on; a tap opens its settings, sized for a
-    /// finger.
-    pub(super) fn practice_trainer(&mut self, ui: &mut egui::Ui, rect: Rect) {
-        let trainer = self.playback.trainer();
-        let button = icon_button(
-            ui,
-            rect,
-            Icon::SpeedTrainer,
-            "Speed trainer",
-            Some(trainer.enabled),
-        );
-        let mut changed = trainer;
-        let passes = self.playback.trainer_passes();
-        egui::Popup::menu(&button)
-            .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
-            .show(|ui| {
-                ui.set_min_width(280.0);
-                trainer_settings(ui, &mut changed, passes);
-            });
-        if changed != trainer {
-            self.set_speed_trainer(changed);
-        }
-    }
 }
 
 /// The speed trainer's settings with buttons a finger can hit: on or off, how many
