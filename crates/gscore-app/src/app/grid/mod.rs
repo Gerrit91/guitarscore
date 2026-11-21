@@ -428,32 +428,7 @@ impl GuitarScoreApp {
             }
             GridAction::Select(selection) => {
                 self.grid_takes_keys();
-                if let Some(tab) = self.tabs.get_mut(self.active) {
-                    tab.selection = Some(selection);
-                    tab.document.editor_mut().set_selection(Some(
-                        gscore_edit::Selection::Measures {
-                            anchor: gscore_model::MeasureIndex::new(selection.start()),
-                            focus: gscore_model::MeasureIndex::new(selection.end()),
-                            track: selection.track.map(TrackIndex::new),
-                        },
-                    ));
-                    if let Some(track) = selection.track {
-                        tab.track = track;
-                    }
-                }
-                // While playing, playback goes to the selection's first measure, unless
-                // that measure is already playing (the selection just follows it).
-                let playing_measure = if self.playback.state() == gscore_play::PlayState::Playing {
-                    self.playback
-                        .current_measure()
-                        .map(|measure| measure.saturating_sub(1))
-                } else {
-                    None
-                };
-                if playing_measure != Some(selection.start()) {
-                    let track = self.tabs.get(self.active).map_or(0, |tab| tab.track);
-                    self.jump_playback_to(track, selection.start());
-                }
+                self.select_measures(selection);
             }
             GridAction::SwapSections { from, to } => self.swap_sections(from, to),
             GridAction::MoveBars { from, count, to } => self.move_bars(from, count, to),
@@ -687,6 +662,37 @@ impl GuitarScoreApp {
 
     /// While playing, continues playback at the first beat of `track`, `measure` (after a
     /// new count-in when it is on).
+    /// Selects the measures of `selection` (the grid and the page share it) and, while
+    /// playing, moves playback to its first measure unless that one is already playing.
+    pub(super) fn select_measures(&mut self, selection: MeasureSelection) {
+        if let Some(tab) = self.tabs.get_mut(self.active) {
+            tab.selection = Some(selection);
+            tab.document
+                .editor_mut()
+                .set_selection(Some(gscore_edit::Selection::Measures {
+                    anchor: gscore_model::MeasureIndex::new(selection.start()),
+                    focus: gscore_model::MeasureIndex::new(selection.end()),
+                    track: selection.track.map(TrackIndex::new),
+                }));
+            if let Some(track) = selection.track {
+                tab.track = track;
+            }
+        }
+        // While playing, playback goes to the selection's first measure, unless
+        // that measure is already playing (the selection just follows it).
+        let playing_measure = if self.playback.state() == gscore_play::PlayState::Playing {
+            self.playback
+                .current_measure()
+                .map(|measure| measure.saturating_sub(1))
+        } else {
+            None
+        };
+        if playing_measure != Some(selection.start()) {
+            let track = self.tabs.get(self.active).map_or(0, |tab| tab.track);
+            self.jump_playback_to(track, selection.start());
+        }
+    }
+
     fn jump_playback_to(&mut self, track: usize, measure: usize) {
         let Some(tab) = self.tabs.get(self.active) else {
             return;

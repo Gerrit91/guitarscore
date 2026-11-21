@@ -26,6 +26,7 @@ has the overview.
 | Shift+H | History |
 | Shift+L | Lyrics |
 | F11 | Full screen |
+| F2 | Practice view for phones and tablets (again for the full interface) |
 | F3 | Mixer in the bottom panel (again for the measure grid) |
 
 ## Transposing

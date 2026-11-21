@@ -285,6 +285,10 @@ impl GuitarScoreApp {
         let mut design_drag: Option<(Command, bool)> = None;
         let mut designing = false;
         let playing = self.playback.state() == PlayState::Playing;
+        // The practice view (M25): a tap plays from a bar or loops bars, a swipe scrolls;
+        // nothing on the page is edited there.
+        let practice = self.practice.shown;
+        let mut practice_tap: Option<usize> = None;
         // The vertical views turn over while playing: once the playing line leaves the
         // view, it goes to the top. Pages side by side turn page by page, and the
         // horizontal screen screen by screen (`screen_turn`).
@@ -293,7 +297,14 @@ impl GuitarScoreApp {
         let grid_jump = std::mem::take(&mut tab.turn_to_cursor);
         let turn = playing || grid_jump;
         let turn_pages = turn && score_view.turns_pages();
-        let shown_selection = shown_selection(document.editor().selection(), playing);
+        // The practice view keeps a loop's bars marked while they play: that is where the
+        // player's eyes are.
+        let practice_loop = practice && self.playback.loop_selection();
+        let shown_selection = if practice_loop {
+            document.editor().selection()
+        } else {
+            shown_selection(document.editor().selection(), playing)
+        };
         let in_selection = shown_selection
             .is_some_and(|selection| selection_contains(selection, document.song(), cursor));
         // The grid shows a measure selection; any other selection (or none) ends it there.
@@ -350,7 +361,14 @@ impl GuitarScoreApp {
                 (page.x + 2.0 * PAGE_MARGIN).max(available),
                 page.y + 2.0 * PAGE_MARGIN,
             );
-            let (rect, response) = ui.allocate_exact_size(size, Sense::click_and_drag());
+            // In the practice view the page takes taps only: a drag is left to the scroll
+            // area, so a finger moves the score.
+            let sense = if practice {
+                Sense::click()
+            } else {
+                Sense::click_and_drag()
+            };
+            let (rect, response) = ui.allocate_exact_size(size, sense);
             ui.ctx()
                 .accesskit_node_builder(response.id, |node| node.set_label("Score page"));
             // A pinch (or Ctrl+wheel) over the score view zooms it; the gesture is applied
@@ -387,17 +405,36 @@ impl GuitarScoreApp {
             let to_layout = |pos: egui::Pos2| arrangement.layout_point((pos - origin) / scale);
             // The selection: one solid band per system line it touches.
             if let Some(selection) = shown_selection {
-                for band in layout_selection_bands(&layout, document.song(), selection) {
+                let bands = layout_selection_bands(&layout, document.song(), selection);
+                let count = bands.len();
+                for (index, band) in bands.into_iter().enumerate() {
                     let band = arrangement.rect(band);
                     let rect = Rect::from_min_size(
                         origin + Vec2::new(band.origin.x, band.origin.y) * scale,
                         Vec2::new(band.width, band.height) * scale,
                     );
+                    // A loop in the practice view is lighter, so the playing beat shows
+                    // inside it.
+                    let alpha = if practice_loop {
+                        SELECTION_ALPHA * 0.4
+                    } else {
+                        SELECTION_ALPHA
+                    };
                     painter.rect_filled(
                         rect,
                         2.0,
-                        canvas::color(theme.selection).gamma_multiply(SELECTION_ALPHA),
+                        canvas::color(theme.selection).gamma_multiply(alpha),
                     );
+                    // A loop in the practice view: a firm line where it starts and ends.
+                    if practice_loop {
+                        let stroke = egui::Stroke::new(2.5, canvas::color(theme.selection));
+                        if index == 0 {
+                            painter.vline(rect.left(), rect.y_range(), stroke);
+                        }
+                        if index + 1 == count {
+                            painter.vline(rect.right(), rect.y_range(), stroke);
+                        }
+                    }
                 }
             }
 
@@ -410,7 +447,7 @@ impl GuitarScoreApp {
             };
             // The header's song texts (the title, the artist, the credits) can be clicked
             // to change them by typing right there.
-            for text in &layout.header_texts {
+            for text in layout.header_texts.iter().filter(|_| !practice) {
                 let rect = to_screen(text.rect);
                 let response = ui
                     .interact(
@@ -446,7 +483,7 @@ impl GuitarScoreApp {
             // The marks with an editor of their own (tempo marks, section names, time and
             // key signatures, the header's tunings) open it on a click. Design mode keeps
             // its handles to itself.
-            if !design_mode {
+            if !design_mode && !practice {
                 for (index, mark) in layout.marks.iter().enumerate() {
                     let what = mark_name(mark.kind);
                     let response = ui
@@ -539,7 +576,7 @@ impl GuitarScoreApp {
                     .map_or(column, to_screen);
                 // Inside the selection, the cursor's band would make its column darker than
                 // the rest; the selection's one shade covers it already.
-                let column_band = (!in_selection).then_some(shown);
+                let column_band = (!in_selection || practice_loop).then_some(shown);
                 canvas::paint_cursor(&painter, column_band, string, theme);
                 if scroll_to_cursor {
                     if score_view.pages_side_by_side() {
@@ -623,7 +660,8 @@ impl GuitarScoreApp {
             }
             // A right-click acts on what it hits: the cursor goes there first, unless the
             // click is inside the selection (then the menu acts on the selection).
-            if response.secondary_clicked()
+            if !practice
+                && response.secondary_clicked()
                 && let Some((track, hit)) = hit
             {
                 let target = Cursor {
@@ -645,11 +683,13 @@ impl GuitarScoreApp {
                 }
             }
             let several = shown.len() > 1;
-            response.context_menu(|ui| {
-                page_menu::with_target(document, several, |target| {
-                    page_menu::show(ui, target, &self.keymap, &mut self.view, &mut choices);
+            if !practice {
+                response.context_menu(|ui| {
+                    page_menu::with_target(document, several, |target| {
+                        page_menu::show(ui, target, &self.keymap, &mut self.view, &mut choices);
+                    });
                 });
-            });
+            }
             // A drag selects beats of the voice it started in, across bar lines and system
             // lines; the cursor follows the drag so the keyboard can go on from there. In
             // the design mode the drag edits the layout instead.
@@ -695,7 +735,14 @@ impl GuitarScoreApp {
             if response.drag_stopped() {
                 tab.drag_anchor = None;
             }
-            if response.clicked() && !designing {
+            if practice {
+                if response.clicked()
+                    && let Some(pos) = response.interact_pointer_pos()
+                    && let Some((_, hit)) = layout.hit(to_layout(pos))
+                {
+                    practice_tap = Some(hit.measure.get());
+                }
+            } else if response.clicked() && !designing {
                 tab.drag_anchor = None;
                 let point = response.interact_pointer_pos().map(to_layout);
                 // A click on a song text of the header edits it in place; it does not
@@ -797,6 +844,9 @@ impl GuitarScoreApp {
         }
         if jumped {
             self.move_play_origin_to_cursor();
+        }
+        if let Some(measure) = practice_tap {
+            self.practice_tap(measure);
         }
         if let Some(kind) = mark_clicked {
             self.open_score_mark(kind);

@@ -18,6 +18,7 @@ mod keys;
 mod playback;
 mod rse_sound;
 mod settings;
+mod song_store;
 mod state;
 mod tasks;
 #[cfg(test)]
@@ -45,7 +46,7 @@ pub(crate) use web_time::{Instant, SystemTime, UNIX_EPOCH};
 #[cfg(not(target_arch = "wasm32"))]
 use web_time as _;
 
-pub use app::GuitarScoreApp;
+pub use app::{GuitarScoreApp, PracticeChoice};
 pub use document::{Document, GridData};
 pub use gscore_edit::Keymap;
 #[cfg(target_arch = "wasm32")]

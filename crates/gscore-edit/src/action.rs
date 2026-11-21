@@ -246,6 +246,8 @@ pub enum ActionId {
     ToggleFullscreen,
     /// Show the mixer in the bottom panel instead of the measure grid, and back.
     ToggleMixer,
+    /// Switch between the practice view (phones and tablets) and the full interface.
+    TogglePracticeView,
     /// Scroll the score back by one view (up, or left in the horizontal views); the cursor
     /// stays.
     ScrollPageUp,
@@ -754,6 +756,11 @@ pub const ACTIONS: &[ActionInfo] = &[
     ),
     info(ActionId::ToggleMixer, "toggle_mixer", "Mixer"),
     info(
+        ActionId::TogglePracticeView,
+        "toggle_practice_view",
+        "Practice view",
+    ),
+    info(
         ActionId::TransposeUpSemitone,
         "transpose_up_semitone",
         "Transpose up a semitone",
@@ -986,6 +993,6 @@ mod tests {
             );
         }
         assert_eq!(ActionId::from_id("no_such_action"), None);
-        assert_eq!(ACTIONS.len(), 143, "one entry per ActionId variant");
+        assert_eq!(ACTIONS.len(), 144, "one entry per ActionId variant");
     }
 }

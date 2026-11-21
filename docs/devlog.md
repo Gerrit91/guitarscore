@@ -6666,3 +6666,64 @@ egui's unused Ubuntu-Light (360 KiB).
 Open: palette effects in step entry act on the cursor's (next) beat, not on
 the one just entered; Web MIDI in the browser; monitoring a MIDI-out track; real-time
 recording (later, not M23).
+
+## 2026-11-21 — M25 steps 2 and 3: practice view, wake lock, recent songs in the browser
+
+Branch `m25-practice-view`. Step 1 (what breaks) was looked at with headless Chromium only,
+not on real devices: at 390 × 844 the full interface leaves no room for the score (panels
+overlap, menus run into the title); at 820 × 1180 a strip of score is left between the
+palette and the inspector; 1180 × 820 still works with the full interface.
+
+Landed:
+- Practice view (`app/practice.rs`): a header (song, bar, loop, track chip when there are
+  several tracks, a menu: open a song, keep the screen on, full interface, choose by width),
+  the score as the vertical screen view fitted to the width at its own zoom
+  (`practice_zoom`), and touch-sized controls (44 pt; play 58 pt): loop, bar back, play,
+  bar forward, stop, speed −/+ in 5 % steps, speed trainer (its settings with −/+ buttons
+  instead of drag values), count-in, metronome. One row from 640 pt, two below.
+- Chosen by `practice_view` (`auto`/`on`/`off`): `auto` shows it in the browser below 900
+  pt (phones, tablets upright); View › Practice view turns it on anywhere, also on the
+  desktop.
+- On the page in the practice view a drag scrolls (the page senses taps only), header
+  texts, marks and the context menu are left out, and a tap on a bar plays from there; a
+  second tap loops the bars between the two (`select_measures`, shared with the song grid).
+  The loop stays marked while it plays, lighter, with a firm line at both ends.
+- Screen Wake Lock while playing or counting in (`app/wake_lock.rs`, `keep_screen_on`, on by
+  default); asked for again after the page was hidden; browsers without it are left alone.
+- Recent songs in the browser (`song_store.rs`): opened, dropped and saved songs are copied
+  to `localStorage` (up to 768 KiB each, 8 songs, 3 MiB together; the oldest go first);
+  the recent list keeps the entries with a copy, and they open without the file picker.
+  The practice view's start screen lists them as large rows.
+- Tests: the width rule, the tap rule, the storage budget (also with a tampered index).
+
+Open:
+- Real devices (iOS Safari, Android Chrome): touch scrolling, pinch zoom, audio after the
+  first tap, memory while the SoundFont decodes, the file picker, installing. Headless
+  Chromium with a device pixel ratio of 2 drew everything twice as large (the canvas
+  buffer stayed at CSS size): check on a real phone whether that is the emulation or
+  eframe.
+- Touch gestures in the smoke test, snapshots of the practice view at phone and tablet
+  sizes.
+- `localStorage` is small; IndexedDB would hold more songs (and the recovery journal).
+
+Second round (owner's look, same day): the controls follow the mockups. Each control is
+drawn in a rectangle of its own, so a row shares one centre line (the play button had
+pushed the buttons after it down; it is now as large as the others). Four arrangements
+by screen (`controls::Shape`): phone upright (header; speed pill and captioned switches,
+then the transport spread with the time), phone on its side (no header, one row with the
+menu), tablet upright (header, one row), 1000 pt and wider (all in the header). The track
+chip shows the track's colour, ⋯ opens the menu, a hint explains the taps until the first
+one, − and + are drawn as lines. New icons everywhere: the speed trainer is a rising arrow,
+the count-in a square key with 1 2 / 3 4 (hard to read at toolbar size). New action
+`toggle_practice_view` on F2 (`docs/usage.md`). The toolbar snapshots changed for the two
+icons only.
+
+Third round: a preview on GitHub Pages for real devices (`.github/workflows/preview.yml`,
+run by hand from the default branch with the branch to preview): the latest release at the
+root, the branch under `preview/`, named "GuitarScore Preview" when installed. The service
+worker keeps to its scope (cache names carry it, it deletes only its own old caches, the
+root's worker leaves `preview/` alone, navigation serves only its own page); checked with
+both builds on one origin in headless Chromium, and `cargo xtask web --smoke` passes. The
+practice view's two checkboxes (speed trainer, keep the screen on) are switches on a
+finger-sized row.
+

@@ -104,6 +104,8 @@ pub(crate) enum Icon {
     Filter,
     /// Step entry (a note with an arrow after it: each note moves the cursor on).
     StepEntry,
+    /// More choices (three dots in a row): a menu.
+    More,
 }
 
 /// The size of the compact icon buttons in the panels and the toolbar.
@@ -326,16 +328,27 @@ pub(crate) fn paint(painter: &Painter, rect: Rect, color: Color32, icon: Icon) {
             paint_metronome(painter, center, size, color);
         }
         Icon::CountIn => {
-            // Counting numbers in a rounded box (unlike the metronome beside it).
-            let frame = Rect::from_center_size(center, vec2(rect.width(), size * 0.9));
-            painter.rect_stroke(frame, 2.5, stroke, egui::StrokeKind::Inside);
-            painter.text(
-                center,
-                egui::Align2::CENTER_CENTER,
-                "123",
-                egui::FontId::proportional(size * 0.62),
-                color,
-            );
+            // A square keycap with 1 2 over 3 4 (like the 🔢 sign), unlike the metronome
+            // beside it.
+            let frame = Rect::from_center_size(center, vec2(size * 0.92, size * 0.92));
+            painter.rect_stroke(frame, size * 0.14, stroke, egui::StrokeKind::Inside);
+            let font = egui::FontId::proportional(size * 0.36);
+            let dx = size * 0.19;
+            let dy = size * 0.19;
+            for (digit, offset) in [
+                ("1", vec2(-dx, -dy)),
+                ("2", vec2(dx, -dy)),
+                ("3", vec2(-dx, dy)),
+                ("4", vec2(dx, dy)),
+            ] {
+                painter.text(
+                    center + offset,
+                    egui::Align2::CENTER_CENTER,
+                    digit,
+                    font.clone(),
+                    color,
+                );
+            }
         }
         Icon::Loop => {
             // Two arrows chasing each other round a circle (repeat), unlike the single
@@ -995,38 +1008,26 @@ pub(crate) fn paint(painter: &Painter, rect: Rect, color: Color32, icon: Icon) {
             }
         }
         Icon::SpeedTrainer => {
-            // A speed gauge: an open arc, a few ticks and a needle pointing up-right.
-            let radius = size * 0.42;
-            let pivot = pos2(center.x, center.y + size * 0.18);
-            let start = 200.0_f32.to_radians();
-            let end = 340.0_f32.to_radians();
-            let arc: Vec<_> = (0..=16)
-                .map(|step| {
-                    let angle = start + (end - start) * step as f32 / 16.0;
-                    pivot + vec2(angle.cos(), angle.sin()) * radius
-                })
-                .collect();
-            painter.add(Shape::line(arc, stroke));
-            for tick in [200.0_f32, 270.0, 340.0] {
-                let angle = tick.to_radians();
-                let direction = vec2(angle.cos(), angle.sin());
-                painter.line_segment(
-                    [
-                        pivot + direction * radius * 0.72,
-                        pivot + direction * radius,
-                    ],
-                    stroke,
-                );
-            }
-            let needle = 305.0_f32.to_radians();
-            painter.line_segment(
-                [
-                    pivot,
-                    pivot + vec2(needle.cos(), needle.sin()) * radius * 0.85,
-                ],
+            // A line that climbs, dips and climbs again to an arrow at the top right:
+            // faster and faster.
+            let at = |x: f32, y: f32| center + vec2(x, y) * size;
+            let line = vec![
+                at(-0.42, 0.3),
+                at(-0.12, 0.0),
+                at(0.06, 0.16),
+                at(0.4, -0.18),
+            ];
+            painter.add(Shape::line(line, stroke));
+            let tip = at(0.42, -0.2);
+            painter.add(Shape::line(
+                vec![at(0.12, -0.2), tip, at(0.42, 0.1)],
                 stroke,
-            );
-            painter.circle_filled(pivot, size * 0.08, color);
+            ));
+        }
+        Icon::More => {
+            for x in [-0.3_f32, 0.0, 0.3] {
+                painter.circle_filled(center + vec2(x * size, 0.0), size * 0.08, color);
+            }
         }
         Icon::MoveUp | Icon::MoveDown => {
             // Drawn pointing up, mirrored for down.

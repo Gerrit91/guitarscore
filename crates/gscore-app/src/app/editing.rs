@@ -308,6 +308,11 @@ impl GuitarScoreApp {
                     ctx.request_repaint();
                     return;
                 }
+                ActionId::TogglePracticeView => {
+                    self.toggle_practice_view();
+                    ctx.request_repaint();
+                    return;
+                }
                 // Windows and files: they work without an open document too.
                 ActionId::ShowHistory => {
                     self.open_history();
@@ -906,7 +911,7 @@ impl GuitarScoreApp {
     /// Moves the cursor to the first beat of `measure` and, while playing or paused, moves
     /// the player there too. `at_end` seeks to the very end of the score instead of the
     /// measure's start.
-    fn goto_measure(&mut self, measure: usize, at_end: bool) {
+    pub(super) fn goto_measure(&mut self, measure: usize, at_end: bool) {
         let Some(tab) = self.tabs.get_mut(self.active) else {
             return;
         };
@@ -1343,6 +1348,7 @@ fn needs_no_song(action: Action) -> bool {
                 | ActionId::ZoomReset
                 | ActionId::ToggleFullscreen
                 | ActionId::ToggleMixer
+                | ActionId::TogglePracticeView
         )
     )
 }

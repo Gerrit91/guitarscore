@@ -133,6 +133,7 @@ PageUp = scroll_page_up
 PageDown = scroll_page_down
 F11 = toggle_fullscreen
 F3 = toggle_mixer
+F2 = toggle_practice_view
 
 # Step entry: these keys only work while it is on (N switches it on and off).
 # Letters enter notes by name, capitals add them to the chord entered last, alt+digit

@@ -48,6 +48,8 @@ mod note_tools;
 mod page;
 mod page_menu;
 mod paste;
+mod practice;
+pub use practice::PracticeChoice;
 mod recent;
 mod recovery;
 mod reverb_bus_window;
@@ -81,6 +83,8 @@ mod tuplet_dialog;
 #[cfg(not(target_arch = "wasm32"))]
 mod updates;
 mod vector_icon;
+#[cfg(target_arch = "wasm32")]
+mod wake_lock;
 #[cfg(target_arch = "wasm32")]
 mod web_rescue;
 
@@ -158,6 +162,8 @@ pub struct GuitarScoreApp {
     /// The copies of unsaved songs handed to the page, for its crash screen.
     #[cfg(target_arch = "wasm32")]
     rescue: web_rescue::Rescue,
+    /// The practice view for phones and tablets (M25).
+    practice: practice::PracticeState,
     /// Where documents' recovery journals go; `None` keeps no journal.
     recovery_dir: Option<PathBuf>,
     /// Whether the recovery directory was searched for crashed documents yet.
@@ -350,6 +356,7 @@ impl GuitarScoreApp {
             close_handled: Vec::new(),
             #[cfg(target_arch = "wasm32")]
             rescue: web_rescue::Rescue::default(),
+            practice: practice::PracticeState::default(),
             may_close: false,
             recovery_dir,
             recovery_searched: false,
@@ -545,15 +552,18 @@ impl GuitarScoreApp {
         }
         settings.store_shortcuts(&self.keymap);
         // A browser cannot reopen a local path: there is nothing to restore at the next
-        // start, and recent entries could not be opened either (the user picks the file
-        // again).
+        // start. Recent songs stay where the browser kept a copy (`song_store`); the
+        // others could not be opened (the user picks the file again).
         #[cfg(target_arch = "wasm32")]
         {
             settings.open_files.clear();
             settings.active_file = None;
             settings.last_file = None;
             settings.file_positions.clear();
-            settings.recent_files.clear();
+            settings.recent_files.retain(|path| {
+                path.file_name()
+                    .is_some_and(|name| crate::song_store::is_kept(&name.to_string_lossy()))
+            });
             settings.window = None;
             settings.keymap_path = None;
             settings.soundfont_path = None;
@@ -800,98 +810,11 @@ impl GuitarScoreApp {
     }
 }
 
-impl eframe::App for GuitarScoreApp {
-    fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
-        let ctx = ui.ctx().clone();
-        // A notice starts its own lifetime, whether it replaces another or is new.
-        let now = ctx.input(|input| input.time);
-        if self.notice != self.notice_shown {
-            self.notice_shown = self.notice.clone();
-            self.notice_since = now;
-        }
-        // Wayland never tells the position; the size and the mode are kept regardless.
-        if let Some(window) =
-            ctx.input(|input| WindowState::of_viewport(input.viewport(), self.last_window))
-        {
-            self.last_window = Some(window);
-        }
-        self.handle_events(&ctx);
-        self.track_pointer(&ctx);
-        #[cfg(target_arch = "wasm32")]
-        self.mark_browser_sound(&ctx);
-        // The page asks before it is left while a song has unsaved edits: the browser
-        // build has no recovery journal yet.
-        #[cfg(target_arch = "wasm32")]
-        {
-            crate::web::set_unsaved(self.tabs.iter().any(|tab| tab.document.is_dirty()));
-            // A panic ends the page: its crash screen offers these copies instead.
-            self.keep_rescue_copies(&ctx);
-        }
-        // A file dropped on the window opens like File > Open (asking about unsaved work).
-        // A browser drop is read asynchronously; a native one is a path to read.
-        #[cfg(target_arch = "wasm32")]
-        if let Some(file) = ctx.input(|input| input.raw.dropped_files.first().cloned())
-            && let Err(error) = self.tasks.open_dropped(file, &ctx)
-        {
-            self.notice = Some(error);
-        }
-        #[cfg(not(target_arch = "wasm32"))]
-        if let Some(path) = ctx.input(|input| {
-            input
-                .raw
-                .dropped_files
-                .first()
-                .map(|file| file.path().to_path_buf())
-        }) {
-            self.open(path, &ctx);
-        }
-        self.search_recoverable(&ctx);
-        self.handle_close_request(&ctx);
-        self.apply_theme(&ctx);
-        // Keys first, before any widget sees them (a focused button would take Space).
-        self.interface_zoom_keys(&ctx);
-        // The Sound chain board's keys first, while it has the keyboard.
-        self.take_sound_chain_keys(&ctx);
-        self.handle_keys(&ctx);
-        self.step_entry_tick(&ctx);
-        self.deferred_audition_tick(&ctx);
-        #[cfg(not(target_arch = "wasm32"))]
-        self.poll_midi_input(&ctx);
-        // A count-in that has finished starts the song it was counting in.
-        self.poll_count_in();
-        // Another tab may hold other choices of what plays its tracks, their MIDI-out
-        // ports and channels, other tones and other sends into the compressor bus, and
-        // other mixer buses: hand them over when the open song is another or changed.
-        self.sync_song_sound_if_changed();
-        // Keep a loop of the selected measures going; a new selection turns it on.
-        self.auto_loop();
-        self.poll_loop();
-        // The song played to its end: back to where it started, if asked for.
-        self.poll_song_end();
-        // A beat chosen while the SoundFont loaded plays once it is ready.
-        match self.playback.poll_preview() {
-            Ok(true) => ctx.request_repaint_after(std::time::Duration::from_millis(50)),
-            Ok(false) => {}
-            Err(error) => self.notice = Some(error),
-        }
-        // An entered note stops after a moment.
-        if let Some(left) = self.playback.poll_audition() {
-            ctx.request_repaint_after(left);
-        }
-        // The cursor follows the beat being played; the page scrolls with it.
-        self.follow_playback();
-        if self.playback.state() == gscore_play::PlayState::Playing {
-            // A loop checks its end more often; the position moves every beat otherwise.
-            // A gliding cursor moves every frame.
-            let millis = if self.playback.loop_selection() || self.settings.flowing_cursor {
-                16
-            } else {
-                50
-            };
-            ctx.request_repaint_after(std::time::Duration::from_millis(millis));
-        }
-        self.apply_title(&ctx);
-
+impl GuitarScoreApp {
+    /// The full interface: title bar, toolbar, status bar, the song grid, the side panels,
+    /// the tab strip and the page.
+    fn full_ui(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+        let ctx = ctx.clone();
         egui::Panel::top("title_bar")
             .frame(style::chrome_frame(&ctx, 0))
             .exact_size(title_bar::TITLE_BAR_HEIGHT)
@@ -1017,6 +940,111 @@ impl eframe::App for GuitarScoreApp {
                     );
                 }
             });
+    }
+}
+
+impl eframe::App for GuitarScoreApp {
+    fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        let ctx = ui.ctx().clone();
+        // A notice starts its own lifetime, whether it replaces another or is new.
+        let now = ctx.input(|input| input.time);
+        if self.notice != self.notice_shown {
+            self.notice_shown = self.notice.clone();
+            self.notice_since = now;
+        }
+        // Wayland never tells the position; the size and the mode are kept regardless.
+        if let Some(window) =
+            ctx.input(|input| WindowState::of_viewport(input.viewport(), self.last_window))
+        {
+            self.last_window = Some(window);
+        }
+        self.handle_events(&ctx);
+        self.track_pointer(&ctx);
+        #[cfg(target_arch = "wasm32")]
+        self.mark_browser_sound(&ctx);
+        // The page asks before it is left while a song has unsaved edits: the browser
+        // build has no recovery journal yet.
+        #[cfg(target_arch = "wasm32")]
+        {
+            crate::web::set_unsaved(self.tabs.iter().any(|tab| tab.document.is_dirty()));
+            // A panic ends the page: its crash screen offers these copies instead.
+            self.keep_rescue_copies(&ctx);
+            // The screen stays on while a song plays (or counts in), if asked for.
+            let sounding = self.playback.state() == gscore_play::PlayState::Playing
+                || self.playback.count_in_pending();
+            wake_lock::keep_screen_on(self.settings.keep_screen_on && sounding, now);
+        }
+        // A file dropped on the window opens like File > Open (asking about unsaved work).
+        // A browser drop is read asynchronously; a native one is a path to read.
+        #[cfg(target_arch = "wasm32")]
+        if let Some(file) = ctx.input(|input| input.raw.dropped_files.first().cloned())
+            && let Err(error) = self.tasks.open_dropped(file, &ctx)
+        {
+            self.notice = Some(error);
+        }
+        #[cfg(not(target_arch = "wasm32"))]
+        if let Some(path) = ctx.input(|input| {
+            input
+                .raw
+                .dropped_files
+                .first()
+                .map(|file| file.path().to_path_buf())
+        }) {
+            self.open(path, &ctx);
+        }
+        self.search_recoverable(&ctx);
+        self.handle_close_request(&ctx);
+        self.apply_theme(&ctx);
+        // Keys first, before any widget sees them (a focused button would take Space).
+        self.interface_zoom_keys(&ctx);
+        // The Sound chain board's keys first, while it has the keyboard.
+        self.take_sound_chain_keys(&ctx);
+        self.handle_keys(&ctx);
+        self.step_entry_tick(&ctx);
+        self.deferred_audition_tick(&ctx);
+        #[cfg(not(target_arch = "wasm32"))]
+        self.poll_midi_input(&ctx);
+        // A count-in that has finished starts the song it was counting in.
+        self.poll_count_in();
+        // Another tab may hold other choices of what plays its tracks, their MIDI-out
+        // ports and channels, other tones and other sends into the compressor bus, and
+        // other mixer buses: hand them over when the open song is another or changed.
+        self.sync_song_sound_if_changed();
+        // Keep a loop of the selected measures going; a new selection turns it on.
+        self.auto_loop();
+        self.poll_loop();
+        // The song played to its end: back to where it started, if asked for.
+        self.poll_song_end();
+        // A beat chosen while the SoundFont loaded plays once it is ready.
+        match self.playback.poll_preview() {
+            Ok(true) => ctx.request_repaint_after(std::time::Duration::from_millis(50)),
+            Ok(false) => {}
+            Err(error) => self.notice = Some(error),
+        }
+        // An entered note stops after a moment.
+        if let Some(left) = self.playback.poll_audition() {
+            ctx.request_repaint_after(left);
+        }
+        // The cursor follows the beat being played; the page scrolls with it.
+        self.follow_playback();
+        if self.playback.state() == gscore_play::PlayState::Playing {
+            // A loop checks its end more often; the position moves every beat otherwise.
+            // A gliding cursor moves every frame.
+            let millis = if self.playback.loop_selection() || self.settings.flowing_cursor {
+                16
+            } else {
+                50
+            };
+            ctx.request_repaint_after(std::time::Duration::from_millis(millis));
+        }
+        self.apply_title(&ctx);
+
+        self.practice.shown = self.practice_view_shown(&ctx);
+        if self.practice.shown {
+            self.practice_ui(ui);
+        } else {
+            self.full_ui(ui, &ctx);
+        }
         title_bar::resize_edges(&ctx);
         self.show_dialog(&ctx);
         self.show_new_song_dialog(&ctx);

@@ -790,6 +790,14 @@ pub struct Settings {
     pub return_on_stop: bool,
     /// Whether the playing cursor glides from note to note instead of jumping.
     pub flowing_cursor: bool,
+    /// The practice view for phones and tablets: `auto` (in the browser on a narrow
+    /// screen), `on` or `off`. Anything else counts as `auto`.
+    pub practice_view: String,
+    /// The score's zoom in the practice view (its own, so a pinch there leaves the
+    /// editor's zoom alone).
+    pub practice_zoom: f32,
+    /// Whether the browser keeps the screen on while a song plays (Screen Wake Lock).
+    pub keep_screen_on: bool,
     /// Seconds between recovery snapshots; 0 means only by edit count.
     pub autosave_seconds: u64,
     /// The metronome's volume, 0 to 1.
@@ -903,6 +911,9 @@ impl Default for Settings {
             grid_stripes: false,
             return_on_stop: true,
             flowing_cursor: true,
+            practice_view: "auto".to_owned(),
+            practice_zoom: 1.0,
+            keep_screen_on: true,
             autosave_seconds: DEFAULT_AUTOSAVE_SECONDS,
             metronome_volume: 1.0,
             click_sound: gscore_play::ClickSound::default().id().to_owned(),
@@ -1079,6 +1090,10 @@ impl Settings {
             self.zoom = 1.0;
         }
         self.zoom = self.zoom.clamp(ZOOM_RANGE.0, ZOOM_RANGE.1);
+        if !self.practice_zoom.is_finite() {
+            self.practice_zoom = 1.0;
+        }
+        self.practice_zoom = self.practice_zoom.clamp(ZOOM_RANGE.0, ZOOM_RANGE.1);
         if !self.grid_zoom.is_finite() {
             self.grid_zoom = 1.0;
         }
