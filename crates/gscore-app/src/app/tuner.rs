@@ -153,6 +153,13 @@ impl GuitarScoreApp {
         }
     }
 
+    /// Closes the tuner window, silencing its tone.
+    pub(super) fn close_tuner(&mut self) {
+        if let Some(mut tuner) = self.tuner.take() {
+            tuner.tone.stop();
+        }
+    }
+
     /// The tuner window, while it is open.
     pub(super) fn show_tuner(&mut self, ctx: &egui::Context) {
         let Some(mut tuner) = self.tuner.take() else {

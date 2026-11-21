@@ -10,7 +10,9 @@ use crate::app::style;
 use crate::playback::{SPEED_RANGE, SpeedTrainer};
 
 impl GuitarScoreApp {
-    /// The speed in a pill: a step slower, the speed, a step faster.
+    /// The playback speed in a pill: a step slower, the speed over what it makes of the
+    /// tempo written there ("Speed · 180 bpm", so a step is seen even while stopped), a
+    /// step faster.
     pub(super) fn practice_speed(&mut self, ui: &mut egui::Ui, rect: Rect) {
         let tokens = style::tokens(ui);
         let speed = self.playback.speed();
@@ -32,42 +34,34 @@ impl GuitarScoreApp {
         } else {
             tokens.text
         };
-        ui.painter().text(
-            rect.center(),
-            Align2::CENTER_CENTER,
+        let caption = match self.practice_tempo() {
+            Some(bpm) => format!("Speed · {:.0} bpm", bpm as f32 * speed),
+            None => "Speed".to_owned(),
+        };
+        let middle = Rect::from_min_max(
+            Pos2::new(minus.right(), rect.top()),
+            Pos2::new(plus.left(), rect.bottom()),
+        );
+        let painter = ui.painter().with_clip_rect(middle);
+        painter.text(
+            Pos2::new(middle.center().x, middle.center().y + 2.0),
+            Align2::CENTER_BOTTOM,
             format!("{:.0} %", speed * 100.0),
             FontId::new(16.0, FontFamily::Name(crate::fonts::BOLD.into())),
             color,
+        );
+        painter.text(
+            Pos2::new(middle.center().x, middle.center().y + 4.0),
+            Align2::CENTER_TOP,
+            caption,
+            FontId::proportional(11.0),
+            tokens.text_weak,
         );
         // Steps land on whole multiples of 5 %, from whatever speed was typed before.
         let chosen =
             ((chosen / SPEED_STEP).round() * SPEED_STEP).clamp(SPEED_RANGE.0, SPEED_RANGE.1);
         if (chosen - speed).abs() > 1e-4 {
             self.set_playback_speed(chosen);
-        }
-    }
-
-    /// The speed trainer: highlighted while on; a tap opens its settings, sized for a
-    /// finger.
-    pub(super) fn practice_trainer(&mut self, ui: &mut egui::Ui, rect: Rect) {
-        let trainer = self.playback.trainer();
-        let button = icon_button(
-            ui,
-            rect,
-            Icon::SpeedTrainer,
-            "Speed trainer",
-            Some(trainer.enabled),
-        );
-        let mut changed = trainer;
-        let passes = self.playback.trainer_passes();
-        egui::Popup::menu(&button)
-            .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
-            .show(|ui| {
-                ui.set_min_width(280.0);
-                trainer_settings(ui, &mut changed, passes);
-            });
-        if changed != trainer {
-            self.set_speed_trainer(changed);
         }
     }
 }

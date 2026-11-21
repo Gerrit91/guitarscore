@@ -71,23 +71,32 @@ impl GuitarScoreApp {
 
     /// How far playback (or the cursor) is into the song, "01:23".
     pub(super) fn practice_time(&mut self) -> String {
-        let Some(tab) = self.tabs.get_mut(self.active) else {
-            return String::new();
-        };
-        let document = &mut tab.document;
-        let Some(timeline) = document.timeline() else {
-            return String::new();
-        };
+        self.practice_where()
+            .map(|(elapsed, _)| crate::app::toolbar::time_text(elapsed))
+            .unwrap_or_default()
+    }
+
+    /// The tempo written where playback (or the cursor) is, in beats per minute.
+    pub(super) fn practice_tempo(&mut self) -> Option<u32> {
+        self.practice_where().map(|(_, bpm)| bpm)
+    }
+
+    /// Where playback (or, while stopped, the cursor) is: the time into the song and the
+    /// tempo written there.
+    fn practice_where(&mut self) -> Option<(u64, u32)> {
         let state = self.playback.state();
-        let tick = if state != gscore_play::PlayState::Stopped || self.playback.count_in_pending() {
-            self.playback.position()
+        let pending = self.playback.count_in_pending();
+        let position = self.playback.position();
+        let document = &mut self.tabs.get_mut(self.active)?.document;
+        let cursor = document.editor().cursor().position();
+        let timeline = document.timeline()?;
+        let tick = if state != gscore_play::PlayState::Stopped || pending {
+            position
         } else {
-            timeline
-                .tick_of(document.song(), document.editor().cursor().position())
-                .unwrap_or(0)
+            timeline.tick_of(document.song(), cursor).unwrap_or(0)
         };
         let (elapsed, _) = crate::app::toolbar::playback_times(&timeline, tick, None, false);
-        crate::app::toolbar::time_text(elapsed)
+        Some((elapsed, timeline.bpm_at(tick)))
     }
 
     /// The shown track: its colour and name; a tap lists the song's tracks.
