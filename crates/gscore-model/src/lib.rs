@@ -77,7 +77,7 @@ pub use page::{
     MAX_BARS_PER_SYSTEM, MAX_MARGIN_MM, Margins, PAGE_SIZE_MM, PageSetup, PaperSize, SCALE_RANGE,
     SystemBreak,
 };
-pub use playback::{MASTER_UNITY, MasterMix, Repeat, TrackSound};
+pub use playback::{MASTER_UNITY, MasterMix, Repeat, RepeatGroup, TrackSound};
 pub use position::{
     BeatIndex, BeatPosition, Fret, MeasureIndex, Pitch, StaffIndex, StringNumber, TrackIndex,
     VoiceIndex,

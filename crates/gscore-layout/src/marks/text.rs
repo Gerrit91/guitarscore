@@ -94,7 +94,8 @@ pub(super) fn tempo_height(ctx: &Context<'_>) -> f32 {
     (ctx.fonts.music.bbox(Glyph::MetronomeQuarter).y_max * TEMPO_NOTE_SCALE).max(TEMPO_SIZE)
 }
 
-/// An ending bracket from `left` to `right`, its line at the top of the row.
+/// An ending bracket from `left` to `right`, its line at the top of the row. The line runs
+/// from measure to measure; only the bracket's own ends keep clear of the barline.
 pub(super) fn draw_ending(
     left: f32,
     right: f32,
@@ -103,7 +104,9 @@ pub(super) fn draw_ending(
     ops: &mut Vec<DrawOp>,
 ) {
     let y = baseline - ENDING_HOOK;
-    let (start, end) = (left + 0.2, right - 0.2);
+    let open = ending.label.is_some();
+    let start = if open { left + 0.2 } else { left };
+    let end = if ending.closed { right - 0.2 } else { right };
     let mut line = |from: Point, to: Point| {
         ops.push(DrawOp::Line {
             from,
@@ -113,7 +116,7 @@ pub(super) fn draw_ending(
         });
     };
     line(Point::new(start, y), Point::new(end, y));
-    if ending.label.is_some() {
+    if open {
         line(Point::new(start, y), Point::new(start, y + ENDING_HOOK));
     }
     if ending.closed {

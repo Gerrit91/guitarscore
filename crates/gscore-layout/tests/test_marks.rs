@@ -303,6 +303,118 @@ fn repeats_and_endings_are_drawn() {
     assert_eq!(thick, 6);
 }
 
+#[test]
+fn an_ending_bracket_spans_every_bar_of_the_ending() {
+    // |: 0 [1. 1 2 3 :| [2. 4 | 5 — Guitar Pro marks only bar 1 of the first ending and
+    // extends it over 2 and 3, through the repeat's close.
+    let song = testing::song_with_repeats(
+        6,
+        &[
+            (0, true, -1, 0),
+            (1, false, -1, 0b01),
+            (3, false, 1, 0),
+            (4, false, -1, 0b10),
+        ],
+    )
+    .unwrap();
+    let laid_out = layout(&song);
+    let bar = |n: usize| {
+        let place = &laid_out.places.measures[n];
+        (place.left, place.right)
+    };
+    // The bracket's line is a horizontal annotation line, one piece per measure, and
+    // continuous where the measures meet.
+    let horizontal: Vec<(f32, f32)> = laid_out
+        .ops
+        .iter()
+        .filter_map(|op| match op {
+            DrawOp::Line {
+                from,
+                to,
+                color: ColorToken::Annotation,
+                ..
+            } if (from.y - to.y).abs() < 0.01 => Some((from.x, to.x)),
+            _ => None,
+        })
+        .collect();
+    for n in [1, 2, 3] {
+        let (left, right) = bar(n);
+        assert!(
+            horizontal
+                .iter()
+                .any(|&(from, to)| from <= left + 0.21 && to >= right - 0.21),
+            "bar {n} lies under the bracket: {horizontal:?}"
+        );
+    }
+    // The numbers are written where their brackets start, once each (bar 1 and bar 4).
+    let texts = texts(&laid_out);
+    assert_eq!(texts.iter().filter(|(text, ..)| text == "1.").count(), 1);
+    assert_eq!(texts.iter().filter(|(text, ..)| text == "2.").count(), 1);
+    // The opening hook sits at the first bar, the closing one at the bracket's end (left
+    // of the repeat sign that closes it).
+    let hooks: Vec<f32> = laid_out
+        .ops
+        .iter()
+        .filter_map(|op| match op {
+            DrawOp::Line {
+                from,
+                to,
+                color: ColorToken::Annotation,
+                ..
+            } if (from.x - to.x).abs() < 0.01 && (from.y - to.y).abs() > 0.1 => Some(from.x),
+            _ => None,
+        })
+        .collect();
+    let closing = horizontal
+        .iter()
+        .find(|(from, _)| (from - bar(3).0).abs() < 0.01)
+        .map(|&(_, to)| to)
+        .unwrap_or_default();
+    assert!(
+        hooks.iter().any(|&x| (x - (bar(1).0 + 0.2)).abs() < 0.01),
+        "opening hook at bar 1: {hooks:?}"
+    );
+    assert!(
+        hooks.iter().any(|&x| (x - closing).abs() < 0.01),
+        "closing hook at the repeat: {hooks:?}"
+    );
+}
+
+#[test]
+fn the_same_ending_number_on_several_bars_is_one_bracket() {
+    // GP3-5 write an ending's number on every bar it covers; the bracket is still one,
+    // labelled once.
+    let song = testing::song_with_repeats(
+        4,
+        &[(0, true, -1, 0), (1, false, -1, 0b01), (2, false, 1, 0b01)],
+    )
+    .unwrap();
+    let laid_out = layout(&song);
+    assert_eq!(
+        texts(&laid_out)
+            .iter()
+            .filter(|(text, ..)| text == "1.")
+            .count(),
+        1
+    );
+    let horizontal = laid_out
+        .ops
+        .iter()
+        .filter(|op| {
+            matches!(
+                op,
+                DrawOp::Line {
+                    from,
+                    to,
+                    color: ColorToken::Annotation,
+                    ..
+                } if (from.y - to.y).abs() < 0.01
+            )
+        })
+        .count();
+    assert_eq!(horizontal, 2, "a piece of line over each of the two bars");
+}
+
 /// Every glyph's box on the page: `(glyph, left, top, right, bottom)`.
 fn glyph_boxes(layout: &Layout) -> Vec<(Glyph, f32, f32, f32, f32)> {
     let fonts = Fonts::bundled().unwrap();
