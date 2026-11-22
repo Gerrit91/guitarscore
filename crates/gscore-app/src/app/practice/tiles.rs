@@ -61,7 +61,7 @@ pub(super) fn tile_button(
         None => (tokens.control, ink),
     };
     ui.painter().rect_filled(rect, 10.0, fill);
-    let icon_rect = Rect::from_center_size(rect.center(), vec2(24.0, 24.0));
+    let icon_rect = Rect::from_center_size(rect.center(), vec2(20.0, 20.0));
     icons::paint(ui.painter(), icon_rect, ink, icon);
     if let Some(badge) = &look.badge {
         let font = FontId::new(11.0, FontFamily::Name(crate::fonts::BOLD.into()));

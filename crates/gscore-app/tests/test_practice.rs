@@ -44,14 +44,33 @@ fn the_wide_header_holds_only_the_player_and_the_rest_is_in_the_drawer() {
                 "{label} at {size:?}"
             );
         }
-        for label in ["Loop", "Speed trainer", "Count-in", "Metronome", "Faster"] {
+        for label in [
+            "Loop",
+            "Speed trainer",
+            "Count-in",
+            "Metronome",
+            "Faster",
+            "Full interface",
+        ] {
             assert!(
                 harness.query_by_label(label).is_some(),
                 "{label} at {size:?}"
             );
         }
         assert!(harness.query_by_label("Fewer controls").is_some());
+        assert!(
+            harness.query_by_label("Menu").is_none(),
+            "no menu in the corner at {size:?}"
+        );
     }
+}
+
+#[test]
+fn the_full_interface_tile_leaves_the_practice_view() {
+    let mut harness = practice(egui::vec2(1180.0, 820.0));
+    harness.get_by_label("Full interface").click();
+    harness.run_steps(4);
+    assert_eq!(harness.state().settings().practice_view, "off");
 }
 
 #[test]

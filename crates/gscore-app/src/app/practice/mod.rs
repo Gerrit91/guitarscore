@@ -6,7 +6,7 @@
 //!
 //! A tap on a bar starts playback there; a second tap on a bar loops the bars between
 //! the two. The view is chosen by screen width in the browser (Settings: `auto`), or by
-//! hand from its own menu and from View in the full interface.
+//! hand from the drawer and from View in the full interface.
 
 mod controls;
 mod drawer;
@@ -99,8 +99,6 @@ pub(super) struct PracticeState {
     pub(super) shown: bool,
     /// The bar tapped first, waiting for a second tap to make a loop: its tab and measure.
     pending: Option<(TabId, usize)>,
-    /// Whether a bar was tapped yet: until then a hint says what a tap does.
-    tapped: bool,
     /// Whether the drawer is pulled up (the loop, the speed, the count-in, the click, mute
     /// and solo, the transposition, the score's size, the tuner, settings, saving).
     pub(super) drawer: bool,
@@ -146,7 +144,6 @@ impl GuitarScoreApp {
     /// A tap on bar `measure` (0-based) of the practice view: the first plays from there,
     /// the second loops the bars from the first to this one.
     pub(super) fn practice_tap(&mut self, measure: usize) {
-        self.practice.tapped = true;
         let pending = self.practice_pending();
         let Some(tab) = self.tabs.get_mut(self.active) else {
             return;
@@ -237,13 +234,6 @@ impl GuitarScoreApp {
         self.view.score_view = kept.0;
         self.view.set_zoom(kept.1);
         self.view.design_mode = kept.2;
-        // Until the first tap, a hint says what a tap does.
-        let hint = !self.practice.tapped
-            && self.practice_pending().is_none()
-            && !self.playback.loop_selection();
-        if hint {
-            practice_hint(ui);
-        }
         if drawn.is_err() {
             self.notice =
                 Some("Drawing the page failed unexpectedly; a crash report was written".to_owned());
@@ -306,6 +296,16 @@ impl GuitarScoreApp {
                         if button.clicked() {
                             pick = true;
                         }
+                        // Without a song there is no drawer: the way back to the full
+                        // interface stays here.
+                        let full = ui.add_sized(
+                            vec2(ui.available_width(), 44.0),
+                            egui::Button::new(RichText::new("Full interface (editing)").size(15.0))
+                                .frame(false),
+                        );
+                        if full.clicked() {
+                            self.set_practice_view(PracticeChoice::Off);
+                        }
                     });
             });
         if let Some(path) = open {
@@ -315,31 +315,6 @@ impl GuitarScoreApp {
             self.ask_open(&ctx);
         }
     }
-}
-
-/// "Tap a bar …" in a dark pill near the bottom of the score.
-fn practice_hint(ui: &egui::Ui) {
-    let area = ui.max_rect();
-    let text = "Tap a bar to start there · tap another to loop";
-    let font = FontId::proportional(13.0);
-    let galley = ui
-        .painter()
-        .layout_no_wrap(text.to_owned(), font, egui::Color32::WHITE);
-    let size = galley.size() + vec2(28.0, 16.0);
-    if size.x > area.width() {
-        return;
-    }
-    let rect = egui::Rect::from_center_size(
-        egui::pos2(area.center().x, area.bottom() - 14.0 - size.y / 2.0),
-        size,
-    );
-    let painter = ui.painter();
-    painter.rect_filled(rect, size.y / 2.0, egui::Color32::from_black_alpha(220));
-    painter.galley(
-        rect.center() - galley.size() / 2.0,
-        galley,
-        egui::Color32::WHITE,
-    );
 }
 
 #[cfg(test)]

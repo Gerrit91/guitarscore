@@ -1,16 +1,11 @@
-//! The practice view's header parts: the song and where playback is, the shown track's
-//! chip, and the menu.
+//! The practice view's header parts: the song and where playback is, and the shown
+//! track's chip. Everything else is in the drawer.
 
-use egui::{Align2, Color32, FontFamily, FontId, Pos2, Rect, RichText, Sense, Stroke, vec2};
+use egui::{Align2, Color32, FontFamily, FontId, Pos2, Rect, Sense, Stroke, vec2};
 
-use super::{PracticeChoice, TARGET};
+use super::TARGET;
 use crate::app::GuitarScoreApp;
-use crate::app::icons::Icon;
 use crate::app::style;
-
-use super::widgets::icon_button;
-#[cfg(target_arch = "wasm32")]
-use super::widgets::switch_row;
 
 impl GuitarScoreApp {
     /// The song's title over where playback is, in `rect`.
@@ -63,8 +58,6 @@ impl GuitarScoreApp {
             } else {
                 detail.push_str(&format!(" · loop {first}–{last}"));
             }
-        } else if let Some(first) = self.practice_pending() {
-            detail.push_str(&format!(" · tap a bar to loop from {}", first + 1));
         }
         (tab.document.display_title(), detail)
     }
@@ -173,52 +166,6 @@ impl GuitarScoreApp {
         });
         if let Some(index) = chosen {
             self.set_shown_track(index);
-        }
-    }
-
-    /// The menu: open a song, keep the screen on, and the way to the full interface.
-    pub(super) fn practice_menu(&mut self, ui: &mut egui::Ui, rect: Rect) {
-        let button = icon_button(ui, rect, Icon::More, "Menu", None);
-        let ctx = ui.ctx().clone();
-        let mut open = false;
-        let mut full = false;
-        let mut by_width = false;
-        #[cfg_attr(not(target_arch = "wasm32"), allow(unused_mut))]
-        let mut keep = self.settings.keep_screen_on;
-        let key = self.key_hint(gscore_edit::ActionId::TogglePracticeView);
-        egui::Popup::menu(&button).show(|ui| {
-            ui.set_min_width(260.0);
-            let row = |ui: &mut egui::Ui, text: &str| {
-                ui.add_sized(
-                    vec2(ui.available_width(), TARGET),
-                    egui::Button::new(RichText::new(text).size(15.0)).frame(false),
-                )
-            };
-            if row(ui, "Open a song…").clicked() {
-                open = true;
-            }
-            #[cfg(target_arch = "wasm32")]
-            switch_row(ui, &mut keep, "Keep the screen on while playing");
-            ui.separator();
-            if row(ui, &format!("Full interface (editing){key}")).clicked() {
-                full = true;
-            }
-            if cfg!(target_arch = "wasm32")
-                && PracticeChoice::parse(&self.settings.practice_view) != PracticeChoice::Auto
-                && row(ui, "Choose by screen width").clicked()
-            {
-                by_width = true;
-            }
-        });
-        if by_width {
-            self.set_practice_view(PracticeChoice::Auto);
-        }
-        self.settings.keep_screen_on = keep;
-        if open {
-            self.ask_open(&ctx);
-        }
-        if full {
-            self.set_practice_view(PracticeChoice::Off);
         }
     }
 }

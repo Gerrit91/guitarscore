@@ -14,6 +14,7 @@ use crate::app::GuitarScoreApp;
 use crate::app::icons::Icon;
 use crate::app::style;
 
+use super::PracticeChoice;
 use super::tiles::{BADGE_ROOM, Tile, count_in_row, handle, popup, tile_button};
 use super::widgets::{stepper_row, switch_row, trainer_settings};
 
@@ -22,8 +23,8 @@ pub(super) const FLOATING: f32 = 640.0;
 /// Tiles in a row.
 const COLUMNS: usize = 5;
 /// The largest a tile gets; on a phone they share the width.
-const TILE: Vec2 = vec2(72.0, 56.0);
-const TILE_GAP: f32 = 10.0;
+const TILE: Vec2 = vec2(72.0, 52.0);
+const TILE_GAP: f32 = 8.0;
 /// The handle's height.
 const HANDLE: f32 = 24.0;
 
@@ -43,25 +44,35 @@ enum Item {
     Settings,
     Save,
     Open,
+    ScreenOn,
+    FullInterface,
+    ByWidth,
 }
 
-/// Where each tile sits: its column, its row and how many columns it spans.
-const LAYOUT: &[(Item, usize, usize, usize)] = &[
-    (Item::Loop, 0, 0, 1),
-    (Item::Speed, 1, 0, 3),
-    (Item::Trainer, 4, 0, 1),
-    (Item::CountIn, 0, 1, 1),
-    (Item::Click, 1, 1, 1),
-    (Item::Mute, 2, 1, 1),
-    (Item::Solo, 3, 1, 1),
-    (Item::Transpose, 4, 1, 1),
-    (Item::Size, 0, 2, 1),
-    (Item::Tuner, 1, 2, 1),
-    (Item::Settings, 2, 2, 1),
-    (Item::Save, 3, 2, 1),
-    (Item::Open, 4, 2, 1),
+/// The rows of tiles, each with how many columns it spans; a row is only as wide as the
+/// tiles it shows, and centred.
+const LAYOUT: &[&[(Item, usize)]] = &[
+    &[(Item::Loop, 1), (Item::Speed, 3), (Item::Trainer, 1)],
+    &[
+        (Item::CountIn, 1),
+        (Item::Click, 1),
+        (Item::Mute, 1),
+        (Item::Solo, 1),
+        (Item::Transpose, 1),
+    ],
+    &[
+        (Item::Size, 1),
+        (Item::Tuner, 1),
+        (Item::Settings, 1),
+        (Item::Save, 1),
+        (Item::Open, 1),
+    ],
+    &[
+        (Item::ScreenOn, 1),
+        (Item::FullInterface, 1),
+        (Item::ByWidth, 1),
+    ],
 ];
-const ROWS: usize = 3;
 
 impl GuitarScoreApp {
     /// The drawer inside the bottom bar (a phone): the handle, then the tiles while open.
@@ -112,26 +123,57 @@ impl GuitarScoreApp {
             });
     }
 
-    /// The tiles, in rows of [`COLUMNS`] across `width` (centred if they do not need it
-    /// all).
+    /// Whether `item` belongs in the drawer now: the browser's own choices only exist
+    /// there, and choosing the practice view by width has nothing to do once it does.
+    fn practice_tile_shown(&self, item: Item) -> bool {
+        match item {
+            Item::ScreenOn => cfg!(target_arch = "wasm32"),
+            Item::ByWidth => {
+                cfg!(target_arch = "wasm32")
+                    && PracticeChoice::parse(&self.settings.practice_view) != PracticeChoice::Auto
+            }
+            Item::Loop
+            | Item::Speed
+            | Item::Trainer
+            | Item::CountIn
+            | Item::Click
+            | Item::Mute
+            | Item::Solo
+            | Item::Transpose
+            | Item::Size
+            | Item::Tuner
+            | Item::Settings
+            | Item::Save
+            | Item::Open
+            | Item::FullInterface => true,
+        }
+    }
+
+    /// The tiles, in rows across `width`, each row centred.
     fn practice_tiles(&mut self, ui: &mut egui::Ui, width: f32) {
         let tile = vec2(tile_width(width), TILE.y);
-        let used = grid_width(width);
-        let mut rows = Vec::with_capacity(ROWS);
-        for _ in 0..ROWS {
+        for row in LAYOUT {
+            let shown: Vec<(Item, usize)> = row
+                .iter()
+                .copied()
+                .filter(|(item, _)| self.practice_tile_shown(*item))
+                .collect();
+            if shown.is_empty() {
+                continue;
+            }
+            let used = row_width(&shown, tile.x);
             ui.add_space(BADGE_ROOM);
             let (strip, _) = ui.allocate_exact_size(vec2(width, tile.y), Sense::hover());
-            rows.push(strip.left_top() + vec2((width - used).max(0.0) / 2.0, 0.0));
-        }
-        for &(item, column, row, span) in LAYOUT {
-            let Some(&left_top) = rows.get(row) else {
-                continue;
-            };
-            let rect = Rect::from_min_size(
-                left_top + vec2(column as f32 * (tile.x + TILE_GAP), 0.0),
-                vec2(span as f32 * tile.x + (span - 1) as f32 * TILE_GAP, tile.y),
-            );
-            self.practice_tile(ui, item, rect);
+            let mut x = strip.left() + (width - used).max(0.0) / 2.0;
+            for (item, span) in shown {
+                let size = vec2(
+                    span as f32 * tile.x + (span.saturating_sub(1)) as f32 * TILE_GAP,
+                    tile.y,
+                );
+                let rect = Rect::from_min_size(Pos2::new(x, strip.top()), size);
+                self.practice_tile(ui, item, rect);
+                x += size.x + TILE_GAP;
+            }
         }
     }
 
@@ -264,6 +306,43 @@ impl GuitarScoreApp {
                     self.ask_open(&ctx);
                 }
             }
+            Item::FullInterface => {
+                let look = Tile::default();
+                if tile_button(ui, rect, Icon::FullInterface, "Full interface", &look).clicked() {
+                    self.practice.drawer = false;
+                    self.set_practice_view(PracticeChoice::Off);
+                }
+            }
+            Item::ScreenOn => self.practice_screen_on(ui, rect),
+            Item::ByWidth => {
+                if tile_button(
+                    ui,
+                    rect,
+                    Icon::FitWidth,
+                    "Choose by screen width",
+                    &Tile::default(),
+                )
+                .clicked()
+                {
+                    self.set_practice_view(PracticeChoice::Auto);
+                }
+            }
+        }
+    }
+
+    /// The browser's switch that keeps the screen awake while the song plays.
+    fn practice_screen_on(&mut self, ui: &mut egui::Ui, rect: Rect) {
+        #[cfg(target_arch = "wasm32")]
+        {
+            let on = self.settings.keep_screen_on;
+            let look = Tile::switch(ui, on);
+            if tile_button(ui, rect, Icon::ScreenOn, "Keep the screen on", &look).clicked() {
+                self.settings.keep_screen_on = !on;
+            }
+        }
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            let _ = (ui, rect);
         }
     }
 
@@ -312,6 +391,12 @@ fn tile_width(width: f32) -> f32 {
     ((width - (COLUMNS - 1) as f32 * TILE_GAP) / COLUMNS as f32).min(TILE.x)
 }
 
+/// How wide `row` is with tiles `tile_width` across.
+fn row_width(row: &[(Item, usize)], tile_width: f32) -> f32 {
+    let spans: usize = row.iter().map(|(_, span)| *span).sum();
+    spans as f32 * tile_width + row.len().saturating_sub(1) as f32 * TILE_GAP
+}
+
 /// How wide a row of tiles is when `width` is there for it.
 fn grid_width(width: f32) -> f32 {
     COLUMNS as f32 * tile_width(width) + (COLUMNS - 1) as f32 * TILE_GAP
@@ -341,12 +426,15 @@ mod tests {
     }
 
     #[test]
-    fn every_tile_has_a_place_of_its_own() {
-        let mut taken = [[false; COLUMNS]; ROWS];
-        for &(_, column, row, span) in LAYOUT {
-            for cell in &mut taken[row][column..column + span] {
-                assert!(!*cell, "two tiles in one place");
-                *cell = true;
+    fn every_tile_has_a_place_of_its_own_and_no_row_overflows() {
+        let mut seen: Vec<Item> = Vec::new();
+        for row in LAYOUT {
+            let spans: usize = row.iter().map(|(_, span)| *span).sum();
+            assert!(spans <= COLUMNS, "a row wider than the drawer: {row:?}");
+            for (item, span) in *row {
+                assert!(!seen.contains(item), "two tiles for one control: {item:?}");
+                seen.push(*item);
+                assert!(*span >= 1, "a tile with no width: {item:?}");
             }
         }
     }

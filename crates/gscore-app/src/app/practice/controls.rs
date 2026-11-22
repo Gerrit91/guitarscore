@@ -4,8 +4,8 @@
 //!
 //! How they are arranged depends on the screen ([`Shape`]): a phone held upright has the
 //! header at the top and the player at the bottom; a phone on its side keeps the score as
-//! tall as it can (no header, the player with where playback is and the menu); a tablet
-//! or a wider screen puts the player in the header and has no bar at the bottom.
+//! tall as it can (no header, the player with where playback is); a tablet or a wider
+//! screen puts the player in the header and has no bar at the bottom.
 
 use egui::{Pos2, Rect, Sense, Vec2, vec2};
 
@@ -64,7 +64,6 @@ enum Control {
     Time,
     Status,
     Chip,
-    Menu,
 }
 
 impl Control {
@@ -135,17 +134,13 @@ fn control_height(control: Control) -> f32 {
 
 impl GuitarScoreApp {
     /// The header: the song and where playback is on the left, the player in the middle
-    /// (on a wide screen), the shown track and the menu on the right.
+    /// (on a wide screen), the shown track on the right.
     pub(super) fn practice_header(&mut self, ui: &mut egui::Ui, shape: Shape, has_song: bool) {
         let height = if shape == Shape::Bar { PLAY } else { TARGET };
         let (row, _) = ui.allocate_exact_size(vec2(ui.available_width(), height), Sense::hover());
-        let mut right: Vec<&[Control]> = Vec::new();
-        if has_song {
-            right.push(&[Control::Chip]);
-        }
-        right.push(&[Control::Menu]);
-        let right_width = packed_width(&right);
-        let mut placed = pack(row.right() - right_width, row.center().y, &right);
+        let right: &[&[Control]] = if has_song { &[&[Control::Chip]] } else { &[] };
+        let right_width = packed_width(right);
+        let mut placed = pack(row.right() - right_width, row.center().y, right);
         let mut title_right = row.right() - right_width - GROUP_GAP;
         if has_song && shape == Shape::Bar {
             let left = row.center().x - packed_width(&[PLAYER]) / 2.0;
@@ -179,11 +174,7 @@ impl GuitarScoreApp {
             centre,
             &[PLAYER],
         );
-        let right: &[&[Control]] = if shape == Shape::Short {
-            &[&[Control::Time], &[Control::Menu]]
-        } else {
-            &[&[Control::Time]]
-        };
+        let right: &[&[Control]] = &[&[Control::Time]];
         placed.extend(pack(row.right() - packed_width(right), centre, right));
         if shape == Shape::Short {
             placed.extend(pack(row.left(), centre, &[&[Control::Status]]));
@@ -230,7 +221,6 @@ impl GuitarScoreApp {
                 readout(ui, rect, &detail, 12.0);
             }
             Control::Chip => self.practice_track_chip(ui, rect),
-            Control::Menu => self.practice_menu(ui, rect),
         }
     }
 }
@@ -249,14 +239,15 @@ mod tests {
 
     #[test]
     fn a_packed_row_shares_one_centre_line() {
-        let placed = pack(0.0, 30.0, &[PLAYER, &[Control::Time], &[Control::Menu]]);
+        let groups: &[&[Control]] = &[PLAYER, &[Control::Time], &[Control::Chip]];
+        let placed = pack(0.0, 30.0, groups);
         assert!(
             placed
                 .iter()
                 .all(|(_, rect)| (rect.center().y - 30.0).abs() < 1e-4)
         );
         let last = placed.last().map_or(0.0, |(_, rect)| rect.right());
-        assert!((last - packed_width(&[PLAYER, &[Control::Time], &[Control::Menu]])).abs() < 1e-3);
+        assert!((last - packed_width(groups)).abs() < 1e-3);
         // Nothing overlaps.
         for pair in placed.windows(2) {
             assert!(pair[0].1.right() <= pair[1].1.left());
