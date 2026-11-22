@@ -2083,6 +2083,7 @@
 <text x="16.17" y="455.17" font-family="Noto Sans" font-size="1.1" fill="#404040">9</text>
 <line x1="16.37" y1="449.77" x2="54.68" y2="449.77" stroke="#404040" stroke-width="0.12"/>
 <line x1="16.37" y1="449.77" x2="16.37" y2="450.97" stroke="#404040" stroke-width="0.12"/>
+<line x1="54.68" y1="449.77" x2="54.68" y2="450.97" stroke="#404040" stroke-width="0.12"/>
 <text x="16.77" y="450.87" font-family="Noto Sans" font-size="1.1" fill="#404040">2.</text>
 <line x1="54.8" y1="467.97" x2="54.8" y2="475.47" stroke="#303030" stroke-width="0.16"/>
 <line x1="54.8" y1="455.97" x2="54.8" y2="459.97" stroke="#303030" stroke-width="0.16"/>

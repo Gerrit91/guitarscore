@@ -8,7 +8,7 @@
 
 use std::sync::Arc;
 
-use gscore_model::{Direction, Dynamic, Feel, Fermata, Repeat, Song};
+use gscore_model::{Direction, Dynamic, Feel, Fermata, MeasureIndex, Repeat, Song};
 
 mod chord;
 mod directions;
@@ -92,7 +92,7 @@ pub(crate) struct MeasureMarks {
     pub(crate) chord_diagram: bool,
 }
 
-/// An alternative-ending bracket over one measure.
+/// A measure of an alternative-ending bracket.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct Ending {
     /// "1." or "1., 2." where the bracket starts (with a hook); `None` where it goes on.
@@ -129,9 +129,9 @@ impl MeasureMarks {
 /// differs from the one in effect (the song's tempo and mezzo-forte at the start, which
 /// Guitar Pro does not print either).
 pub(crate) fn plan(song: &Song, measures: &[Arc<MeasureLayout>]) -> Vec<MeasureMarks> {
+    let brackets = ending_brackets(song);
     let mut tempo = song.tempo();
     let mut dynamic = Dynamic::DEFAULT;
-    let mut previous_endings = 0;
     let mut previous_feel = Feel::None;
     let mut previous_free = false;
     measures
@@ -182,17 +182,64 @@ pub(crate) fn plan(song: &Song, measures: &[Arc<MeasureLayout>]) -> Vec<MeasureM
                     dynamic = change;
                 }
             }
-            let endings = marks.repeat.endings;
-            if endings != 0 {
+            if let Some((endings, starts, ends)) = brackets.get(index.get()).copied().flatten() {
                 marks.ending = Some(Ending {
-                    label: (endings != previous_endings).then(|| ending_label(endings)),
-                    closed: marks.repeat.end_repeats.is_some(),
+                    label: starts.then(|| ending_label(endings)),
+                    closed: ends,
                 });
             }
-            previous_endings = endings;
             marks
         })
         .collect()
+}
+
+/// The alternative-ending bracket of every measure, for drawing: the ending numbers it
+/// shows, and whether the bracket starts and ends there.
+///
+/// Guitar Pro marks only the first measure of an ending and extends it over the following
+/// ones ("the alternate endings are implicitly extended"); the bracket runs through the
+/// last repeat close of its repeat group, or only up to the measure before a different
+/// ending's number. The same number on several bars is one ending. A measure that starts
+/// an ending after its group's last close (the one played on the final pass) gets a
+/// bracket of its own.
+fn ending_brackets(song: &Song) -> Vec<Option<(u8, bool, bool)>> {
+    let count = song.measure_count();
+    let mut brackets = vec![None; count];
+    let mut group_end = vec![None; count];
+    for repeats in song.repeat_groups() {
+        if let Some(slots) = group_end.get_mut(repeats.start.get()..=repeats.end.get()) {
+            slots.fill(Some(repeats.end.get()));
+        }
+    }
+    let mut index = 0;
+    while index < count {
+        let Some(mark) = song.repeat(MeasureIndex::new(index)) else {
+            break;
+        };
+        if mark.endings == 0 {
+            index = index.saturating_add(1);
+            continue;
+        }
+        let endings = mark.endings;
+        let bounded = group_end.get(index).copied().flatten().unwrap_or(index);
+        let mut end = bounded;
+        for next in index.saturating_add(1)..=bounded {
+            if song
+                .repeat(MeasureIndex::new(next))
+                .is_some_and(|next| next.endings != 0 && next.endings != endings)
+            {
+                end = next.saturating_sub(1);
+                break;
+            }
+        }
+        for at in index..=end {
+            if let Some(slot) = brackets.get_mut(at) {
+                *slot = Some((endings, at == index, at == end));
+            }
+        }
+        index = end.saturating_add(1);
+    }
+    brackets
 }
 
 /// "1." for the first ending, "1., 3." for an ending taken on passes 1 and 3.

@@ -105,6 +105,16 @@ pub struct Repeat {
     pub endings: u8,
 }
 
+/// The measures between a repeat open and the last repeat close that jumps back to it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct RepeatGroup {
+    /// The measure a repeat close of the group jumps back to: a repeat open, or the
+    /// measure after the previous group.
+    pub start: MeasureIndex,
+    /// The group's last repeat close.
+    pub end: MeasureIndex,
+}
+
 /// A value clamped to the MIDI data range 0-127.
 fn midi_value(value: i64) -> u8 {
     u8::try_from(value.clamp(0, MIDI_MAX)).unwrap_or(0)
@@ -156,6 +166,51 @@ impl Song {
             end_repeats: u8::try_from(header.repeat_close).ok().filter(|&n| n > 0),
             endings: header.repeat_alternative,
         })
+    }
+
+    /// The song's repeat groups, in order: each from a repeat open (or the measure after
+    /// the previous group's last close) through its last repeat close. A repeat close
+    /// without a repeat open jumps back to the song's start. Only the last close of a
+    /// group ends it; an earlier one repeats on its own.
+    pub fn repeat_groups(&self) -> Vec<RepeatGroup> {
+        let count = self.measure_count();
+        let marks: Vec<Repeat> = (0..count)
+            .map(|index| self.repeat(MeasureIndex::new(index)).unwrap_or_default())
+            .collect();
+        // The last close of each group: no other close follows before a new group opens.
+        let mut last_closing = vec![false; count];
+        let mut closing_ahead = false;
+        for index in (0..count).rev() {
+            let Some(mark) = marks.get(index) else {
+                continue;
+            };
+            if mark.start {
+                closing_ahead = false;
+            }
+            let close = mark.end_repeats.is_some();
+            if let Some(last) = last_closing.get_mut(index) {
+                *last = close && !closing_ahead;
+            }
+            closing_ahead |= close;
+        }
+        let mut groups = Vec::new();
+        let mut start = 0;
+        for index in 0..count {
+            let Some(mark) = marks.get(index) else {
+                continue;
+            };
+            if mark.start {
+                start = index;
+            }
+            if mark.end_repeats.is_some() && last_closing.get(index).copied().unwrap_or(false) {
+                groups.push(RepeatGroup {
+                    start: MeasureIndex::new(start),
+                    end: MeasureIndex::new(index),
+                });
+                start = index.saturating_add(1);
+            }
+        }
+        groups
     }
 
     /// Whether `measure` is in free time (Guitar Pro's "no metronome"), or `None` if
@@ -484,6 +539,54 @@ mod tests {
         let song = from_gp(gp).unwrap();
         assert_eq!(song.track_sound(TrackIndex::new(0)).unwrap().program, 29);
         assert_eq!(song.track_sound(TrackIndex::new(1)), None);
+    }
+
+    #[test]
+    fn repeat_groups_run_from_an_open_to_the_last_close() {
+        let mut gp = test_song(vec![track(
+            "Guitar",
+            GUITAR_6,
+            (0..8).map(|_| measure((4, 4), vec![])).collect(),
+        )]);
+        gp.measure_headers[1].repeat_open = true;
+        // An earlier close repeats on its own; the group ends at the last one.
+        gp.measure_headers[3].repeat_close = 1;
+        gp.measure_headers[5].repeat_close = 2;
+        // A repeat open starts the next group; a close without one repeats from there.
+        gp.measure_headers[6].repeat_open = true;
+        gp.measure_headers[7].repeat_close = 1;
+        let song = from_gp(gp).unwrap();
+        assert_eq!(
+            song.repeat_groups(),
+            [
+                RepeatGroup {
+                    start: MeasureIndex::new(1),
+                    end: MeasureIndex::new(5),
+                },
+                RepeatGroup {
+                    start: MeasureIndex::new(6),
+                    end: MeasureIndex::new(7),
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn a_close_without_an_open_starts_its_group_at_the_song_start() {
+        let mut gp = test_song(vec![track(
+            "Guitar",
+            GUITAR_6,
+            (0..3).map(|_| measure((4, 4), vec![])).collect(),
+        )]);
+        gp.measure_headers[2].repeat_close = 1;
+        let song = from_gp(gp).unwrap();
+        assert_eq!(
+            song.repeat_groups(),
+            [RepeatGroup {
+                start: MeasureIndex::new(0),
+                end: MeasureIndex::new(2),
+            }]
+        );
     }
 
     #[test]

@@ -484,6 +484,7 @@
 <text x="93.93" y="96.52" font-family="Noto Sans" font-size="1.1" fill="#404040">9</text>
 <line x1="94.13" y1="93.52" x2="131.8" y2="93.52" stroke="#404040" stroke-width="0.12"/>
 <line x1="94.13" y1="93.52" x2="94.13" y2="94.72" stroke="#404040" stroke-width="0.12"/>
+<line x1="131.8" y1="93.52" x2="131.8" y2="94.72" stroke="#404040" stroke-width="0.12"/>
 <text x="94.53" y="94.62" font-family="Noto Sans" font-size="1.1" fill="#404040">2.</text>
 <line x1="131.92" y1="109.32" x2="131.92" y2="116.82" stroke="#303030" stroke-width="0.16"/>
 <line x1="131.92" y1="97.32" x2="131.92" y2="101.32" stroke="#303030" stroke-width="0.16"/>

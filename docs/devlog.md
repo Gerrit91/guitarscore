@@ -6746,3 +6746,28 @@ Fourth round, after the owner's iPhone check (preview deploy):
   columns from 640 pt. The practice files are split by part (controls, header, drawer,
   widgets).
 
+
+## 2026-11-22: Alternative endings over several bars play their bars on one pass
+
+Guitar Pro marks only the first bar of an alternative ending; the bars after it belong to
+the same pass ("the alternate endings are implicitly extended", GP's manual). Playback
+treated every unmarked bar as common, so the first ending of `holywars.gp` (bar 105, a
+bracket through the repeat close at 117) replayed bars 106-116 on the second pass and never
+reached the second ending at 118. `gscore-play`'s repeat order now extends an ending over
+the following bars, through its repeat group's last repeat close (`Repeats` in `order.rs`,
+following the model alphaTab uses). A repeat close inside skipped ending bars is passed
+over, except the group's last close: its passes still count, or a third pass would be
+lost. Repeat groups with endings share one pass counter; bars after the last close (the
+second ending) play on every pass, which is the final pass in practice since earlier ones
+jumped back at the close. Tests: multi-bar ending, three passes, and the next repeat
+section. `staff.gp5`'s golden gained the second-pass bar 2, as its `.gp` and `.gpx`
+already played it (the GP5 ending byte reads as a wider mask).
+
+The score now shows the same span: the ending bracket runs from the bar that carries the
+number through its repeat group's last close (the closing hook sits on that bar), one
+piece of line per bar with no gaps where bars meet. `Song::repeat_groups()` (the model,
+also used by the playback order) gives each group's first and last bar, so layout and
+playback cannot disagree about where a group ends. The last ending, after the group's
+close, keeps a bracket of its own and now closes with a hook too (`multi_staff.*.svg`
+goldens updated for that one line). Checked on `holywars.gp` in the PDF render: ending 1
+runs from bar 105 across the page breaks to the repeat at 117, ending 2 covers bar 118.
