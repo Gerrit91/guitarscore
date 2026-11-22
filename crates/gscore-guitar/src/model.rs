@@ -47,6 +47,11 @@ pub struct StringModel {
     /// bridge or a magnetic pickup passes) rather than its swing: 0 full and round, 1 lean
     /// in the lows like a real guitar.
     pub bridge: f32,
+    /// The same for a palm-muted or dead note (only on a string with a pickup), levelled
+    /// to sound as loud as `bridge` around 500 Hz: an electric guitar's palm-muted chug is
+    /// heard leaner and harder than its ringing chords. The same as `bridge` changes
+    /// nothing.
+    pub palm_bridge: f32,
     /// The body's or pickup's low cut, in Hz.
     pub low_cut: f32,
     /// The second direction of vibration's share (0 off: one perfectly periodic loop).
@@ -102,6 +107,7 @@ impl GuitarModel {
                 resonance: 0.7,
                 level: 0.4,
                 bridge: 0.5,
+                palm_bridge: 0.5,
                 low_cut: 70.0,
                 second: 0.4,
                 detune: 1.0,
@@ -127,6 +133,7 @@ impl GuitarModel {
                 resonance: 1.8,
                 level: 0.4,
                 bridge: 0.85,
+                palm_bridge: 0.85,
                 low_cut: 110.0,
                 second: 0.5,
                 detune: 1.5,
@@ -145,7 +152,8 @@ impl GuitarModel {
             GuitarModel::Electric => StringModel {
                 sustain: 15.3,
                 sustain_exponent: 0.43,
-                brilliance: 2.7,
+                // Refitted with the bridge mix to the owner's strummed chords (2026-11-22).
+                brilliance: 4.0,
                 stiffness: -0.06,
                 stiffness_stages: 2,
                 pick_position: 0.087,
@@ -157,9 +165,18 @@ impl GuitarModel {
                 resonance: 1.43,
                 // The level the amps' input is calibrated for. (The owner's DI came in
                 // 8 dB hotter, 2026-11-22: its preamp's setting; the tones compared with
-                // it raise their string level to 0.88.)
-                level: 0.35,
-                bridge: 0.93,
+                // it raise their string level to 0.58.) Lower than the 0.35 it was with
+                // the force alone, since the swing brings more body: a palm-muted note,
+                // levelled to the ringing mix, plays as loud as it did at 0.35.
+                level: 0.23,
+                // Mostly the string's swing, some of its force at the bridge: fitted to
+                // the owner's chords (their strike and ring against the DI, through the
+                // clean, high-gain and lead amps). The force alone (0.93, fitted to single
+                // notes) made a chord's strike thin and fizzy and its ring die too soon.
+                bridge: 0.3,
+                // A palm-muted chug keeps the mix it was fitted with (2026-11-22): mostly
+                // the force, its hit lean and hard.
+                palm_bridge: 0.93,
                 low_cut: 68.0,
                 second: 0.05,
                 detune: 1.0,
@@ -187,6 +204,7 @@ impl GuitarModel {
                 resonance: 0.9,
                 level: 0.5,
                 bridge: 0.5,
+                palm_bridge: 0.5,
                 low_cut: 30.0,
                 second: 0.3,
                 detune: 0.8,
@@ -297,6 +315,7 @@ impl StringModel {
             resonance: fit(self.resonance, ranges::RESONANCE, 0.7),
             level: fit(self.level, ranges::LEVEL, 0.35),
             bridge: fit(self.bridge, ranges::BRIDGE, 0.5),
+            palm_bridge: fit(self.palm_bridge, ranges::BRIDGE, 0.5),
             low_cut: fit(self.low_cut, ranges::LOW_CUT, 60.0),
             second: fit(self.second, ranges::SECOND, 0.4),
             detune: fit(self.detune, ranges::DETUNE, 1.0),

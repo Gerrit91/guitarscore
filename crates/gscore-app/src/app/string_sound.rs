@@ -371,6 +371,24 @@ pub(super) fn sound_knobs(
              further onto the strings, a short, dark, tight chug.",
         )
         .changed;
+        let mut palm_bridge = sound.palm_bridge.unwrap_or(sound.bridge);
+        if round_knob(
+            ui,
+            &mut palm_bridge,
+            ranges::BRIDGE,
+            "Palm bridge",
+            "",
+            0.93,
+            false,
+            "The Bridge knob for palm-muted and dead notes, on strings with a pickup, at \
+             the same loudness: higher is a leaner, harder chug. The same as Bridge: as \
+             ringing notes.",
+        )
+        .changed
+        {
+            sound.palm_bridge = Some(palm_bridge);
+            changed = true;
+        }
     });
     group(ui, tab, StringsTab::String, |ui| {
         changed |= round_knob(

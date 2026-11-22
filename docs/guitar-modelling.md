@@ -419,6 +419,39 @@ knob's middle darker than its heavy end. The palm mute needs a steeper loss filt
 - **Known gap:** a palm-muted high E's highs come out about -57 dB against the open
   note's (measured -46 at most): the palm is fitted on the low E only, not per pitch.
 
+### The chords refit: the bridge mix (2026-11-22)
+
+- **The owner:** with H the chugs are convincing, but the chords have too many highs;
+  the first chord does not sound good. B (the DI through the owner's own tone) is the
+  reference for a chord.
+- **Not the cab, not the palm:** H's chords are H's G (the palm refit does not touch a
+  ringing note). B is darker than C, H and the app's matched cab above 4.5 kHz (about
+  7 dB): the owner's own cab. Against C (the DI, same chain) H's ring is right; its strike
+  is not.
+- **The strike:** against the DI through the same chain, H's first 50 ms were 6-9 dB
+  short at 80-500 Hz and 2-9 dB too bright above 500 Hz (15-30 dB through the clean amp,
+  which does not compress), and the ring died too soon (dry: 80-200 Hz 6 dB short, single
+  notes 10 dB too far down by 2-4 s). Pick hardness, click, excitation shape, brilliance
+  and pickup tone each moved the dry strike by at most 2 dB; the bridge mix did it. The
+  owner's own tones (bridge 0.18) were dialed in there by ear.
+- **The fit:** to five strums (E, G, A5 down; E, G up) by band over 0-50 ms, 50-300 ms and
+  the ring (0.6-3 s), through the clean, high-gain and lead chains with the onsets taken
+  from the dry signals, and to the dry ring's absolute band levels: bridge 0.3 (was
+  0.93), brilliance 4 s (2.7), level 0.23 (0.35; 0.578 in the tones compared with the DI).
+  Error 12.7 to 5.1; the strike through the three amps 80-500 Hz -6.9 to -3.2 dB, 2-5 kHz
+  +7.8 to +2.3, 5-12 kHz +9.4 to +4.1; the dry ring within +3/-1 dB by band. Single notes:
+  how far down at 2-4 s, error 10.2 to 4.8 dB.
+- **The chugs keep theirs:** with the ringing mix they gained up to 3.5 dB at 40-80 Hz
+  through the high-gain amp and lost the hit's thud (-9.4 dB against the body, the DI's
+  +3 to +9). So a palm-muted or dead note on a string with a pickup is heard through its
+  own mix, `palm_bridge` (0.93 on the electric), levelled to the ringing mix's loudness at
+  500 Hz: the chugs through the high-gain chain differ from before by -53 dB. A sound
+  saved before the knob uses its own `bridge` for it, so it plays as it did.
+- **Known gaps:** the strike's first 50 ms still 3 dB short in the bass and 2-4 dB bright
+  above 2 kHz; dry, a palm-muted low E's fundamental is now about 10 dB under an open
+  one's (the DI: about the same), hidden through the amps; the clean amp's strike stays
+  the furthest off.
+
 ## The effect chain (2026-11-06)
 
 - **The board** (owner's design): per kind of string, six boxes in a fixed row joined by

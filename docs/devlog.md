@@ -6896,3 +6896,16 @@ fretted sustain, treble corner or a pickup gets its kind's values when the setti
 (what it already played with), and the settings file holds them from the next save, so
 the tone keeps its sound when the kind's defaults are fitted again. (`cargo xtask tones
 programs` already showed every imported tone's saved tone as changed before this.)
+
+2026-11-22: the chords refit. With H the chugs convinced the owner, the chords had "too
+many highs". H's chords are G's, its ring matches the DI through the same chain; its
+strike did not: thin (6-9 dB short in the bass in the first 50 ms) and fizzy (2-9 dB
+bright above 500 Hz, 15-30 through the clean amp), and its ring died too soon. Only the
+bridge mix moved that (pick, click, shape, losses and tone at most 2 dB each). Fitted
+through the clean, high-gain and lead chains: bridge 0.3, brilliance 4 s, level 0.23
+(error 12.7 to 5.1). Palm-muted and dead notes on a pickup keep their mix through a new
+knob, `palm_bridge` (0.93, levelled to the ringing mix at 500 Hz, "Palm bridge" in the
+Strings editor), so the chugs are unchanged; older sounds use their own bridge for it.
+Two tests now say what they measure (the palm's damping through one mix, the click above
+1 kHz); two new ones guard the palm mix and the fitted chugs. Listening set
+preview-fitted/ I and tone files "Refit X" outside the repo (see `docs/guitar-modelling.md`).

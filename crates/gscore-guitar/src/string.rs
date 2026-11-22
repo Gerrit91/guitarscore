@@ -46,6 +46,8 @@ const SECOND_DECAY: f32 = 0.45;
 const SECOND_HIGH_DECAY: f32 = 0.6;
 /// The bridge force is scaled to the swing's level at this frequency, Hz.
 const BRIDGE_AT: f32 = 1_000.0;
+/// A palm-muted note's bridge mix is levelled to the ringing one's at this frequency, Hz.
+const PALM_BRIDGE_LEVEL_AT: f32 = 500.0;
 /// Quality of the low cut (Butterworth).
 const LOW_CUT_Q: f32 = 0.707;
 /// A palm-muted string's 60 dB decay times and how far up it keeps the harmonics, at the
@@ -166,6 +168,10 @@ pub struct StringVoice {
     /// The bridge's last input, for its force (the swing's change), and the force's scale.
     last: f32,
     bridge_scale: f32,
+    /// The bridge mix the note is heard through and its gain (set at each pick: a
+    /// palm-muted or dead note's own, levelled, on a string with a pickup).
+    mix: f32,
+    mix_gain: f32,
     /// Where a magnetic pickup hears the string.
     pickup: PickupComb,
     /// The body's or pickup's low cut and tone on the output.
@@ -219,6 +225,8 @@ impl StringVoice {
             dc: DcBlocker::new(sample_rate),
             last: 0.0,
             bridge_scale: 1.0 / (2.0 * (PI * BRIDGE_AT / sample_rate).sin()).max(1e-6),
+            mix: model.bridge,
+            mix_gain: 1.0,
             pickup: PickupComb::new(samples),
             low_cut: Biquad::highpass(sample_rate, model.low_cut, LOW_CUT_Q),
             tone: Biquad::lowpass(sample_rate, model.tone, model.resonance),
@@ -281,6 +289,7 @@ impl StringVoice {
     /// Changes the string model (the vibration goes on).
     pub fn set_model(&mut self, model: StringModel) {
         self.model = model.sanitized();
+        self.choose_mix();
         self.tone = self.tone.retuned(Biquad::lowpass(
             self.sample_rate,
             self.model.tone,
@@ -336,6 +345,7 @@ impl StringVoice {
         self.frequency = frequency;
         self.design_dispersion();
         self.set_damping(damping, true);
+        self.choose_mix();
         self.level = self.level_target;
         self.tension = Tension::default();
         let (amplitude, hardness, noise) = match pluck.attack {
@@ -430,7 +440,7 @@ impl StringVoice {
         let pickup = self.model.pickup;
         let level_step = (self.level_target - self.level) / out.len() as f32;
         let second = self.model.second > 0.0;
-        let bridge = self.model.bridge;
+        let (bridge, mix_gain) = (self.mix, self.mix_gain);
         let picking = self.pick.is_active();
         let mut peak = 0.0_f32;
         for sample in out.iter_mut() {
@@ -458,7 +468,8 @@ impl StringVoice {
                 .tone
                 .process(self.low_cut.process(self.dc.process(heard)))
                 * self.level
-                * self.model.level;
+                * self.model.level
+                * mix_gain;
             peak = peak.max(out_sample.abs());
             *sample += out_sample;
         }
@@ -488,6 +499,32 @@ impl StringVoice {
     /// The pitch's offset from the note, in cents: the bend and the sharp start of a pluck.
     fn cents(&self) -> f32 {
         self.bend + self.tension.cents()
+    }
+
+    /// Chooses the bridge mix for the damping now: a palm-muted or dead note on a string
+    /// with a pickup is heard through the palm's, levelled to sound as loud as the ringing
+    /// mix around [`PALM_BRIDGE_LEVEL_AT`].
+    fn choose_mix(&mut self) {
+        let muted = matches!(
+            self.damping,
+            Damping::PalmMuted | Damping::PalmReleased | Damping::Dead
+        );
+        let (ringing, palm) = (self.model.bridge, self.model.palm_bridge);
+        (self.mix, self.mix_gain) = if muted && self.model.pickup != Pickup::None && palm != ringing
+        {
+            let level = |bridge: f32| self.mix_level(bridge);
+            (palm, level(ringing) / level(palm).max(1e-6))
+        } else {
+            (ringing, 1.0)
+        };
+    }
+
+    /// How loud the mix `bridge` is at [`PALM_BRIDGE_LEVEL_AT`]: the swing's share and the
+    /// force's (a quarter period later, scaled to the swing at [`BRIDGE_AT`]) added.
+    fn mix_level(&self, bridge: f32) -> f32 {
+        let force = (PI * PALM_BRIDGE_LEVEL_AT / self.sample_rate).sin()
+            / (PI * BRIDGE_AT / self.sample_rate).sin().max(1e-6);
+        (1.0 - bridge).hypot(bridge * force)
     }
 
     fn glide_samples(&self) -> usize {

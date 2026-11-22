@@ -67,6 +67,7 @@ fn set(model: &mut StringModel, key: &str, value: &str) {
         "inharmonicity" => model.inharmonicity = number(),
         "fretted_sustain" => model.fretted_sustain = number(),
         "treble_corner" => model.treble_corner = number(),
+        "palm_bridge" => model.palm_bridge = number(),
         _ => extra(model, key, number()),
     }
 }
