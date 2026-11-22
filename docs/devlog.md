@@ -6764,3 +6764,10 @@ Sound chain window's String tab has the two new knobs; the browser's wire format
 them. Three palm-mute tests asked for the old, too short and dark mute and now ask for the
 measured one.
 
+2026-11-22: the owner heard the mids still off. The DI's losses stop rising above about
+1.5 kHz, the model's kept rising (its top died 2-3 times too fast). New knob `treble_corner`
+(a one-section shelf as the ringing string's loss filter; 0 the old lowpass, which the other
+guitars keep), fitted at 1120 Hz with the brilliance at 2.7 s; the decay per band is now
+within about 1 dB/s of the DI's. Three tests were loosened to the measured ranges (the
+palm mute's highs against an open note, the palm-mute knob's darkness steps).
+

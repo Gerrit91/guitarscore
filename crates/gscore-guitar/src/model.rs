@@ -78,6 +78,11 @@ pub struct StringModel {
     /// A fretted note's sustain as a share of an open string's at the same pitch (the
     /// fingertip on the fret takes energy out of the string): measured about 0.6.
     pub fretted_sustain: f32,
+    /// Where the string's losses stop growing with the pitch, Hz: above it the treble rings
+    /// about as long as the highs around 2 kHz (a real string's top does; measured about
+    /// 1.2 kHz on an electric guitar, 2026-11-22). 0 for losses that keep growing (the
+    /// treble dies much sooner than the highs).
+    pub treble_corner: f32,
 }
 
 impl GuitarModel {
@@ -107,6 +112,7 @@ impl GuitarModel {
                 attack_pitch: ATTACK_PITCH,
                 inharmonicity: 0.3e-4,
                 fretted_sustain: 0.7,
+                treble_corner: 0.0,
             },
             GuitarModel::Steel => StringModel {
                 sustain: 9.0,
@@ -131,37 +137,39 @@ impl GuitarModel {
                 attack_pitch: ATTACK_PITCH,
                 inharmonicity: 0.8e-4,
                 fretted_sustain: 0.6,
+                treble_corner: 0.0,
             },
             // Fitted to the owner's reference recordings (2026-11-21: a Schecter with a
             // high-output bridge humbucker, its DI against these strings note by note:
             // the spectrum and decay of each partial, open, fretted and palm-muted).
             GuitarModel::Electric => StringModel {
-                sustain: 16.0,
-                sustain_exponent: 0.32,
-                brilliance: 1.35,
+                sustain: 15.3,
+                sustain_exponent: 0.43,
+                brilliance: 2.7,
                 stiffness: -0.06,
                 stiffness_stages: 2,
-                pick_position: 0.08,
-                hardness: 0.67,
-                softness: 0.24,
+                pick_position: 0.087,
+                hardness: 0.68,
+                softness: 0.27,
                 // A loaded high-output humbucker's coil resonance: a soft peak near
-                // 1.35 kHz, then a steep roll-off.
-                tone: 1_350.0,
-                resonance: 1.45,
+                // 1.4 kHz, then a steep roll-off.
+                tone: 1_400.0,
+                resonance: 1.43,
                 level: 0.35,
-                bridge: 0.9,
-                low_cut: 70.0,
+                bridge: 0.93,
+                low_cut: 68.0,
                 second: 0.05,
                 detune: 1.0,
                 // A humbucker at the bridge, as most rock guitars are played.
                 pickup: crate::Pickup::Humbucker,
-                // The fit put it at 0.099; the bridge's standard place is as close.
+                // The fit put it at 0.10; the bridge's standard place is as close.
                 pickup_position: crate::pickup_positions::BRIDGE,
                 palm_mute: PALM_MUTE,
                 pick_noise: PICK_NOISE,
                 attack_pitch: ATTACK_PITCH,
                 inharmonicity: INHARMONICITY,
                 fretted_sustain: FRETTED_SUSTAIN,
+                treble_corner: TREBLE_CORNER,
             },
             GuitarModel::Bass => StringModel {
                 sustain: 7.0,
@@ -186,6 +194,7 @@ impl GuitarModel {
                 attack_pitch: ATTACK_PITCH,
                 inharmonicity: 1.5e-4,
                 fretted_sustain: 0.6,
+                treble_corner: 0.0,
             },
         }
     }
@@ -201,7 +210,9 @@ const ATTACK_PITCH: f32 = 4.0;
 /// The electric guitar's inharmonicity and fretted sustain, measured on the owner's
 /// reference recordings (2026-11-21, `docs/reference-recordings.md`).
 const INHARMONICITY: f32 = 1.0e-4;
-const FRETTED_SUSTAIN: f32 = 0.6;
+const FRETTED_SUSTAIN: f32 = 0.58;
+/// The electric guitar's treble corner, Hz (fitted 2026-11-22).
+const TREBLE_CORNER: f32 = 1_120.0;
 /// How the inharmonicity of an open string follows its pitch: `(110 / f) ^ this` (a
 /// lower string is a heavier gauge). Measured: low E 1.5e-4, high E 0.2e-4 (2026-11-21).
 const INHARMONICITY_EXPONENT: f32 = 1.4;
@@ -240,6 +251,7 @@ pub mod ranges {
     pub const INHARMONICITY: (f32, f32) = (0.0, 2.0e-3);
     /// Share of the open string's sustain.
     pub const FRETTED_SUSTAIN: (f32, f32) = (0.2, 1.0);
+    pub const TREBLE_CORNER: (f32, f32) = (0.0, 1_900.0);
 }
 
 impl StringModel {
@@ -296,6 +308,7 @@ impl StringModel {
             attack_pitch: fit(self.attack_pitch, ranges::ATTACK_PITCH, ATTACK_PITCH),
             inharmonicity: fit(self.inharmonicity, ranges::INHARMONICITY, 0.0),
             fretted_sustain: fit(self.fretted_sustain, ranges::FRETTED_SUSTAIN, 1.0),
+            treble_corner: fit(self.treble_corner, ranges::TREBLE_CORNER, 0.0),
         }
     }
 }

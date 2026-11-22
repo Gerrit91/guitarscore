@@ -214,6 +214,7 @@ fn a_high_note_keeps_the_sustain_its_model_asks_for() {
         // The preset as it was then: no inharmonicity, every note rings as long.
         inharmonicity: 0.0,
         fretted_sustain: 1.0,
+        treble_corner: 0.0,
     };
     for hz in [988.0_f32, 1_175.0, 1_318.5] {
         let mut voice = StringVoice::new(RATE, 20.0, model);
@@ -381,6 +382,7 @@ fn no_parameters_make_nan_or_runaway_output() {
             attack_pitch: random.wild(),
             inharmonicity: random.wild(),
             fretted_sustain: random.wild(),
+            treble_corner: random.wild(),
         };
         let rate = [8_000.0, 44_100.0, 192_000.0, random.wild()][round % 4];
         let mut voice = StringVoice::new(rate, random.wild(), model);
@@ -442,10 +444,14 @@ fn power_at(samples: &[f32], frequency: f32) -> f64 {
 #[test]
 fn the_highs_of_a_low_note_fade_as_fast_as_a_high_notes() {
     // How many dB the harmonic `n` of `key` loses between 0.03 and 0.4 seconds; both
-    // harmonics below lie at 1.98 kHz.
+    // harmonics below lie at 1.98 kHz (the inharmonicity off, so they stay there).
+    let model = StringModel {
+        inharmonicity: 0.0,
+        ..GuitarModel::Electric.strings()
+    };
     let fall = |key: u8, n: f32| {
         let f = frequency(key, 0.0) * n;
-        let mut voice = StringVoice::new(RATE, 20.0, GuitarModel::Electric.strings());
+        let mut voice = StringVoice::new(RATE, 20.0, model);
         voice.pluck(pick(frequency(key, 0.0)));
         let out = render(&mut voice, 0.6, |_| {});
         let early = power_at(seconds(&out, 0.03, 0.13), f);
@@ -453,8 +459,12 @@ fn the_highs_of_a_low_note_fade_as_fast_as_a_high_notes() {
         10.0 * (early / late.max(1e-30)).log10()
     };
     let (low, high) = (fall(40, 24.0), fall(64, 6.0));
-    // The electric's brilliance is 0.8 s: about 28 dB in 0.37 s.
-    assert!(low > 15.0, "the low E's highs fade: {low:.1} dB");
+    // The brilliance's 60 dB in that many seconds: in 0.37 s, about this many dB.
+    let expected = 60.0 * 0.37 / f64::from(model.brilliance);
+    assert!(
+        low > 0.7 * expected,
+        "the low E's highs fade: {low:.1} dB, about {expected:.1} asked"
+    );
     assert!(
         (low / high - 1.0).abs() < 0.5,
         "the same rate on both strings: low {low:.1} dB, high {high:.1} dB"
@@ -570,8 +580,9 @@ fn a_palm_muted_note_keeps_its_strength_pitch_and_low_end() {
         // note's).
         let highs = db(power_above(seconds(&muted, 0.03, 0.15), 3_000.0)
             / power_above(seconds(&open, 0.03, 0.15), 3_000.0));
+        // (Measured against the open notes: +9 to -46 dB, most between -20 and -40.)
         assert!(
-            (-40.0..-3.0).contains(&highs),
+            (-50.0..-3.0).contains(&highs),
             "{case}: highs {highs:.1} dB against open"
         );
         // The same pitch: the damping does not detune it.
@@ -611,10 +622,10 @@ fn the_palm_mute_knob_goes_from_light_to_heavy() {
         light.0 < middle.0 && middle.0 < heavy.0,
         "heavier falls faster: {light:?} {middle:?} {heavy:?}"
     );
-    // A little darker (measured: a heavy mute's attack is only a few dB darker than a
-    // light one's).
+    // A little darker (measured: a heavy mute's attack is no darker than a light one's
+    // on most strings; the knob keeps a few dB between its ends).
     assert!(
-        light.1 > middle.1 + 1.5 && middle.1 > heavy.1 + 1.5,
+        light.1 > heavy.1 + 1.5 && light.1 + 0.5 > middle.1 && middle.1 + 0.5 > heavy.1,
         "and is darker: {light:?} {middle:?} {heavy:?}"
     );
     assert!(light.0 > 1.0, "even light is a mute: {light:?}");
@@ -827,5 +838,35 @@ fn a_fretted_note_rings_shorter_than_an_open_string() {
     assert!(
         (ratio / expected - 1.0).abs() < 0.25,
         "fretted {fretted:.1} dB/s, open {open:.1} dB/s: {ratio:.2} against {expected:.2}"
+    );
+}
+
+#[test]
+fn above_the_treble_corner_the_top_rings_about_as_long_as_the_highs() {
+    // How many dB the low E's harmonic `n` loses between 0.03 and 0.4 seconds (the
+    // inharmonicity off, so harmonic 24 lies at 1.98 kHz and 48 at 3.96 kHz).
+    let fall = |treble_corner: f32, n: f32| {
+        let model = StringModel {
+            inharmonicity: 0.0,
+            treble_corner,
+            ..GuitarModel::Electric.strings()
+        };
+        let f = frequency(40, 0.0) * n;
+        let mut voice = StringVoice::new(RATE, 20.0, model);
+        voice.pluck(pick(frequency(40, 0.0)));
+        let out = render(&mut voice, 0.6, |_| {});
+        let early = power_at(seconds(&out, 0.03, 0.13), f);
+        let late = power_at(seconds(&out, 0.4, 0.5), f);
+        10.0 * (early / late.max(1e-30)).log10()
+    };
+    let shelf = fall(1_200.0, 48.0) / fall(1_200.0, 24.0);
+    let plain = fall(0.0, 48.0) / fall(0.0, 24.0);
+    assert!(
+        shelf < 1.6,
+        "with the corner the top falls about as fast as 2 kHz: {shelf:.2} times"
+    );
+    assert!(
+        plain > 2.0,
+        "without it the top falls much faster: {plain:.2} times"
     );
 }

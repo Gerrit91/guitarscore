@@ -89,8 +89,10 @@ pub(crate) fn dispersion(sample_rate: f32, frequency: f32, b: f32) -> f32 {
 }
 
 /// What a loop is tuned to: its pitch, how long its fundamental and its highs around
-/// 2 kHz take to fall 60 dB, its stiffness, and where a palm keeps the low end (`corner`,
-/// Hz: the loss filter is flat below it and damps everything above; 0 for none).
+/// 2 kHz take to fall 60 dB, its stiffness, and where the loss filter is a shelf (`corner`,
+/// Hz: flat below it, and above it falling to a floor, so the top rings about as long as
+/// the highs around 2 kHz; 0 for a plain lowpass). A palm's shelf runs in two `sections`
+/// (twice as steep), a ringing string's treble shelf in one.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) struct Tuning {
     pub(crate) frequency: f32,
@@ -99,6 +101,7 @@ pub(crate) struct Tuning {
     pub(crate) stiffness: f32,
     pub(crate) stages: usize,
     pub(crate) corner: f32,
+    pub(crate) sections: usize,
 }
 
 /// One loop.
@@ -121,7 +124,7 @@ pub(crate) struct Loop {
     glide_left: usize,
     /// The loss filter last designed, and for which pitch and decay times (the design is
     /// a search, so it is only redone when one of them changes).
-    design: (f32, f32, f32, f32),
+    design: (f32, f32, f32, f32, usize),
     darkness: f32,
     zero: f32,
 }
@@ -143,7 +146,7 @@ impl Loop {
             delay_target: MIN_DELAY,
             delay_step: 0.0,
             glide_left: 0,
-            design: (0.0, 0.0, 0.0, 0.0),
+            design: (0.0, 0.0, 0.0, 0.0, 0),
             darkness: 0.0,
             zero: 0.0,
         }
@@ -164,17 +167,31 @@ impl Loop {
         // down at their own rate, the same on every string (a low string goes round its
         // loop less often, so a fixed filter would let its highs ring far too long).
         let per_period = |decay: f32| 10.0_f32.powf(-3.0 / (decay.max(0.002) * frequency));
-        let key = (frequency, tuning.decay, tuning.high_decay, tuning.corner);
+        let sections = if tuning.corner > 0.0 {
+            tuning.sections.clamp(1, 2)
+        } else {
+            0
+        };
+        let key = (
+            frequency,
+            tuning.decay,
+            tuning.high_decay,
+            tuning.corner,
+            sections,
+        );
         if key != self.design {
             self.design = key;
             let high = (TAU * BRILLIANCE_AT / sample_rate).min(3.0);
             let ratio = per_period(tuning.high_decay) / per_period(tuning.decay);
             let corner = (TAU * tuning.corner / sample_rate).min(3.0);
+            // Each shelf section takes its share of the ratio (in dB).
+            let share = |value: f32| {
+                if sections == 2 { value.sqrt() } else { value }
+            };
             let (mut darkness, mut zero) = if high <= w * 1.2 {
                 (0.0, 0.0)
-            } else if tuning.corner > 0.0 && corner > w && corner < high {
-                // Two equal sections, each with half of the ratio (in dB).
-                shelf_for_ratio(w, high, corner, ratio.sqrt())
+            } else if sections > 0 && corner > w && corner < high {
+                shelf_for_ratio(w, high, corner, share(ratio))
             } else {
                 (one_pole_for_ratio(w, high, ratio), 0.0)
             };
@@ -186,9 +203,9 @@ impl Loop {
             // than asked: the fundamental's sustain is what the player hears (the same
             // trade the palm mute makes at its corner).
             let wanted = per_period(tuning.decay) / MAX_LOOP_GAIN;
-            if tuning.corner > 0.0 && darkness > 0.0 {
-                // Two shelf sections, each with the same pole and zero.
-                let wanted = wanted.sqrt().min(1.0);
+            if sections > 0 && darkness > 0.0 {
+                // The shelf sections, each with the same pole and zero.
+                let wanted = share(wanted).min(1.0);
                 if shelf_gain(darkness, zero, w) < wanted {
                     if wanted >= 1.0 {
                         zero = darkness;
@@ -219,7 +236,7 @@ impl Loop {
         let darkness = self.darkness.clamp(0.0, 0.995);
         let zero = self.zero.clamp(0.0, darkness);
         self.loss.set(darkness, zero);
-        let (loss_gain, loss_delay) = if tuning.corner > 0.0 && darkness > 0.0 {
+        let (loss_gain, loss_delay) = if sections == 2 && darkness > 0.0 {
             // A new second section starts where the first is, so switching adds no click.
             let palm = self.palm.get_or_insert(self.loss);
             palm.set(darkness, zero);
@@ -230,7 +247,14 @@ impl Loop {
             (gain * gain, 2.0 * delay)
         } else {
             self.palm = None;
-            (one_pole_gain(darkness, w), one_pole_delay(darkness, w))
+            if sections == 0 {
+                (one_pole_gain(darkness, w), one_pole_delay(darkness, w))
+            } else {
+                (
+                    shelf_gain(darkness, zero, w),
+                    shelf_delay(darkness, zero, w),
+                )
+            }
         };
         self.gain = (per_period(tuning.decay) / loss_gain).min(MAX_LOOP_GAIN);
         self.stages = tuning.stages.min(MAX_STIFFNESS_STAGES);
@@ -252,7 +276,7 @@ impl Loop {
 
     /// Forgets the loss design, so the next update makes it again (a new model).
     pub(crate) fn redesign(&mut self) {
-        self.design = (0.0, 0.0, 0.0, 0.0);
+        self.design = (0.0, 0.0, 0.0, 0.0, 0);
     }
 
     /// One sample: what leaves the line (before this pass's losses), or `None` when a

@@ -569,12 +569,18 @@ impl StringVoice {
                 self.model.stiffness_stages
             },
             // The palm's shelf (flat up to the kept harmonics) on bright strings; a dark
-            // string's own loss already takes its top harder than the shelf would.
-            corner: if self.palm_muted() && self.model.brilliance > PALM_SHELF_BRILLIANCE {
-                frequency * self.palm(PALM_KEEPS)
+            // string's own loss already takes its top harder than the shelf would. A
+            // ringing string's treble shelf, if the model has one.
+            corner: if self.palm_muted() {
+                if self.model.brilliance > PALM_SHELF_BRILLIANCE {
+                    frequency * self.palm(PALM_KEEPS)
+                } else {
+                    0.0
+                }
             } else {
-                0.0
+                self.model.treble_corner
             },
+            sections: if self.palm_muted() { 2 } else { 1 },
         };
         // The second vibration: a little detuned (half each way would move the heard
         // pitch; the first stays exact), and it gives its energy to the bridge sooner.

@@ -407,6 +407,24 @@ pub(super) fn sound_knobs(
              is mellow, long is bright and metallic.",
         )
         .changed;
+        let mut treble = sound.treble_corner.unwrap_or(0.0);
+        if round_knob(
+            ui,
+            &mut treble,
+            ranges::TREBLE_CORNER,
+            "Treble corner",
+            " Hz",
+            1_200.0,
+            false,
+            "Above this the overtones ring about as long as the brilliance's, as on a real \
+             string, so the top stays alive after the pick. 0: the higher, the sooner they \
+             die (dull soon after the attack).",
+        )
+        .changed
+        {
+            sound.treble_corner = Some(treble);
+            changed = true;
+        }
         changed |= round_knob(
             ui,
             &mut sound.stiffness,

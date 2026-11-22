@@ -428,6 +428,7 @@ impl Writer {
             attack_pitch,
             inharmonicity,
             fretted_sustain,
+            treble_corner,
         } = *model;
         for value in [sustain, sustain_exponent, brilliance, stiffness] {
             self.f32(value);
@@ -455,6 +456,7 @@ impl Writer {
             attack_pitch,
             inharmonicity,
             fretted_sustain,
+            treble_corner,
         ] {
             self.f32(value);
         }
@@ -702,6 +704,7 @@ impl<'a> Reader<'a> {
             attack_pitch,
             inharmonicity,
             fretted_sustain,
+            treble_corner,
         ] = self.floats()?;
         Ok(StringModel {
             sustain,
@@ -726,6 +729,7 @@ impl<'a> Reader<'a> {
             attack_pitch,
             inharmonicity,
             fretted_sustain,
+            treble_corner,
         })
     }
 

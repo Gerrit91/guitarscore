@@ -298,11 +298,24 @@ this: his DI through GuitarScore's own amp and cab sounded right, the strings di
   decay close.
 - **Saved tones:** a sound saved before the two knobs gets its kind's values when it is
   read for a kind (as the pickup); without a kind it leaves them out (0 and 1).
-- **Still apart:** partials at 1-2 kHz decay about twice as fast as measured (the one-pole
-  loss filter's shape: a guitar's loss rises about as `f^1.2`, the filter's as `f²`); the
-  fit all but switched the second vibration off (its faster decay did not match the
-  recordings); the velocity steps (measured p to mf 6 dB, mf to ff 1 dB); the clean amp
-  in the recordings was crunchy, so the clean tone is the least checked.
+- **Still apart (2026-11-21):** the second vibration nearly off (its faster decay did not
+  match the recordings); the velocity steps (measured p to mf 6 dB, mf to ff 1 dB); the
+  clean amp in the recordings was crunchy, so the clean tone is the least checked.
+
+### The treble corner (2026-11-22)
+
+The owner heard the mids still off. Measured per partial (dB per second, 0.2 to 1.5 s,
+only while 15 dB above the noise): the DI's loss rises with the pitch up to about 1.5 kHz
+and then stays nearly flat (about 20 dB/s at 1.5-2 kHz, 27 at 3-5 kHz), while the one-pole
+loss filter kept rising (37 and 68 dB/s): the top died soon after the pick. Now a ringing
+string's loss filter is one shelf section (new `treble_corner`, Hz; 0 the old lowpass):
+flat below the corner, falling to a floor above it, the floor set by the brilliance. Fitted
+again with it: corner 1120 Hz, brilliance 2.7 s (was 1.35), sustain 15.3 s (exponent
+0.43), fretted sustain 0.58, coil tone 1400 Hz (resonance 1.43), pick 0.087, hardness
+0.68, roundness 0.27, bridge 0.93, low cut 68 Hz. The decay per band is now within about
+1 dB/s of the DI's above 300 Hz; the spectrum stays within about 2 dB. Still apart: in the
+first 0.4 s the DI's mids and highs fall faster (23-48 dB/s) than later, the model's at one
+rate (a two-stage decay; the second vibration's job). The palm mute keeps its own shelf.
 
 ## The effect chain (2026-11-06)
 

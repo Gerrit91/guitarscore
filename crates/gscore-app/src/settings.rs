@@ -223,6 +223,10 @@ pub struct StringSound {
     pub inharmonicity: Option<f32>,
     #[serde(default)]
     pub fretted_sustain: Option<f32>,
+    /// Where the losses stop growing with the pitch (Hz); the same for a sound saved before
+    /// the knob.
+    #[serde(default)]
+    pub treble_corner: Option<f32>,
 }
 
 impl Default for StringSound {
@@ -258,6 +262,7 @@ impl From<gscore_guitar::StringModel> for StringSound {
             attack_pitch: model.attack_pitch,
             inharmonicity: Some(model.inharmonicity),
             fretted_sustain: Some(model.fretted_sustain),
+            treble_corner: Some(model.treble_corner),
         }
     }
 }
@@ -288,6 +293,7 @@ impl StringSound {
             attack_pitch: self.attack_pitch,
             inharmonicity: self.inharmonicity.unwrap_or(0.0),
             fretted_sustain: self.fretted_sustain.unwrap_or(1.0),
+            treble_corner: self.treble_corner.unwrap_or(0.0),
         }
         .sanitized()
     }
@@ -306,6 +312,9 @@ impl StringSound {
         }
         if self.fretted_sustain.is_none() {
             self.fretted_sustain = Some(preset.fretted_sustain);
+        }
+        if self.treble_corner.is_none() {
+            self.treble_corner = Some(preset.treble_corner);
         }
         self
     }
@@ -1278,18 +1287,21 @@ mod tests {
         if let Some(sound) = value.as_object_mut() {
             assert!(sound.remove("inharmonicity").is_some());
             assert!(sound.remove("fretted_sustain").is_some());
+            assert!(sound.remove("treble_corner").is_some());
         }
         let older: StringSound = serde_json::from_value(value).unwrap_or_default();
         assert_eq!(older.inharmonicity, None);
         // Without a kind the model leaves them out: no inharmonicity, every note as long.
         assert_eq!(older.model().inharmonicity, 0.0);
         assert_eq!(older.model().fretted_sustain, 1.0);
+        assert_eq!(older.model().treble_corner, 0.0);
         // For a kind, its preset's.
         for kind in [StringKind::Electric, StringKind::Bass] {
             let preset = gscore_audio::default_string_model(kind);
             let model = older.for_kind(kind).model();
             assert_eq!(model.inharmonicity, preset.inharmonicity, "{kind:?}");
             assert_eq!(model.fretted_sustain, preset.fretted_sustain, "{kind:?}");
+            assert_eq!(model.treble_corner, preset.treble_corner, "{kind:?}");
         }
         // A chosen value is kept.
         let mut chosen = older;
