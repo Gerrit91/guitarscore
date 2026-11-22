@@ -22,6 +22,10 @@
     clippy::arithmetic_side_effects
 )]
 
+// Dev-dependencies are shared by every example and test; `stats_alloc` belongs to the
+// no-allocation test, this marks it for the example's unused-dependency check.
+use stats_alloc as _;
+
 use gscore_guitar::{Attack, GuitarModel, Pickup, Pluck, Release, StringModel, StringVoice};
 
 const RATE: f32 = 48_000.0;
