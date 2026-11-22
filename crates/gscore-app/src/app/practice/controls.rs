@@ -1,13 +1,14 @@
-//! The practice view's header and player. Each control is drawn into a rectangle of its
-//! own, so a row of them shares one centre line whatever their sizes. Everything else
-//! (the loop, the speed and its trainer, the count-in, the click, …) is in the drawer.
+//! The practice view's player, and its header while no song is open. Each control is
+//! drawn into a rectangle of its own, so a row of them shares one centre line whatever
+//! their sizes. Everything else (the loop, the speed and its trainer, the count-in, the
+//! click, …) is in the drawer.
 //!
-//! How they are arranged depends on the screen ([`Shape`]): a phone held upright has the
-//! header at the top and the player at the bottom; a phone on its side keeps the score as
-//! tall as it can (no header, the player with where playback is); a tablet or a wider
-//! screen puts the player in the header and has no bar at the bottom.
+//! With a song open there is no header: the score reaches the screen's top, the shown
+//! track floats in a chip in its top right corner. A phone has the player in a bar at the
+//! bottom; wherever the drawer floats (a tablet or a wider screen) the player is in it,
+//! under the tiles, and there is no bar at the bottom.
 
-use egui::{Pos2, Rect, Sense, Vec2, vec2};
+use egui::{Pos2, Rect, Sense, vec2};
 
 use super::{PLAY, TARGET};
 use crate::app::GuitarScoreApp;
@@ -17,43 +18,10 @@ use super::widgets::{icon_button, play_button, readout};
 
 pub(super) const GAP: f32 = 6.0;
 pub(super) const GROUP_GAP: f32 = 18.0;
-/// The position (or, on a phone held sideways, where playback is and the loop).
+/// The position.
 const TIME_WIDTH: f32 = 56.0;
-const STATUS_WIDTH: f32 = 150.0;
-
-/// How the practice view is arranged on a screen.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Shape {
-    /// A phone held upright: header, and the player at the bottom.
-    Narrow,
-    /// A phone on its side: no header; the player with the menu at the bottom.
-    Short,
-    /// A tablet or a wider screen: the player in the header, no bar at the bottom.
-    Bar,
-}
-
-impl Shape {
-    /// The arrangement for a screen of `size` points.
-    pub(crate) fn of(size: Vec2) -> Shape {
-        if size.y < 500.0 && size.x > size.y {
-            Shape::Short
-        } else if size.x >= 700.0 {
-            Shape::Bar
-        } else {
-            Shape::Narrow
-        }
-    }
-
-    /// Whether this arrangement has a header.
-    pub(crate) fn has_header(self) -> bool {
-        self != Shape::Short
-    }
-
-    /// Whether the player sits in a bar at the bottom.
-    pub(crate) fn has_bottom(self) -> bool {
-        self != Shape::Bar
-    }
-}
+/// The track chip: the colour, the instrument, the name and the arrow.
+pub(super) const CHIP: egui::Vec2 = vec2(160.0, 36.0);
 
 /// One control.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -62,8 +30,8 @@ enum Control {
     Play,
     Next,
     Time,
-    Status,
-    Chip,
+    /// The drawer's button.
+    Drawer,
 }
 
 impl Control {
@@ -71,18 +39,25 @@ impl Control {
         match self {
             Control::Play => PLAY,
             Control::Time => TIME_WIDTH,
-            Control::Status => STATUS_WIDTH,
-            Control::Chip => CHIP_WIDTH,
-            _ => TARGET,
+            Control::Previous | Control::Next | Control::Drawer => TARGET,
         }
     }
 }
 
-/// The track chip's width: the colour, the name and the arrow.
-const CHIP_WIDTH: f32 = 140.0;
-
 /// The player: a bar back, play or pause, a bar on.
 const PLAYER: &[Control] = &[Control::Previous, Control::Play, Control::Next];
+/// At the player row's left end: the drawer's button.
+const LEADING: &[Control] = &[Control::Drawer];
+/// At its right end: where playback is.
+const TRAILING: &[Control] = &[Control::Time];
+
+/// The narrowest a player row is that keeps the player in the middle: as much room on
+/// either side as the wider of its ends takes.
+pub(super) fn player_width() -> f32 {
+    let side = packed_width(&[LEADING]).max(packed_width(&[TRAILING]));
+    // The row's own margins (it is shrunk by 4 on either side).
+    packed_width(&[PLAYER]) + 2.0 * (side + GROUP_GAP) + 8.0
+}
 
 /// The width of `groups` packed side by side.
 fn packed_width(groups: &[&[Control]]) -> f32 {
@@ -127,58 +102,41 @@ fn pack(left: f32, centre_y: f32, groups: &[&[Control]]) -> Vec<(Control, Rect)>
 fn control_height(control: Control) -> f32 {
     match control {
         Control::Play => PLAY,
-        Control::Chip => 36.0,
-        _ => TARGET,
+        Control::Previous | Control::Next | Control::Time | Control::Drawer => TARGET,
     }
 }
 
 impl GuitarScoreApp {
-    /// The header: the song and where playback is on the left, the player in the middle
-    /// (on a wide screen), the shown track on the right.
-    pub(super) fn practice_header(&mut self, ui: &mut egui::Ui, shape: Shape, has_song: bool) {
-        let height = if shape == Shape::Bar { PLAY } else { TARGET };
-        let (row, _) = ui.allocate_exact_size(vec2(ui.available_width(), height), Sense::hover());
-        let right: &[&[Control]] = if has_song { &[&[Control::Chip]] } else { &[] };
-        let right_width = packed_width(right);
-        let mut placed = pack(row.right() - right_width, row.center().y, right);
-        let mut title_right = row.right() - right_width - GROUP_GAP;
-        if has_song && shape == Shape::Bar {
-            let left = row.center().x - packed_width(&[PLAYER]) / 2.0;
-            placed.extend(pack(left, row.center().y, &[PLAYER]));
-            title_right = title_right.min(left - GROUP_GAP);
-        }
-        // The song and where playback is, in what is left on the left.
-        let title_room = Rect::from_min_max(
-            row.left_top() + vec2(6.0, 0.0),
-            Pos2::new(title_right, row.bottom()),
-        );
-        self.practice_title_block(ui, title_room);
-        for (control, rect) in placed {
-            self.practice_control(ui, control, rect);
-        }
+    /// The header while no song is open: what the view is for.
+    pub(super) fn practice_header(&mut self, ui: &mut egui::Ui) {
+        let (row, _) = ui.allocate_exact_size(vec2(ui.available_width(), TARGET), Sense::hover());
+        self.practice_title_block(ui, row.with_min_x(row.left() + 6.0));
     }
 
-    /// The bar at the bottom: the drawer's handle and tiles when they do not float, then
-    /// the player in the middle, with where playback is on the right (and, on a phone on
-    /// its side, what the header would say on the left and the menu).
-    pub(super) fn practice_controls(&mut self, ui: &mut egui::Ui, shape: Shape, floating: bool) {
-        if !floating {
-            self.practice_drawer_inline(ui);
-        }
+    /// The bar at the bottom (where the drawer does not float): the drawer's tiles while
+    /// it is open, then the player.
+    pub(super) fn practice_controls(&mut self, ui: &mut egui::Ui) {
+        self.practice_drawer_inline(ui);
+        self.practice_player(ui);
+    }
+
+    /// The player across the width there is: the drawer's button on the left, a bar back,
+    /// play or pause and a bar on in the middle, where playback is on the right.
+    pub(super) fn practice_player(&mut self, ui: &mut egui::Ui) {
         let width = ui.available_width();
         let (row, _) = ui.allocate_exact_size(vec2(width, PLAY), Sense::hover());
         let row = row.shrink2(vec2(4.0, 0.0));
         let centre = row.center().y;
-        let mut placed = pack(
-            row.center().x - packed_width(&[PLAYER]) / 2.0,
-            centre,
-            &[PLAYER],
-        );
-        let right: &[&[Control]] = &[&[Control::Time]];
-        placed.extend(pack(row.right() - packed_width(right), centre, right));
-        if shape == Shape::Short {
-            placed.extend(pack(row.left(), centre, &[&[Control::Status]]));
-        }
+        let right: &[&[Control]] = &[TRAILING];
+        let right_left = row.right() - packed_width(right);
+        let left_right = row.left() + packed_width(&[LEADING]);
+        // In the middle, or (on a small phone) where it keeps clear of both ends.
+        let player_left = (row.center().x - packed_width(&[PLAYER]) / 2.0)
+            .min(right_left - GROUP_GAP - packed_width(&[PLAYER]))
+            .max(left_right + GROUP_GAP);
+        let mut placed = pack(row.left(), centre, &[LEADING]);
+        placed.extend(pack(player_left, centre, &[PLAYER]));
+        placed.extend(pack(right_left, centre, right));
         for (control, rect) in placed {
             self.practice_control(ui, control, rect);
         }
@@ -216,11 +174,13 @@ impl GuitarScoreApp {
                 let text = self.practice_time();
                 readout(ui, rect, &text, 14.0);
             }
-            Control::Status => {
-                let (_, detail) = self.practice_title();
-                readout(ui, rect, &detail, 12.0);
+            Control::Drawer => {
+                self.practice.drawer = super::tiles::handle(ui, rect, self.practice.drawer);
+                // Pulled up again, it shows its tiles, not the page it was left on.
+                if !self.practice.drawer {
+                    self.practice.page = None;
+                }
             }
-            Control::Chip => self.practice_track_chip(ui, rect),
         }
     }
 }
@@ -230,16 +190,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn each_screen_gets_its_arrangement() {
-        assert_eq!(Shape::of(vec2(390.0, 844.0)), Shape::Narrow);
-        assert_eq!(Shape::of(vec2(844.0, 390.0)), Shape::Short);
-        assert_eq!(Shape::of(vec2(820.0, 1180.0)), Shape::Bar);
-        assert_eq!(Shape::of(vec2(1180.0, 820.0)), Shape::Bar);
-    }
-
-    #[test]
     fn a_packed_row_shares_one_centre_line() {
-        let groups: &[&[Control]] = &[PLAYER, &[Control::Time], &[Control::Chip]];
+        let groups: &[&[Control]] = &[LEADING, PLAYER, TRAILING];
         let placed = pack(0.0, 30.0, groups);
         assert!(
             placed

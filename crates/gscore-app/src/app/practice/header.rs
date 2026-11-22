@@ -1,5 +1,5 @@
-//! The practice view's header parts: the song and where playback is, and the shown
-//! track's chip. Everything else is in the drawer.
+//! The practice view's parts above the score: what the view is for while no song is
+//! open, and the shown track's chip, floating in the top right corner over the score.
 
 use egui::{Align2, Color32, FontFamily, FontId, Pos2, Rect, Sense, Stroke, vec2};
 
@@ -7,59 +7,122 @@ use super::TARGET;
 use crate::app::GuitarScoreApp;
 use crate::app::style;
 
+/// A track's colour mark, as the song grid's rows draw it.
+const SWATCH: egui::Vec2 = vec2(5.0, 16.0);
+/// The instrument's symbol beside it.
+const SYMBOL: f32 = 14.0;
+
+/// A track as the chip and its list show it.
+#[derive(Debug, Clone)]
+struct ChipTrack {
+    name: String,
+    color: Color32,
+    symbol: gscore_model::InstrumentSymbol,
+}
+
+/// The track's colour bar with its left edge at `left`, then its instrument's symbol, as
+/// the song grid's rows draw them, centred on `y`. Returns where the name starts.
+fn mark(
+    painter: &egui::Painter,
+    left: f32,
+    y: f32,
+    color: Color32,
+    symbol: gscore_model::InstrumentSymbol,
+    ink: Color32,
+) -> f32 {
+    let bar = Rect::from_min_size(Pos2::new(left, y - SWATCH.y / 2.0), SWATCH);
+    painter.rect_filled(bar, 1.0, color);
+    let icon = Rect::from_center_size(
+        Pos2::new(bar.right() + 6.0 + SYMBOL / 2.0, y),
+        vec2(SYMBOL, SYMBOL),
+    );
+    crate::app::instrument::paint(painter, icon, symbol, ink);
+    icon.right() + 8.0
+}
+
+/// One track in the chip's list, a finger's height: its colour, its instrument and its
+/// name, filled while it is the one shown.
+fn track_row(ui: &mut egui::Ui, track: &ChipTrack, shown: bool) -> egui::Response {
+    let (rect, response) =
+        ui.allocate_exact_size(vec2(ui.available_width(), TARGET), Sense::click());
+    response
+        .widget_info(|| egui::WidgetInfo::selected(egui::Role::Button, true, shown, &track.name));
+    let tokens = style::tokens(ui);
+    let visuals = ui.style().interact_selectable(&response, shown);
+    if shown || response.hovered() || response.is_pointer_button_down_on() {
+        ui.painter().rect_filled(rect, 6.0, visuals.weak_bg_fill);
+    }
+    let ink = if shown {
+        visuals.text_color()
+    } else {
+        tokens.text
+    };
+    let name_left = mark(
+        ui.painter(),
+        rect.left() + 8.0,
+        rect.center().y,
+        track.color,
+        track.symbol,
+        ink,
+    );
+    let room = Rect::from_min_max(
+        Pos2::new(name_left, rect.top()),
+        Pos2::new(rect.right() - 8.0, rect.bottom()),
+    );
+    ui.painter().with_clip_rect(room).text(
+        Pos2::new(room.left(), rect.center().y),
+        Align2::LEFT_CENTER,
+        &track.name,
+        FontId::proportional(14.0),
+        ink,
+    );
+    response
+}
+
 impl GuitarScoreApp {
-    /// The song's title over where playback is, in `rect`.
+    /// What the view is for, in `rect` (the header while no song is open).
     pub(super) fn practice_title_block(&self, ui: &mut egui::Ui, rect: Rect) {
         let tokens = style::tokens(ui);
-        let (title, detail) = self.practice_title();
         let painter = ui.painter().with_clip_rect(rect);
         let bold = FontId::new(15.0, FontFamily::Name(crate::fonts::BOLD.into()));
         painter.text(
             Pos2::new(rect.left(), rect.center().y - 1.0),
             Align2::LEFT_BOTTOM,
-            title,
+            "GuitarScore",
             bold,
             tokens.text,
         );
         painter.text(
             Pos2::new(rect.left(), rect.center().y + 1.0),
             Align2::LEFT_TOP,
-            detail,
+            "Open a song to practise",
             FontId::proportional(12.0),
             tokens.text_weak,
         );
     }
 
-    /// The header's two lines: the song's title, and where playback (or the cursor) is,
-    /// with the loop or the bar waiting for a second tap.
-    pub(super) fn practice_title(&self) -> (String, String) {
-        let Some(tab) = self.tabs.get(self.active) else {
-            return (
-                "GuitarScore".to_owned(),
-                "Open a song to practise".to_owned(),
-            );
-        };
-        let song = tab.document.song();
-        let measure = self.playback.current_measure().unwrap_or_else(|| {
-            tab.document
-                .editor()
-                .cursor()
-                .measure
-                .get()
-                .saturating_add(1)
-        });
-        let mut detail = format!("Bar {measure} of {}", song.measure_count());
-        if self.playback.loop_selection()
-            && let Some(selection) = tab.loop_measures()
-        {
-            let (first, last) = (selection.start() + 1, selection.end() + 1);
-            if first == last {
-                detail.push_str(&format!(" · loop bar {first}"));
-            } else {
-                detail.push_str(&format!(" · loop {first}–{last}"));
-            }
-        }
-        (tab.document.display_title(), detail)
+    /// The shown track's chip floating in the top right corner of the score, whose top is
+    /// at `top` (in a card of its own, like the drawer).
+    pub(super) fn practice_chip_floating(&mut self, ctx: &egui::Context, top: f32) {
+        let tokens = style::context_tokens(ctx);
+        let corner = Pos2::new(ctx.content_rect().right() - 12.0, top + 12.0);
+        egui::Area::new(egui::Id::unique("practice_chip_card"))
+            .order(egui::Order::Foreground)
+            .pivot(Align2::RIGHT_TOP)
+            .fixed_pos(corner)
+            .constrain(true)
+            .show(ctx, |ui| {
+                egui::Frame::new()
+                    .fill(tokens.chrome)
+                    .stroke(Stroke::new(1.0, tokens.line))
+                    .corner_radius(22.0)
+                    .inner_margin(egui::Margin::same(4))
+                    .show(ui, |ui| {
+                        let (rect, _) =
+                            ui.allocate_exact_size(super::controls::CHIP, Sense::hover());
+                        self.practice_track_chip(ui, rect);
+                    });
+            });
     }
 
     /// How far playback (or the cursor) is into the song, "01:23".
@@ -98,17 +161,29 @@ impl GuitarScoreApp {
             return;
         };
         let song = tab.document.song();
-        let tracks: Vec<(String, Color32)> = song
+        let tracks: Vec<ChipTrack> = song
             .tracks()
             .map(|track| {
                 let (red, green, blue) = track.color().parts();
-                (track.name().to_owned(), Color32::from_rgb(red, green, blue))
+                ChipTrack {
+                    name: track.name().to_owned(),
+                    color: Color32::from_rgb(red, green, blue),
+                    symbol: crate::app::instrument::derived(
+                        &track,
+                        song.track_sound(track.index()),
+                    ),
+                }
             })
             .collect();
         let Some(shown) = tracks.len().checked_sub(1).map(|last| tab.track.min(last)) else {
             return;
         };
-        let Some((name, color)) = tracks.get(shown).cloned() else {
+        let Some(ChipTrack {
+            name,
+            color,
+            symbol,
+        }) = tracks.get(shown).cloned()
+        else {
             return;
         };
         let response = ui.interact(rect, ui.scope_id().with("practice_chip"), Sense::click());
@@ -119,14 +194,18 @@ impl GuitarScoreApp {
         let visuals = ui.style().interact(&response);
         let painter = ui.painter();
         painter.rect_filled(rect, rect.height() / 2.0, visuals.weak_bg_fill);
-        let dot = Rect::from_center_size(
-            Pos2::new(rect.left() + 16.0, rect.center().y),
-            vec2(9.0, 9.0),
+        // The track's colour and instrument as the song grid marks them.
+        let name_left = mark(
+            painter,
+            rect.left() + 14.0,
+            rect.center().y,
+            color,
+            symbol,
+            tokens.text,
         );
-        painter.rect_filled(dot, 2.0, color);
         let arrow_x = rect.right() - 14.0;
         let text_room = Rect::from_min_max(
-            Pos2::new(dot.right() + 7.0, rect.top()),
+            Pos2::new(name_left, rect.top()),
             Pos2::new(arrow_x - 8.0, rect.bottom()),
         );
         painter.with_clip_rect(text_room).text(
@@ -149,17 +228,8 @@ impl GuitarScoreApp {
         let mut chosen = None;
         egui::Popup::menu(&response).show(|ui| {
             ui.set_min_width(220.0);
-            for (index, (name, color)) in tracks.iter().enumerate() {
-                let row = ui.add_sized(
-                    vec2(ui.available_width(), TARGET),
-                    egui::Button::selectable(index == shown, format!("    {name}")),
-                );
-                let dot = Rect::from_center_size(
-                    Pos2::new(row.rect.left() + 12.0, row.rect.center().y),
-                    vec2(9.0, 9.0),
-                );
-                ui.painter().rect_filled(dot, 2.0, *color);
-                if row.clicked() {
+            for (index, track) in tracks.iter().enumerate() {
+                if track_row(ui, track, index == shown).clicked() {
                     chosen = Some(index);
                 }
             }

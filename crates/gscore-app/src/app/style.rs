@@ -419,3 +419,94 @@ pub(crate) fn dialog_body(
     });
     escape
 }
+
+/// An on/off switch with its label after it, in place of a checkbox: a rounded track,
+/// filled with the accent while on, its knob sliding to the side that is chosen. A click
+/// anywhere on the row switches it.
+pub(crate) fn switch<'a>(on: &'a mut bool, label: impl Into<egui::WidgetText>) -> Switch<'a> {
+    Switch {
+        on,
+        label: label.into(),
+    }
+}
+
+/// See [`switch`].
+#[derive(Debug)]
+pub(crate) struct Switch<'a> {
+    on: &'a mut bool,
+    label: egui::WidgetText,
+}
+
+/// The switch's track.
+const SWITCH: egui::Vec2 = vec2(30.0, 16.0);
+
+impl egui::Widget for Switch<'_> {
+    fn ui(self, ui: &mut egui::Ui) -> egui::Response {
+        let Switch { on, label } = self;
+        let gap = ui.spacing().icon_spacing.max(6.0);
+        let text_width = ui.available_width() - SWITCH.x - gap;
+        let galley = label.into_galley(
+            ui,
+            Some(egui::TextWrapMode::Wrap),
+            text_width,
+            TextStyle::Button,
+        );
+        let height = galley
+            .size()
+            .y
+            .max(SWITCH.y)
+            .max(ui.spacing().interact_size.y);
+        let size = vec2(SWITCH.x + gap + galley.size().x, height);
+        let (rect, mut response) = ui.allocate_exact_size(size, egui::Sense::click());
+        if response.clicked() {
+            *on = !*on;
+            response.mark_changed();
+        }
+        let state = *on;
+        let text = galley.text().to_owned();
+        response.widget_info(|| {
+            egui::WidgetInfo::selected(egui::Role::Switch, ui.is_enabled(), state, &text)
+        });
+        if ui.is_rect_visible(rect) {
+            let tokens = tokens(ui);
+            let visuals = ui.style().interact(&response);
+            let shown = ui.ctx().animate_bool_responsive(response.id, state);
+            let track = egui::Rect::from_min_size(
+                egui::pos2(rect.left(), rect.center().y - SWITCH.y / 2.0),
+                SWITCH,
+            );
+            let fill = if state {
+                tokens.accent
+            } else {
+                visuals.bg_fill
+            };
+            let fill = if ui.is_enabled() {
+                fill
+            } else {
+                fill.gamma_multiply(0.5)
+            };
+            ui.painter().rect(
+                track,
+                SWITCH.y / 2.0,
+                fill,
+                visuals.bg_stroke,
+                egui::StrokeKind::Inside,
+            );
+            let radius = SWITCH.y / 2.0 - 2.5;
+            let x = egui::lerp(
+                (track.left() + SWITCH.y / 2.0)..=(track.right() - SWITCH.y / 2.0),
+                shown,
+            );
+            let knob = if state {
+                tokens.on_accent
+            } else {
+                visuals.fg_stroke.color
+            };
+            ui.painter()
+                .circle_filled(egui::pos2(x, track.center().y), radius, knob);
+            let text_pos = egui::pos2(track.right() + gap, rect.center().y - galley.size().y / 2.0);
+            ui.painter().galley(text_pos, galley, visuals.text_color());
+        }
+        response
+    }
+}

@@ -117,12 +117,18 @@ fn fields(ui: &mut Ui, setup: &mut PageSetup) {
             ui.end_row();
         });
     ui.add_space(6.0);
-    ui.checkbox(&mut setup.page_numbers, "Page numbers");
-    ui.checkbox(&mut setup.copyright, "Copyright on the first page");
-    ui.checkbox(
+    ui.add(super::style::switch(
+        &mut setup.page_numbers,
+        "Page numbers",
+    ));
+    ui.add(super::style::switch(
+        &mut setup.copyright,
+        "Copyright on the first page",
+    ));
+    ui.add(super::style::switch(
         &mut setup.running_header,
         "Title and artist atop later pages",
-    );
+    ));
 }
 
 /// Width of the preview of the first page, in points.

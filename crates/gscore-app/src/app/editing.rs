@@ -274,17 +274,17 @@ impl GuitarScoreApp {
         if let Action::Plain(id) = action {
             match id {
                 ActionId::ZoomIn => {
-                    self.view.zoom_in();
+                    self.zoom_score(crate::state::ViewState::zoom_in);
                     ctx.request_repaint();
                     return;
                 }
                 ActionId::ZoomOut => {
-                    self.view.zoom_out();
+                    self.zoom_score(crate::state::ViewState::zoom_out);
                     ctx.request_repaint();
                     return;
                 }
                 ActionId::ZoomReset => {
-                    self.view.set_zoom(1.0);
+                    self.zoom_score(|view| view.set_zoom(1.0));
                     ctx.request_repaint();
                     return;
                 }

@@ -285,10 +285,12 @@ impl GuitarScoreApp {
         let mut design_drag: Option<(Command, bool)> = None;
         let mut designing = false;
         let playing = self.playback.state() == PlayState::Playing;
-        // The practice view (M25): a tap plays from a bar or loops bars, a swipe scrolls;
+        // The practice view (M25): a tap puts where play starts on a bar (while playing,
+        // jumps there), a drag (a finger held still first) loops bars, a swipe scrolls;
         // nothing on the page is edited there.
         let practice = self.practice.shown;
         let mut practice_tap: Option<usize> = None;
+        let mut practice_drag: Option<(Option<usize>, bool, bool)> = None;
         // The vertical views turn over while playing: once the playing line leaves the
         // view, it goes to the top. Pages side by side turn page by page, and the
         // horizontal screen screen by screen (`screen_turn`).
@@ -361,13 +363,9 @@ impl GuitarScoreApp {
                 (page.x + 2.0 * PAGE_MARGIN).max(available),
                 page.y + 2.0 * PAGE_MARGIN,
             );
-            // In the practice view the page takes taps only: a drag is left to the scroll
-            // area, so a finger moves the score.
-            let sense = if practice {
-                Sense::click()
-            } else {
-                Sense::click_and_drag()
-            };
+            // In the practice view the page takes every drag: a mouse's (or a finger's held
+            // still first) selects bars, a finger's swipe scrolls the score (below).
+            let sense = Sense::click_and_drag();
             let (rect, response) = ui.allocate_exact_size(size, sense);
             ui.ctx()
                 .accesskit_node_builder(response.id, |node| node.set_label("Score page"));
@@ -694,6 +692,7 @@ impl GuitarScoreApp {
             // lines; the cursor follows the drag so the keyboard can go on from there. In
             // the design mode the drag edits the layout instead.
             if !designing
+                && !practice
                 && response.drag_started()
                 && let Some((track, hit)) = hit
             {
@@ -736,11 +735,57 @@ impl GuitarScoreApp {
                 tab.drag_anchor = None;
             }
             if practice {
+                let bar = response
+                    .interact_pointer_pos()
+                    .and_then(|pos| layout.hit(to_layout(pos)))
+                    .map(|(_, hit)| hit.measure.get());
                 if response.clicked()
-                    && let Some(pos) = response.interact_pointer_pos()
-                    && let Some((_, hit)) = layout.hit(to_layout(pos))
+                    && let Some(bar) = bar
                 {
-                    practice_tap = Some(hit.measure.get());
+                    practice_tap = Some(bar);
+                }
+                if response.drag_started() {
+                    let (touch, held) = ui.input(|input| {
+                        let held = input
+                            .pointer
+                            .press_start_time()
+                            .map_or(0.0, |start| input.time - start);
+                        (input.any_touches(), held)
+                    });
+                    self.practice.drag_scrolls = super::practice::drag_scrolls(touch, held);
+                }
+                if self.practice.drag_scrolls {
+                    // A swipe moves the score with the finger, and glides on a little
+                    // when let go.
+                    if response.dragged() {
+                        ui.scroll_with_delta(response.drag_delta());
+                        self.practice.fling = ui.input(|input| input.pointer.velocity());
+                    }
+                    if response.drag_stopped() {
+                        ui.scroll_with_delta_animation(
+                            self.practice.fling * super::practice::GLIDE,
+                            egui::style::ScrollAnimation::duration(super::practice::GLIDE * 2.0),
+                        );
+                        self.practice.drag_scrolls = false;
+                    }
+                } else if response.drag_started() || response.dragged() || response.drag_stopped() {
+                    practice_drag = Some((bar, response.drag_started(), response.drag_stopped()));
+                }
+                // A finger held still past a click is a long press to egui, which ends the
+                // page's press there: from then on the finger is followed here until it is
+                // lifted, selecting the bars it passes.
+                if response.long_touched() {
+                    self.practice.held = true;
+                    practice_drag = Some((bar, true, false));
+                } else if self.practice.held {
+                    let (down, pos) = ui.input(|input| {
+                        (input.pointer.primary_down(), input.pointer.interact_pos())
+                    });
+                    let bar = pos
+                        .and_then(|pos| layout.hit(to_layout(pos)))
+                        .map(|(_, hit)| hit.measure.get());
+                    practice_drag = Some((bar, false, !down));
+                    self.practice.held = down;
                 }
             } else if response.clicked() && !designing {
                 tab.drag_anchor = None;
@@ -847,6 +892,9 @@ impl GuitarScoreApp {
         }
         if let Some(measure) = practice_tap {
             self.practice_tap(measure);
+        }
+        if let Some((bar, started, stopped)) = practice_drag {
+            self.practice_drag(bar, started, stopped);
         }
         if let Some(kind) = mark_clicked {
             self.open_score_mark(kind);

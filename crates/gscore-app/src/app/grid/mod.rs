@@ -385,8 +385,13 @@ impl GuitarScoreApp {
     }
 
     /// Shows the mixer in the bottom panel instead of the measure grid, and back (the
-    /// View menu, F3 and the grid's own button). The choice is remembered.
+    /// View menu, F3 and the grid's own button). The choice is remembered. In the practice
+    /// view it shows or hides the practice view's mixer instead.
     pub(super) fn toggle_mixer(&mut self) {
+        if self.practice.shown {
+            self.practice.mixer = !self.practice.mixer;
+            return;
+        }
         self.view.grid_mixer = !self.view.grid_mixer;
         self.save_settings();
     }
