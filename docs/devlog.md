@@ -6779,9 +6779,9 @@ Lead voice cut its input at 160 Hz, which left a palm-muted low E little to driv
 long; that needs a steeper loss filter (constants alone were tried and dropped).
 
 2026-11-22: the steep palm shelf. The palm mute's loss filter is a second-order shelf
-(`SteepShelf`), fitted to the owner's chugs at the knob's middle; a palm-muted pick
-strikes softer, clicks less and harder. The DI came in 8 dB hotter than the preset's
-level (the amps' calibration, kept): the comparison tones set the string level to 0.88. Tests
-loosened to the chugs' measured ranges (a muted attack's level, its highs against an open
-note). Through the high-gain chain the chugs are still short of bass: the DI's other
-strings ring along and its thump lies below the note, which the model does not make yet.
+(`SteepShelf`), fitted to the owner's single palm-muted notes. A fit to the chugs (softer,
+stronger strike) matched the dry DI better but was further from the Quad Cortex through the
+amp, and was dropped. Most of the chugs' missing bass was the level: the DI came in 8 dB
+hotter than the preset's level (the amps' calibration, kept); the comparison tones set the
+string level to 0.88. Still missing: the DI's other strings ringing along and the thump
+below the note.

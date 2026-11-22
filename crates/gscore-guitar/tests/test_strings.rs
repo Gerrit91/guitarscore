@@ -559,12 +559,12 @@ fn a_palm_muted_note_keeps_its_strength_pitch_and_low_end() {
         let db = |ratio: f64| 10.0 * ratio.log10();
         let case = format!("{model:?} key {key}");
         // As strong: the fundamental as loud as the open note's at first, the pick's
-        // attack kept, though darker (the hand takes its top at once, as a real chug's).
+        // attack kept.
         let strength = db(fundamental(&muted, 0.0, 0.1) / fundamental(&open, 0.0, 0.1));
         assert!(strength > -6.0, "{case}: fundamental {strength:.1} dB");
         let attack = rms(seconds(&muted, 0.0, 0.03)) / rms(seconds(&open, 0.0, 0.03));
         assert!(
-            attack > 0.5,
+            attack > 0.6,
             "{case}: the attack {attack:.2} of the open note's"
         );
         // The pitch still sounds well past an eighth note (a quarter of a second at 120
@@ -580,11 +580,9 @@ fn a_palm_muted_note_keeps_its_strength_pitch_and_low_end() {
         // note's).
         let highs = db(power_above(seconds(&muted, 0.03, 0.15), 3_000.0)
             / power_above(seconds(&open, 0.03, 0.15), 3_000.0));
-        // (Measured against the open notes: single palm-muted notes +9 to -46 dB, most
-        // between -20 and -40; a chug's highs, 50-250 ms after the pick, some 65 dB under
-        // its fundamental.)
+        // (Measured against the open notes: +9 to -46 dB, most between -20 and -40.)
         assert!(
-            (-70.0..-3.0).contains(&highs),
+            (-50.0..-3.0).contains(&highs),
             "{case}: highs {highs:.1} dB against open"
         );
         // The same pitch: the damping does not detune it.
