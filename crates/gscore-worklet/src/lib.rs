@@ -240,6 +240,19 @@ impl Synth {
         self.engine.as_ref().map_or(0, |engine| engine.position()) as f64
     }
 
+    /// How fast the position moves while playing, in ticks a second (0 when it is not):
+    /// the page carries its cursor on from the last report with it.
+    pub fn rate(&self) -> f64 {
+        self.engine
+            .as_ref()
+            .filter(|engine| engine.state() == PlayState::Playing)
+            .and_then(SynthEngine::bpm)
+            .filter(|bpm| bpm.is_finite() && *bpm > 0.0)
+            .map_or(0.0, |bpm| {
+                f64::from(bpm) / 60.0 * f64::from(gscore_play::PPQ)
+            })
+    }
+
     /// Playing (1), paused (2) or stopped (0).
     pub fn state(&self) -> u8 {
         match self.engine.as_ref().map(SynthEngine::state) {

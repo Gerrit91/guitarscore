@@ -11,7 +11,12 @@
 // Messages to the app:
 //   {type: "ready"}                           the wasm module is up
 //   {type: "loaded"}                          the SoundFont is loaded: playback can sound
-//   {type: "status", position, state}         every few blocks while playing
+//   {type: "status", position, state, time, rate, from}
+//                                             every few blocks while playing, and in the
+//                                             first block after a play, seek or stop:
+//                                             the tick rendered up to, the context time
+//                                             it will sound at, ticks a second, and where
+//                                             this stretch of playing began
 //   {type: "error", message}                  anything that went wrong
 
 // The polyfills must be evaluated before wasm-bindgen's glue: module imports are evaluated
@@ -36,6 +41,9 @@ class GuitarScoreSynth extends AudioWorkletProcessor {
     this.right = new Float32Array(128);
     this.blocks = 0;
     this.lastposition = -1;
+    // A play, seek, stop or new song: the next block reports at once, and where it starts.
+    this.restart = true;
+    this.from = 0;
     this.port.onmessage = (event) => this.handle(event.data);
   }
 
@@ -64,6 +72,7 @@ class GuitarScoreSynth extends AudioWorkletProcessor {
           this.port.postMessage({ type: "loaded" });
           break;
         case "sequence":
+          this.restart = true;
           this.synth.load_sequence(new Uint8Array(message.bytes));
           break;
         case "replace":
@@ -82,15 +91,18 @@ class GuitarScoreSynth extends AudioWorkletProcessor {
         case "command":
           switch (message.name) {
             case "play":
+              this.restart = true;
               this.synth.play();
               break;
             case "pause":
               this.synth.pause();
               break;
             case "stop":
+              this.restart = true;
               this.synth.stop();
               break;
             case "seek":
+              this.restart = true;
               this.synth.seek(Number(message.value) || 0);
               break;
             case "tempo":
@@ -128,18 +140,32 @@ class GuitarScoreSynth extends AudioWorkletProcessor {
       left.fill(0);
       right.fill(0);
     }
+    const restarted = this.restart;
+    if (restarted) {
+      this.restart = false;
+      this.from = this.synth.position();
+    }
     this.synth.render(left, right);
     output[0].set(left);
     if (output.length > 1) output[1].set(right);
 
-    // Report the position about ten times a second, not on every block.
+    // Report the position about forty times a second (the page glides between reports),
+    // and at once after a play, seek or stop.
     this.blocks += 1;
-    if (this.blocks % 32 === 0) {
+    if (restarted || this.blocks % 8 === 0) {
       const position = this.synth.position();
       const state = this.synth.state();
-      if (position !== this.lastposition || state !== 0) {
+      if (restarted || position !== this.lastposition || state !== 0) {
         this.lastposition = position;
-        this.port.postMessage({ type: "status", position, state });
+        this.port.postMessage({
+          type: "status",
+          position,
+          state,
+          // eslint-disable-next-line no-undef -- an AudioWorkletGlobalScope global.
+          time: currentTime + frames / RATE,
+          rate: this.synth.rate(),
+          from: this.from,
+        });
       }
     }
     return true;
