@@ -25,7 +25,14 @@ use web_sys::{AudioContext, AudioWorkletNode, AudioWorkletNodeOptions, MessageEv
 
 use gscore_guitar::ChainSpec;
 
+use crate::web_clock::{Report, WebClock};
 use crate::web_soundfont;
+
+/// How long a play, pause or stop counts before the worklet reported it, ms: past it, the
+/// worklet's own state counts again (a command that could not be carried out).
+const PENDING_AT_MOST: f64 = 1_000.0;
+/// The most the output's latency is taken to be, seconds (more is a broken timestamp).
+const MAX_LATENCY: f64 = 0.5;
 use crate::{ChainKnobs, SoundMessage};
 
 /// What the worklet reports back.
@@ -33,6 +40,12 @@ use crate::{ChainKnobs, SoundMessage};
 struct Shared {
     position: RefCell<u64>,
     state: RefCell<PlayState>,
+    /// The last report while playing, for the cursor between reports.
+    clock: RefCell<WebClock>,
+    /// The state the last play, pause or stop asked for and when (`performance.now()`,
+    /// ms): until the worklet reports it (or [`PENDING_AT_MOST`] passed), that is the state,
+    /// so the screen follows a Play at once instead of a report later.
+    requested: Cell<Option<(PlayState, f64)>>,
     error: RefCell<Option<String>>,
     /// The SoundFont is still being fetched or loaded into the worklet.
     loading: Cell<bool>,
@@ -52,6 +65,8 @@ impl Default for Shared {
         Shared {
             position: RefCell::new(0),
             state: RefCell::new(PlayState::Stopped),
+            clock: RefCell::new(WebClock::default()),
+            requested: Cell::new(None),
             error: RefCell::new(None),
             loading: Cell::new(true),
             progress: Cell::new(None),
@@ -158,6 +173,15 @@ impl WebPlayer {
         set(&posted, "bytes", &array.buffer().into());
         self.send(posted.into());
         Ok(())
+    }
+
+    /// Takes `state` as the state until the worklet reports it; the reports from before
+    /// are forgotten (a new stretch of playing starts).
+    fn request(&self, state: PlayState) {
+        if self.error().is_none() {
+            self.shared.requested.set(Some((state, performance_now())));
+            self.shared.clock.borrow_mut().forget();
+        }
     }
 
     fn command(&self, name: &str, value: Option<f64>) -> Result<(), PlayError> {
@@ -314,13 +338,36 @@ fn handle_message(shared: &Shared, data: JsValue) {
                     0
                 };
                 *shared.position.borrow_mut() = position;
+                let number = |key: &str| {
+                    get(object, key)
+                        .and_then(|value| value.as_f64())
+                        .filter(|value| value.is_finite() && *value >= 0.0)
+                };
+                if let (Some(time), Some(rate)) = (number("time"), number("rate")) {
+                    let from = number("from")
+                        .map_or(0, |from| u64::try_from(from as u128).unwrap_or(u64::MAX));
+                    shared.clock.borrow_mut().report(Report {
+                        position,
+                        time,
+                        rate,
+                        from,
+                    });
+                }
             }
             let state = get(object, "state").and_then(|value| value.as_f64());
-            *shared.state.borrow_mut() = match state {
+            let state = match state {
                 Some(1.0) => PlayState::Playing,
                 Some(2.0) => PlayState::Paused,
                 _ => PlayState::Stopped,
             };
+            *shared.state.borrow_mut() = state;
+            if shared
+                .requested
+                .get()
+                .is_some_and(|(requested, _)| requested == state)
+            {
+                shared.requested.set(None);
+            }
         }
         Some("loaded") => {
             shared.loading.set(false);
@@ -336,6 +383,57 @@ fn handle_message(shared: &Shared, data: JsValue) {
         }
         _ => {}
     }
+}
+
+/// The page's clock, ms (`performance.now()`), or 0 without one.
+fn performance_now() -> f64 {
+    let global = js_sys::global();
+    js_sys::Reflect::get(&global, &"performance".into())
+        .ok()
+        .and_then(|performance| {
+            let now = js_sys::Reflect::get(&performance, &"now".into()).ok()?;
+            let now = now.dyn_ref::<js_sys::Function>()?;
+            now.call0(&performance).ok()?.as_f64()
+        })
+        .filter(|ms| ms.is_finite())
+        .unwrap_or(0.0)
+}
+
+/// The audio context's time being heard now, seconds: from the output's own timestamp
+/// (`getOutputTimestamp`, carried on to this moment) where the browser gives a usable one,
+/// otherwise the context's time less its reported output latency.
+fn heard_time(context: &AudioContext) -> f64 {
+    let current = context.current_time();
+    let field = |object: &JsValue, key: &str| {
+        js_sys::Reflect::get(object, &key.into())
+            .ok()
+            .and_then(|value| value.as_f64())
+            .filter(|value| value.is_finite())
+    };
+    let stamp = js_sys::Reflect::get(context, &"getOutputTimestamp".into())
+        .ok()
+        .and_then(|method| method.dyn_into::<js_sys::Function>().ok())
+        .and_then(|method| method.call0(context).ok());
+    if let Some(stamp) = stamp
+        && let (Some(time), Some(at)) = (
+            field(&stamp, "contextTime"),
+            field(&stamp, "performanceTime"),
+        )
+        && time > 0.0
+        && at > 0.0
+    {
+        let heard = time + (performance_now() - at) / 1000.0;
+        // Never ahead of the rendering, nor implausibly far behind it.
+        if heard <= current + 0.01 && heard >= current - MAX_LATENCY {
+            return heard;
+        }
+    }
+    let latency = field(context, "outputLatency")
+        .filter(|latency| *latency > 0.0)
+        .or_else(|| field(context, "baseLatency"))
+        .unwrap_or(0.0)
+        .clamp(0.0, MAX_LATENCY);
+    current - latency
 }
 
 fn object(kind: &str) -> js_sys::Object {
@@ -372,6 +470,7 @@ impl Player for WebPlayer {
     }
 
     fn play(&mut self) -> Result<(), PlayError> {
+        self.request(PlayState::Playing);
         // Allowed here: Play is a key press, the browser's gesture requirement.
         let context = self.context.clone();
         wasm_bindgen_futures::spawn_local(async move {
@@ -383,14 +482,20 @@ impl Player for WebPlayer {
     }
 
     fn pause(&mut self) -> Result<(), PlayError> {
+        self.request(PlayState::Paused);
         self.command("pause", None)
     }
 
     fn stop(&mut self) -> Result<(), PlayError> {
+        self.request(PlayState::Stopped);
+        *self.shared.position.borrow_mut() = 0;
         self.command("stop", None)
     }
 
     fn seek(&mut self, tick: u64) -> Result<(), PlayError> {
+        // Shown at once; the worklet's next report carries on from there.
+        self.shared.clock.borrow_mut().forget();
+        *self.shared.position.borrow_mut() = tick;
         self.command("seek", Some(tick as f64))
     }
 
@@ -435,7 +540,27 @@ impl Player for WebPlayer {
         *self.shared.position.borrow()
     }
 
+    /// What is heard now: carried on from the worklet's last report to the context time
+    /// the speakers play, so the cursor glides between reports and keeps behind the
+    /// rendering by the output's latency (a Bluetooth headset's few hundred ms too).
+    fn display_position(&self) -> u64 {
+        if self.state() != PlayState::Playing {
+            return self.position();
+        }
+        let heard = heard_time(&self.context);
+        self.shared
+            .clock
+            .borrow()
+            .now(heard)
+            .unwrap_or_else(|| self.position())
+    }
+
     fn state(&self) -> PlayState {
+        if let Some((requested, at)) = self.shared.requested.get()
+            && performance_now() - at < PENDING_AT_MOST
+        {
+            return requested;
+        }
         *self.shared.state.borrow()
     }
 }

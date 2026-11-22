@@ -6746,3 +6746,13 @@ Fourth round, after the owner's iPhone check (preview deploy):
   columns from 640 pt. The practice files are split by part (controls, header, drawer,
   widgets).
 
+
+2026-11-22: the playback cursor follows what is heard. The owner saw the web version's
+cursor on an iPhone start far too late or run ahead, and the desktop's a little ahead.
+Desktop: the clock now carries the position from when each buffer will be heard (the
+callback's latency later; 231 ms measured through ALSA/PipeWire here), holding at a start or
+seek until it is heard. Web: the worklet reports about forty times a second, at once after
+a play, seek or stop, with the context time of its position, ticks a second and where the
+stretch began; the page carries the cursor on to the context time being heard
+(`getOutputTimestamp`, else the output latency) and takes a Play as playing at once instead
+of a report later (the app only kept repainting once it saw playing).

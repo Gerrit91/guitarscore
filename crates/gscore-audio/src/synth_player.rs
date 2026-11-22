@@ -920,9 +920,12 @@ where
         .position
         .store(parts.engine.position(), Ordering::Release);
     let playing = parts.engine.state() == PlayState::Playing;
-    shared
-        .clock
-        .publish(start, parts.engine.bpm().filter(|_| playing));
+    // The buffer is heard the output's latency after the callback began.
+    shared.clock.publish(
+        start,
+        parts.engine.bpm().filter(|_| playing),
+        latency.saturating_sub(started.elapsed()),
+    );
     shared
         .state
         .store(encode(parts.engine.state()), Ordering::Release);
