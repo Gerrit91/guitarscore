@@ -407,6 +407,24 @@ pub(super) fn sound_knobs(
              is mellow, long is bright and metallic.",
         )
         .changed;
+        let mut treble = sound.treble_corner.unwrap_or(0.0);
+        if round_knob(
+            ui,
+            &mut treble,
+            ranges::TREBLE_CORNER,
+            "Treble corner",
+            " Hz",
+            1_200.0,
+            false,
+            "Above this the overtones ring about as long as the brilliance's, as on a real \
+             string, so the top stays alive after the pick. 0: the higher, the sooner they \
+             die (dull soon after the attack).",
+        )
+        .changed
+        {
+            sound.treble_corner = Some(treble);
+            changed = true;
+        }
         changed |= round_knob(
             ui,
             &mut sound.stiffness,
@@ -416,9 +434,46 @@ pub(super) fn sound_knobs(
             -0.5,
             false,
             "A stiff string's high overtones run sharp: closer to -0.6 is more metallic and \
-             bell-like, 0 is an ideal string.",
+             bell-like, 0 is an ideal string. Only while the inharmonicity is 0.",
         )
         .changed;
+        // Shown in units of 1e-4, where a guitar's values lie (about 0.2 to 2).
+        let mut inharmonicity = sound.inharmonicity.unwrap_or(0.0) * 1e4;
+        if round_knob(
+            ui,
+            &mut inharmonicity,
+            (ranges::INHARMONICITY.0 * 1e4, ranges::INHARMONICITY.1 * 1e4),
+            "Inharmonicity",
+            "",
+            1.0,
+            false,
+            "How far a real string's overtones run sharp (its coefficient B, in 1/10 000, of \
+             an open string at 110 Hz): lower and fretted notes get more, as on a guitar. \
+             Measured on an electric guitar: about 1. 0 leaves it to the stiffness knobs \
+             below.",
+        )
+        .changed
+        {
+            sound.inharmonicity = Some(inharmonicity / 1e4);
+            changed = true;
+        }
+        let mut fretted = sound.fretted_sustain.unwrap_or(1.0);
+        if round_knob(
+            ui,
+            &mut fretted,
+            ranges::FRETTED_SUSTAIN,
+            "Fretted sustain",
+            "",
+            0.6,
+            false,
+            "How long a fretted note rings against an open string at the same pitch (the \
+             fingertip takes energy out of the string): 1 the same, 0.6 as measured.",
+        )
+        .changed
+        {
+            sound.fretted_sustain = Some(fretted);
+            changed = true;
+        }
         let mut stages = f32::from(sound.stiffness_stages);
         let limits = (
             ranges::STIFFNESS_STAGES.0 as f32,

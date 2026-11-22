@@ -6746,6 +6746,7 @@ Fourth round, after the owner's iPhone check (preview deploy):
   columns from 640 pt. The practice files are split by part (controls, header, drawer,
   widgets).
 
+## 2026-11-21: M22, the electric strings fitted to the owner's recordings
 
 ## 2026-11-22: Alternative endings over several bars play their bars on one pass
 
@@ -6771,3 +6772,67 @@ playback cannot disagree about where a group ends. The last ending, after the gr
 close, keeps a bracket of its own and now closes with a hook too (`multi_staff.*.svg`
 goldens updated for that one line). Checked on `holywars.gp` in the PDF render: ending 1
 runs from bar 105 across the page breaks to the repeat at 117, ending 2 covers bar 118.
+
+The owner's first reference recordings (DI and Quad Cortex reamps, outside the repo) were
+analysed: the DI is clean (-88 dBFS floor, no gate, dynamics apart); the clean reamp clips
+and the preset has a gate; 04 and 05 stopped early (a playback stop on the owner's Windows
+machine, not reproduced here: the headless app played 04 through bar 18, and offline
+renders at every rate and buffer size play through). A preview (the DI through
+GuitarScore's own amp and cab, and the same with an EQ matched to the Quad Cortex) showed
+the amp and cab are good enough; the strings were the gap.
+
+The string model was then fitted to the DI (see `docs/guitar-modelling.md`, "Fitted to the
+reference recordings"): inharmonicity per string and fret (new knob), shorter fretted notes
+(new knob), a palm mute that keeps the pick's attack, and the electric preset's knobs
+fitted. `render_notes` (a `gscore-guitar` example) renders single notes for such fits. The
+Sound chain window's String tab has the two new knobs; the browser's wire format carries
+them. Three palm-mute tests asked for the old, too short and dark mute and now ask for the
+measured one.
+
+2026-11-22: the owner heard the mids still off. The DI's losses stop rising above about
+1.5 kHz, the model's kept rising (its top died 2-3 times too fast). New knob `treble_corner`
+(a one-section shelf as the ringing string's loss filter; 0 the old lowpass, which the other
+guitars keep), fitted at 1120 Hz with the brilliance at 2.7 s; the decay per band is now
+within about 1 dB/s of the DI's. Three tests were loosened to the measured ranges (the
+palm mute's highs against an open note, the palm-mute knob's darkness steps).
+
+
+2026-11-22: the chugs. Against the owner's Quad Cortex on the same DI, GuitarScore's
+high-gain chain was 6-7 dB short at 60-100 Hz on palm mutes and right on chords: the amp's
+Lead voice cut its input at 160 Hz, which left a palm-muted low E little to drive. Now 90 Hz
+(see `docs/guitar-modelling.md`, "The chugs"). The modelled palm mute's highs still ring too
+long; that needs a steeper loss filter (constants alone were tried and dropped).
+
+2026-11-22: the steep palm shelf. The palm mute's loss filter is a second-order shelf
+(`SteepShelf`), fitted to the owner's single palm-muted notes. A fit to the chugs (softer,
+stronger strike) matched the dry DI better but was further from the Quad Cortex through the
+amp, and was dropped. Most of the chugs' missing bass was the level: the DI came in 8 dB
+hotter than the preset's level (the amps' calibration, kept); the comparison tones set the
+string level to 0.88. Still missing: the DI's other strings ringing along and the thump
+below the note.
+
+2026-11-22: the palm mute fitted to how the chugs fade. On the owner's DI a chug's
+fundamental holds and its harmonics fade one after the other; the model's fundamental fell
+three times too fast and its harmonics vanished at once. Fitted to the band envelopes the
+palm's shelf is first order again (the steep one fitted much worse), keeps about 6
+harmonics, its fundamental rings 3.5 s, and the palm-muted strike is darker. Through the
+amp the chugs' shape is closer to the DI's but 2-3 dB lighter in the bass; the owner found
+it better by ear (see `docs/guitar-modelling.md`).
+
+## 2026-11-22: a track's pan after solo and unsolo
+
+Owner report: a guitar panned right came back hard left after it was soloed and unsoloed.
+Solo rebuilds the sequence with only the soloed tracks, and a track's MIDI channel is its
+*position* in that sequence (the soloed guitar moves from channel 2 to 0), while the
+mixer's strips are keyed by song track and do not exist yet for the new sequence when the
+rebuild is loaded. The transport replaced the sequence, then a seek sent the new
+sequence's setup (program, volume, pan) before the next render block followed the
+sequence: the guitar's pan landed on the strip of the track now on channel 0 (the first
+track, panned left), and the follow that matched the guitar's strip to its own track then
+kept that left pan.
+
+The `Sink` trait now has `follow` (a no-op for MIDI output), and `Transport` calls it on
+`Load`, `Replace` and before a seek's setup, so the synth's mixer and modelled strings are
+keyed to a sequence before any of its events is sent. Regression test:
+`a_rebuilt_sequence_puts_its_setup_on_its_own_tracks` (track 0 left, track 2 right, solo,
+unsolo: both keep their pan; without the fix the guitar reads 0). `cargo xtask ci` passes.

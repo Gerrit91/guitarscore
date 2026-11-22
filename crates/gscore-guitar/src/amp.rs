@@ -85,7 +85,11 @@ impl AmpVoice {
                 trim_follow: 0.0,
             },
             AmpVoice::Lead => VoiceShape {
-                tight: 160.0,
+                // 160 Hz until 2026-11-22: it left a palm-muted low E (most of it its 82 Hz
+                // fundamental) little to drive, so chugs came out 6-7 dB short at 60-100 Hz
+                // against the owner's Quad Cortex on the same DI, while chords matched. At
+                // 90 Hz both do.
+                tight: 90.0,
                 push: (750.0, 7.0),
                 drive_db: (14.0, 46.0),
                 stage_gain: [1.0, 6.0, 4.0],

@@ -59,7 +59,7 @@ The score already has every technique; the model plays each one by changing para
 |---|---|
 | Bend, slide, vibrato, whammy | change the delay length while the note sounds |
 | Hammer-on, pull-off, tapping | change the length without a new pluck (keeps the energy) |
-| Palm mute | a shelving loss filter: the highs go at once, the pitch and low harmonics ring on |
+| Palm mute | a shelving loss filter: the pick's bright attack, its highs gone within about 0.1 s, the pitch and low harmonics ring on (fitted 2026-11-21) |
 | Dead note | very strong damping plus a noise burst |
 | Natural, artificial harmonic | damp at the node (12th fret: middle of the line) |
 | Let ring vs. staccato | damp or not when the next note starts on that string |
@@ -259,6 +259,145 @@ described in the literature below:
 - **Not yet:** coupling (step 3), noises and feel (step 4). Everything is one generic string model now; a
   distorted part sounds distorted once its chain has an Amp block (below). Harmonics play the
   harmonic's pitch with a purer pluck rather than damping at a node.
+
+## Fitted to the reference recordings (2026-11-21)
+
+The owner's first electric recordings (`docs/reference-recordings.md`; a Schecter with a
+high-output bridge humbucker, DI through an RNDI) were compared with the string model note
+by note: the 54 single notes of `01` and the light and heavy palm mutes of `03`, rendered
+from the same tabs with `cargo run --release -p gscore-guitar --example render_notes`.
+Measured the same way on both: each partial's frequency (the inharmonicity `B`), its level
+from 20 ms to 5 s (spectrum and decay per band, open and fretted apart), and for palm
+mutes each partial's time to fall 20 dB. The knobs were then fitted (Nelder-Mead over 13 of
+them) and the structure changed where no knob could reach. The owner's verdict before
+this: his DI through GuitarScore's own amp and cab sounded right, the strings did not.
+
+- **Inharmonicity per string** (new `inharmonicity`, B of an open string at 110 Hz, 1e-4
+  for the electric): an open string's B follows its pitch as `(110 / f) ^ 1.4` (measured:
+  low E 1.5e-4, high E 0.2e-4; the plain G is stiffer than that), and a fretted note's with
+  the square of how much shorter the string is (fret 12: four times). The voice learns
+  the open string's pitch from the note's fret (`StringVoice::set_open`); the four
+  stiffness allpasses' coefficient is fitted per note to the target partials (a golden
+  search, at the pluck only). The old `stiffness` knobs still apply when it is 0. The old
+  allpasses made high notes inharmonic and low ones not at all: the reverse of a guitar.
+- **Fretted notes ring shorter** (new `fretted_sustain`, 0.6): measured below 400 Hz,
+  open strings fall 4.3 dB/s, fretted ones 6.6-7.7.
+- **Palm mute:** a real mute keeps the pick's bright attack (its highs at 600 Hz-2.5 kHz
+  only 7-15 dB under the note's loudest partial in the first 20 ms) and loses them within
+  about 0.1 s, while the low E's fundamental rings about half a second (20 dB). Light and
+  heavy differ little; heavy is a few dB darker and a little shorter. Before, the mute took
+  everything above the 3rd to 8th harmonic at once and the note was 130 dB down after a
+  second. Now the shelf keeps 3 harmonics flat (`PALM_KEEPS`), the highs at 2 kHz ring
+  0.13 s light to 0.07 s heavy, the fundamental 2.0 to 1.6 s (low E); dark strings (a
+  brilliance under 0.5 s, as the bass) are muted by their own loss filter instead, which
+  already takes their top harder.
+- **The fitted electric preset:** sustain 16 s (exponent 0.32), brilliance 1.35 s, pick at
+  0.08, hardness 0.67, roundness 0.24, coil tone 1350 Hz with resonance 1.45, bridge 0.9,
+  low cut 70 Hz, second vibration 0.05. Against the DI: the spectrum of open notes within
+  about 2 dB per band (was up to 9), the palm mutes' within 1-5 dB; the low partials'
+  decay close.
+- **Saved tones:** a sound saved before the two knobs gets its kind's values when it is
+  read for a kind (as the pickup); without a kind it leaves them out (0 and 1).
+- **Still apart (2026-11-21):** the second vibration nearly off (its faster decay did not
+  match the recordings); the velocity steps (measured p to mf 6 dB, mf to ff 1 dB); the
+  clean amp in the recordings was crunchy, so the clean tone is the least checked.
+
+### The treble corner (2026-11-22)
+
+The owner heard the mids still off. Measured per partial (dB per second, 0.2 to 1.5 s,
+only while 15 dB above the noise): the DI's loss rises with the pitch up to about 1.5 kHz
+and then stays nearly flat (about 20 dB/s at 1.5-2 kHz, 27 at 3-5 kHz), while the one-pole
+loss filter kept rising (37 and 68 dB/s): the top died soon after the pick. Now a ringing
+string's loss filter is one shelf section (new `treble_corner`, Hz; 0 the old lowpass):
+flat below the corner, falling to a floor above it, the floor set by the brilliance. Fitted
+again with it: corner 1120 Hz, brilliance 2.7 s (was 1.35), sustain 15.3 s (exponent
+0.43), fretted sustain 0.58, coil tone 1400 Hz (resonance 1.43), pick 0.087, hardness
+0.68, roundness 0.27, bridge 0.93, low cut 68 Hz. The decay per band is now within about
+1 dB/s of the DI's above 300 Hz; the spectrum stays within about 2 dB. Still apart: in the
+first 0.4 s the DI's mids and highs fall faster (23-48 dB/s) than later, the model's at one
+rate (a two-stage decay; the second vibration's job). The palm mute keeps its own shelf.
+
+### The chugs (2026-11-22)
+
+The owner heard the chugs thinner than the Quad Cortex. Measured on the palm-mute passages
+(third-octave spectra, each normalised to its total): the owner's DI through GuitarScore's
+high-gain chain was 6-7 dB short at 60-100 Hz against the Quad Cortex on the same DI, while
+on chords the same chain matched within 1 dB. The amp's Lead voice cut its input at 160 Hz
+(second order) before the stages: a chord's lows come back out of the clipping of all its
+notes together, a palm-muted low E (mostly its 82 Hz fundamental) was left little to drive.
+At 90 Hz the DI's chugs match (63-127 Hz +0.2 dB, the whole spectrum 1.4 dB rms) and the
+chords stay (0.9 dB rms). The lead tone the same way.
+
+The modelled strings' palm mute still falls short of the DI through the same chain
+(63-127 Hz -1.7 dB, 1-4.5 kHz +2.3 dB): its highs ring about 1.3-1.5 times as long as the
+DI's. Shortening them by the constants does not work: the mute's one-pole shelf cannot take
+the highs down faster without taking the fundamental as well (the loop's gain limit then
+relaxes the shelf), and a higher corner for the light mute fixed its timing but made the
+knob's middle darker than its heavy end. The palm mute needs a steeper loss filter.
+
+### The steep palm shelf and the chugs (2026-11-22)
+
+- **A second-order palm shelf** (`filters::SteepShelf`) replaces the palm's two first-order
+  sections: maximally flat on its poles and zeros, so its loss below the corner grows with
+  the fourth power of the frequency (a third below its corner it takes 0.6 %, a first-order
+  shelf about 5 %). The first-order shelf could not take the highs down as asked without
+  taking the fundamental too, and the loop's gain limit then relaxed it; the steep one
+  keeps the fundamental and takes the highs as fast as asked. Its gain and phase delay come
+  from the analog prototype at prewarped frequencies (exact), so the loop stays in tune.
+- **Fitted to the single palm-muted notes** (03, light and heavy): light keeps 3.2
+  harmonics flat, heavy 2.2; the highs at 2 kHz ring 0.104 and 0.122 s, the fundamental
+  1.7 and 1.4 s (low E). The attack spectra within 0.7 and 1.5 dB of the DI (0.9 and 1.9
+  before), the highs' 20 dB fall 1.16 times the DI's (1.45 and 1.33).
+- **A fit to the chugs, tried and dropped:** the DI's chugs (low E eighths, 03 bars 27-28)
+  are a heavier mute than the single notes: their first 30 ms already dark (2.4-4.8 kHz
+  some 20 dB under the fundamental), the fundamental swelling about 5 dB after the pick.
+  Fitted with a softer strike, less click and a stronger palm strike, the dry chugs came
+  within a few dB of the DI's in attack, body and tail; but through the high-gain chain
+  they were further from the Quad Cortex (63-127 Hz -4.8 dB against +0.5 with the
+  single-note fit, both at the DI's level). The DI's chugs carry energy the model does not
+  make (below), and the lighter mute's longer low harmonics stand in for some of it.
+- **Levels:** the fitted strings' chords came out 8 dB under the owner's DI, so in the
+  previews they drove the amps less than the DI (and the Quad Cortex's reamp) did. The DI's
+  level is its preamp's setting, while the amps are calibrated to the preset's own level
+  (`real_strings_crunch_at_half_gain_and_stay_clean_on_the_clean_voice`): the preset keeps
+  0.35, and the tones compared with the DI set their string level to 0.88.
+- **Through the high-gain chain** at the DI's level the model's chugs now come within
+  about 0.5 dB of the Quad Cortex at 63-127 Hz (+1.3 dB at 1-4.5 kHz; the whole spectrum
+  3.6 dB rms, the DI's own 1.4). **Still apart**, the dry passages show: the DI has 5-14 dB more at 50 Hz (the hand's thump, below the note), at 101-127 Hz
+  (not the open A ringing along, as was thought here: see the next section) and at 250-400 Hz (the other strings' overtones); the
+  model plays only the picked strings. And the first period of a chug leaves the loop
+  before the palm acts on it, so its attack is as bright as the strike (2.5-3.2 kHz 12 dB
+  over the DI's). Next: the strings ringing along (the coupling recording, 06) and the
+  palm's effect on the strike.
+
+### The palm mute fitted to how the chugs fade (2026-11-22)
+
+- **What the DI's chugs do** (03 bar 27, low E eighths, per band from the hit to 440 ms):
+  the fundamental holds (about 5 dB down, as slowly as almost a ringing note), the 2nd
+  harmonic fades from +7 to -20 dB (against the fundamental's peak), the 3rd from +8 to
+  -36, 300-600 Hz from +12 to -43. The model (steep shelf, single-note fit) let the
+  fundamental fall 14 dB and everything from the 3rd harmonic on vanish within 100 ms: the
+  note did not come through after the hit (owner: "more of the actual note comes through
+  after the initial hit" on the Quad Cortex).
+- **The fit** (a scratch script, outside the repo): the band envelopes every 20 ms, the
+  palm at the knob's middle, its ends keeping the single notes' spread. Error 282 before;
+  first-order shelf 32, one-pole loss 34, the steep shelf 59 (its harmonics ring as long
+  as the fundamental, then nothing). So the palm's shelf is first order again
+  (`PALM_SECTIONS`; `SteepShelf` stays for a heavier mute or another string): light keeps
+  6.4 harmonics, heavy 4.4, the fundamental rings 3.5 and 2.9 s (low E, the limit raised to
+  6 s), the highs at 2 kHz 0.1 and 0.117 s; the strike is 0.71 as bright, its click 0.19
+  as loud. The second vibration (the DI shows a fast first 80 ms, then a slow fade) did not
+  help (30.6 with it at its limit).
+- **Through the high-gain chain**, against the DI through the same chain (rms of the
+  third-octave difference): bars 27-28 3.2 dB (4.0 before), both chug passages 2.8 (2.8),
+  the palm-muted chords 3.5 (3.4); but 63-127 Hz 2-3.5 dB under the DI's (within 1.2
+  before). The owner found it better by ear.
+- **Still apart:** the 2nd harmonic fades a little slower than the DI's and the
+  fundamental a little faster (a first-order shelf grows its loss more gently from the 1st
+  to the 2nd harmonic than the hand does); the hit has 3-6 dB less at 150-600 Hz; the DI's
+  hit has a thump at 30-45 Hz some 13 dB stronger. There is no open A ringing along in
+  these bars (110 Hz 37 dB down: the note above about it was wrong). A high E's palm-muted
+  highs now come out about -53 dB against the open note's (measured: -46 at most).
 
 ## The effect chain (2026-11-06)
 

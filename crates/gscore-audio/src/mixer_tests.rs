@@ -8,6 +8,7 @@ use gscore_model::testing;
 use gscore_play::{Channel, MidiEvent, Sequence, controller};
 
 use super::{Bus, Mixer};
+use crate::transport::{Command, Sink, Transport};
 
 /// Solo keeps the buses: the soloed track is the only one in the sequence, and its strip
 /// still carries its reverb and compressor sends, which the mixer takes after every strip
@@ -78,4 +79,82 @@ fn a_borrowed_channels_setup_never_moves_another_strip() {
         Some(1),
     );
     assert_eq!(mixer.strips[1].pan, 10);
+}
+
+/// A sink that only feeds the mixer: what the synth's sink does for the tracks' own
+/// controllers (volume and pan), as the transport handles a load and a seek.
+struct MixerSink<'a> {
+    mixer: &'a mut Mixer,
+}
+
+impl Sink for MixerSink<'_> {
+    fn send(&mut self, event: MidiEvent) {
+        let _ = self.mixer.take(&event, None);
+    }
+
+    fn silence(&mut self, _: &Sequence) {}
+
+    fn follow(&mut self, sequence: &Arc<Sequence>) {
+        self.mixer.follow(sequence);
+    }
+}
+
+/// Loads `sequence` at `position` as the engine does: `Load`, `seek`, and the follow of
+/// the next render block.
+fn load_at(transport: &mut Transport, mixer: &mut Mixer, sequence: &Arc<Sequence>, position: u64) {
+    let _ = transport.handle(
+        Command::Load(Arc::clone(sequence)),
+        0,
+        &mut MixerSink { mixer },
+    );
+    let _ = transport.handle(Command::Seek(position), 0, &mut MixerSink { mixer });
+    mixer.follow(sequence);
+}
+
+#[test]
+fn a_rebuilt_sequence_puts_its_setup_on_its_own_tracks() {
+    // The bug: a track panned right kept the pan of another track (the first one, panned
+    // left) after it was soloed and unsoloed. The rebuilt sequence's setup (its pans)
+    // reached the mixer before the mixer had re-keyed its channels to that sequence, and
+    // the strip that then followed the track kept the wrong pan.
+    use gscore_model::TrackIndex;
+
+    let mut song = testing::song(
+        &[testing::GUITAR_6, testing::GUITAR_6, testing::GUITAR_6],
+        1,
+    )
+    .unwrap();
+    let left = TrackIndex::new(0);
+    let guitar = TrackIndex::new(2);
+    let _ = song.set_track_pan(left, 0).unwrap();
+    let _ = song.set_track_pan(guitar, 127).unwrap();
+    let pan = |mixer: &Mixer, track: usize| {
+        mixer
+            .strips
+            .iter()
+            .find(|strip| strip.song_track == track)
+            .map(|strip| strip.pan)
+    };
+
+    let mut transport = Transport::default();
+    let mut mixer = Mixer::new(48_000);
+    let first = Arc::new(Sequence::new(&song, None).unwrap());
+    load_at(&mut transport, &mut mixer, &first, 480);
+    assert_eq!(pan(&mixer, 0), Some(0));
+    assert_eq!(pan(&mixer, 2), Some(127));
+
+    let _ = song.set_track_solo(guitar, true).unwrap();
+    let soloed = Arc::new(Sequence::new(&song, None).unwrap());
+    load_at(&mut transport, &mut mixer, &soloed, 480);
+    assert_eq!(pan(&mixer, 2), Some(127), "the soloed guitar stays right");
+
+    let _ = song.set_track_solo(guitar, false).unwrap();
+    let all = Arc::new(Sequence::new(&song, None).unwrap());
+    load_at(&mut transport, &mut mixer, &all, 480);
+    assert_eq!(pan(&mixer, 0), Some(0), "the left track stays left");
+    assert_eq!(
+        pan(&mixer, 2),
+        Some(127),
+        "the unsoloed guitar is still panned right"
+    );
 }

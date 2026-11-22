@@ -307,6 +307,8 @@ impl Guitars {
         };
         if note.velocity > 0 {
             voice.set_level(1.0);
+            // A live note's fret is not known: it counts as an open string.
+            voice.set_open(0.0);
             voice.pluck(Pluck {
                 frequency: frequency(note.key, 0.0),
                 velocity: f32::from(note.velocity.min(127)) / 127.0,
@@ -371,6 +373,10 @@ impl Guitars {
             };
             if let Some(voice) = self.voices.get_mut(index) {
                 voice.set_level(fade_level(&note, tick));
+                // The open string's pitch: the note's, less its fret.
+                voice.set_open(note.fret.map_or(0.0, |fret| {
+                    frequency(note.key, 0.0) / (f32::from(fret) / 12.0).exp2()
+                }));
                 voice.pluck(Pluck {
                     frequency: frequency(note.key, 0.0),
                     velocity: f32::from(note.velocity.min(127)) / 127.0,

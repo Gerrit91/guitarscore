@@ -27,7 +27,7 @@ use crate::filters::{Biquad, DcBlocker, Noise};
 use crate::model::StringModel;
 use crate::pick::{PickNoise, Tension};
 use crate::pickup::PickupComb;
-use crate::string_loop::{Loop, Tuning};
+use crate::string_loop::{Loop, MAX_STIFFNESS_STAGES, Tuning, dispersion};
 
 /// A hammer-on or pull-off reaches its new pitch within this long, in seconds.
 const LEGATO_GLIDE: f32 = 0.002;
@@ -50,20 +50,37 @@ const BRIDGE_AT: f32 = 1_000.0;
 const LOW_CUT_Q: f32 = 0.707;
 /// A palm-muted string's 60 dB decay times and how far up it keeps the harmonics, at the
 /// light and the heavy end of the model's palm-mute knob (the middle is their geometric
-/// mean: 0.9 s, 0.03 s and the fifth harmonic). The fundamental's time is for a low E
+/// mean). The fundamental's time is for a low E
 /// (82.4 Hz): lower notes ring longer, higher ones shorter (by the square root of the
 /// pitch, within [`PALM_DECAY_RANGE`]). The hand at the bridge takes the highs (around
 /// 2 kHz) much sooner, and above the kept harmonics (the loss filter's corner) everything,
 /// so the pitch and the low mids stay heard while the brightness is gone.
-const PALM_DECAY: (f32, f32) = (2.7, 0.3);
+const PALM_DECAY: (f32, f32) = (3.53, 2.91);
 const PALM_DECAY_AT: f32 = 82.4;
-const PALM_DECAY_RANGE: (f32, f32) = (0.1, 3.0);
-const PALM_HIGH_DECAY: (f32, f32) = (0.075, 0.012);
-const PALM_KEEPS: (f32, f32) = (25.0 / 3.0, 3.0);
+const PALM_DECAY_RANGE: (f32, f32) = (0.1, 6.0);
+const PALM_HIGH_DECAY: (f32, f32) = (0.1, 0.117);
+/// Fitted (2026-11-22) at the knob's middle, where a tab's palm mutes play, to how the
+/// owner's chugs fade after the hit (03, bar 27: low E eighths, per band): the fundamental
+/// holds, the 2nd to 7th harmonics fade one after the other. The ends keep the spread of
+/// the owner's single palm-muted notes: a heavy mute keeps fewer harmonics and loses its
+/// body sooner, but its highs are no darker than a light one's.
+const PALM_KEEPS: (f32, f32) = (6.4, 4.4);
+/// The palm's shelf: first order (1) or the steep second order (2). The steep one, flat up
+/// to the kept harmonics, fitted the chugs' fades much worse (its harmonics all ring as
+/// long as the fundamental, then nothing): a hand at the bridge damps each harmonic a
+/// little more than the one below (see `docs/guitar-modelling.md`).
+const PALM_SECTIONS: usize = 1;
+/// A palm-muted pick: its strike this much as bright and its click this much as loud (the
+/// hand on the strings takes the edge off the hit at once).
+const PALM_HARDNESS: f32 = 0.71;
+const PALM_CLICK: f32 = 0.19;
 /// A chug is played hard, and the hand takes energy out of the string from the start:
 /// the strike of a palm-muted note is this much stronger, so its low end is as full as an
 /// open note's.
 const PALM_STRIKE: f32 = 1.4;
+/// Strings whose highs ring at least this long (s, their brilliance) are muted with the
+/// palm's shelf; darker ones with their own loss filter, at the palm's decay times.
+const PALM_SHELF_BRILLIANCE: f32 = 0.5;
 /// How the strike's level follows the velocity (0 to 1): `velocity ^ this`. 1.3 made fff
 /// 3.3 dB louder than f, too far apart (owner, 2026-11-13); at 1.0 it is 2.5 dB, and ppp to
 /// fff spans about 18.5 dB.
@@ -165,6 +182,10 @@ pub struct StringVoice {
     /// The loudest recent output, to stop computing a silent string.
     peak: f32,
     sounding: bool,
+    /// The open string's pitch (Hz; 0 unknown: every note counts as an open string), and
+    /// the stiffness allpasses' coefficient made for the note (see `dispersion`).
+    open: f32,
+    dispersion: f32,
 }
 
 impl StringVoice {
@@ -206,7 +227,48 @@ impl StringVoice {
             level_target: 1.0,
             peak: 0.0,
             sounding: false,
+            open: 0.0,
+            dispersion: 0.0,
         }
+    }
+
+    /// Tells the string its open pitch (Hz), for the notes plucked from now on: how much
+    /// shorter a fretted note's string is decides its inharmonicity and its sustain. 0 (or
+    /// never told): every note counts as an open string.
+    pub fn set_open(&mut self, frequency: f32) {
+        self.open = if frequency.is_finite() {
+            frequency.clamp(0.0, 20_000.0)
+        } else {
+            0.0
+        };
+    }
+
+    /// The open string's pitch for a note at `frequency` (the note's own when not known or
+    /// above it).
+    fn open_for(&self, frequency: f32) -> f32 {
+        if self.open > 0.0 && self.open <= frequency * 1.001 {
+            self.open
+        } else {
+            frequency
+        }
+    }
+
+    /// Whether a palm mutes the string now.
+    fn palm_muted(&self) -> bool {
+        matches!(self.damping, Damping::PalmMuted | Damping::PalmReleased)
+    }
+
+    /// Whether the note is fretted (not an open string).
+    fn fretted(&self) -> bool {
+        self.open > 0.0 && self.frequency > self.open * 1.03
+    }
+
+    /// Designs the stiffness for the note now set (once per note: a bend keeps it).
+    fn design_dispersion(&mut self) {
+        let b = self
+            .model
+            .inharmonicity_at(self.open_for(self.frequency), self.frequency);
+        self.dispersion = dispersion(self.sample_rate, self.frequency, b);
     }
 
     /// Changes the string model (the vibration goes on).
@@ -257,6 +319,7 @@ impl StringVoice {
         };
         if pluck.attack == Attack::Legato && self.sounding {
             self.frequency = frequency;
+            self.design_dispersion();
             self.set_damping(damping, false);
             self.update(self.glide_samples());
             // The finger hitting the fret (or leaving it) adds a little energy.
@@ -264,6 +327,7 @@ impl StringVoice {
             return;
         }
         self.frequency = frequency;
+        self.design_dispersion();
         self.set_damping(damping, true);
         self.level = self.level_target;
         self.tension = Tension::default();
@@ -282,12 +346,14 @@ impl StringVoice {
             Attack::Tap => 0.3,
             Attack::Legato | Attack::Scrape => 0.0,
         };
-        let hardness = if pluck.harmonic {
-            hardness * 0.3
+        let (hardness, click) = if pluck.harmonic {
+            (hardness * 0.3, click)
         } else if pluck.dead {
-            hardness * 0.5
+            (hardness * 0.5, click)
+        } else if pluck.palm_mute {
+            (hardness * PALM_HARDNESS, click * PALM_CLICK)
         } else {
-            hardness
+            (hardness, click)
         };
         // Harder strikes are brighter; a soft one rounds the edge of the pluck.
         let (soft, hard) = VELOCITY_HARDNESS;
@@ -422,7 +488,7 @@ impl StringVoice {
     /// current pitch.
     fn damping_values(&self, damping: Damping) -> (f32, f32) {
         match damping {
-            Damping::Ringing => (self.model.sustain_at(self.frequency), self.model.brilliance),
+            Damping::Ringing => (self.ringing_sustain(), self.model.brilliance),
             Damping::PalmMuted => self.palm_values(),
             Damping::Released => RELEASED,
             Damping::PalmReleased => {
@@ -434,13 +500,23 @@ impl StringVoice {
         }
     }
 
+    /// How long the note rings (60 dB, its fundamental): shorter on a fretted string.
+    fn ringing_sustain(&self) -> f32 {
+        let sustain = self.model.sustain_at(self.frequency);
+        if self.fretted() {
+            sustain * self.model.fretted_sustain
+        } else {
+            sustain
+        }
+    }
+
     /// The palm mute's decay times at the current pitch (never longer than the string rings
     /// open).
     fn palm_values(&self) -> (f32, f32) {
         let (low, high) = PALM_DECAY_RANGE;
         let decay = (self.palm(PALM_DECAY) * (PALM_DECAY_AT / self.frequency.max(8.0)).sqrt())
             .clamp(low, high)
-            .min(self.model.sustain_at(self.frequency));
+            .min(self.ringing_sustain());
         (decay, self.palm(PALM_HIGH_DECAY).min(self.model.brilliance))
     }
 
@@ -497,13 +573,30 @@ impl StringVoice {
             frequency,
             decay: self.decay,
             high_decay: self.high_decay,
-            stiffness: self.model.stiffness,
-            stages: self.model.stiffness_stages,
-            corner: if matches!(self.damping, Damping::PalmMuted | Damping::PalmReleased) {
-                frequency * self.palm(PALM_KEEPS)
+            // The inharmonicity's allpasses, or (without one) the plain stiffness knobs.
+            stiffness: if self.model.inharmonicity > 0.0 {
+                self.dispersion
             } else {
-                0.0
+                self.model.stiffness
             },
+            stages: if self.model.inharmonicity > 0.0 {
+                MAX_STIFFNESS_STAGES
+            } else {
+                self.model.stiffness_stages
+            },
+            // The palm's shelf (flat up to the kept harmonics) on bright strings; a dark
+            // string's own loss already takes its top harder than the shelf would. A
+            // ringing string's treble shelf, if the model has one.
+            corner: if self.palm_muted() {
+                if self.model.brilliance > PALM_SHELF_BRILLIANCE {
+                    frequency * self.palm(PALM_KEEPS)
+                } else {
+                    0.0
+                }
+            } else {
+                self.model.treble_corner
+            },
+            sections: if self.palm_muted() { PALM_SECTIONS } else { 1 },
         };
         // The second vibration: a little detuned (half each way would move the heard
         // pitch; the first stays exact), and it gives its energy to the bridge sooner.

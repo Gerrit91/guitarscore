@@ -1,7 +1,7 @@
 //! The small filters in and after the string loop, and their phase delays (which the
 //! tuning subtracts from the delay line so the pitch stays exact).
 
-use std::f32::consts::TAU;
+use std::f32::consts::{SQRT_2, TAU};
 
 /// Below this a filter's output counts as zero: a filter fed silence decays toward ever
 /// tinier numbers, and below about 1e-38 (denormals) the processor takes up to a hundred
@@ -53,6 +53,17 @@ impl OnePole {
     pub(crate) fn reset(&mut self) {
         self.x1 = 0.0;
         self.state = 0.0;
+    }
+
+    /// The last input and output.
+    pub(crate) fn last(&self) -> (f32, f32) {
+        (self.x1, self.state)
+    }
+
+    /// Takes `x` and `y` as its last input and output (handed over from another filter).
+    pub(crate) fn prime(&mut self, x: f32, y: f32) {
+        self.x1 = x;
+        self.state = y;
     }
 }
 
@@ -106,6 +117,111 @@ pub(crate) fn one_pole_gain(a: f32, w: f32) -> f32 {
 /// The phase delay of [`OnePole`] with coefficient `a` at `w`, in samples.
 pub(crate) fn one_pole_delay(a: f32, w: f32) -> f32 {
     (a * w.sin()).atan2(1.0 - a * w.cos()) / w.max(1e-9)
+}
+
+/// A second-order shelf, maximally flat on both its poles and its zeros: unity below
+/// `corner`, falling 12 dB an octave above it to `floor`. Its loss below the corner grows
+/// with the fourth power of the frequency (a first-order shelf's with the square), so it
+/// can take a string's highs down hard while hardly touching the fundamental a few
+/// harmonics below: a palm mute's loss filter. Designed through the analog prototype
+/// `floor (s^2 + sqrt2 Wz s + Wz^2) / (s^2 + sqrt2 Wp s + Wp^2)` (`Wz = Wp / sqrt(floor)`)
+/// and the bilinear transform with prewarped frequencies, so its gain and phase delay at a
+/// frequency are exact. Frequencies are radians per sample.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct SteepShelf {
+    pub(crate) corner: f32,
+    pub(crate) floor: f32,
+}
+
+impl SteepShelf {
+    /// The prototype's frequency for `w` (prewarped), kept clear of Nyquist.
+    fn warp(w: f32) -> f32 {
+        2.0 * (0.5 * w.clamp(1e-6, 3.1)).tan()
+    }
+
+    fn zeros(self) -> (f32, f32) {
+        let pole = Self::warp(self.corner);
+        (pole, pole / self.floor.clamp(1e-6, 1.0).sqrt())
+    }
+
+    /// Its gain at `w`.
+    pub(crate) fn gain(self, w: f32) -> f32 {
+        let (pole, zero) = self.zeros();
+        let x = Self::warp(w);
+        ((1.0 + (x / zero).powi(4)) / (1.0 + (x / pole).powi(4))).sqrt()
+    }
+
+    /// Its phase delay at `w`, in samples.
+    pub(crate) fn delay(self, w: f32) -> f32 {
+        let (pole, zero) = self.zeros();
+        let x = Self::warp(w);
+        let angle = |corner: f32| (SQRT_2 * corner * x).atan2(corner * corner - x * x);
+        (angle(pole) - angle(zero)) / w.max(1e-9)
+    }
+
+    /// Its coefficients, for a [`Biquad`] (which keeps what it is filtering on
+    /// [`Biquad::retuned`]).
+    pub(crate) fn biquad(self) -> Biquad {
+        let (pole, zero) = self.zeros();
+        let side = |corner: f32| {
+            let r = SQRT_2 * corner * 2.0;
+            let c2 = corner * corner;
+            (4.0 + r + c2, 2.0 * c2 - 8.0, 4.0 - r + c2)
+        };
+        let (n0, n1, n2) = side(zero);
+        let (d0, d1, d2) = side(pole);
+        let k = self.floor.clamp(1e-6, 1.0) / d0.max(1e-9);
+        Biquad {
+            b0: k * n0,
+            b1: k * n1,
+            b2: k * n2,
+            a1: d1 / d0.max(1e-9),
+            a2: d2 / d0.max(1e-9),
+            ..Biquad::default()
+        }
+    }
+
+    /// The shelf at `corner` whose gain at `high` is `ratio` times its gain at `low`,
+    /// keeping at least `keep` of the gain at `low` (a loop's limit on how much its loss
+    /// filter may take off the fundamental). When even the deepest floor does not make the
+    /// ratio, the deepest; when the ratio would take too much off `low`, the deepest floor
+    /// that does not (the highs then ring longer than asked).
+    pub(crate) fn for_ratio(low: f32, high: f32, corner: f32, ratio: f32, keep: f32) -> Self {
+        const DEEPEST: f32 = 1e-4;
+        let at = |floor: f32| SteepShelf { corner, floor };
+        if !(ratio.is_finite() && ratio < 1.0 && high > low && corner > low) {
+            return at(1.0);
+        }
+        let r = |floor: f32| at(floor).gain(high) / at(floor).gain(low).max(1e-9);
+        // The floor's log, searched: a deeper floor makes a smaller ratio.
+        let (mut lo, mut hi) = (DEEPEST.ln(), 0.0_f32);
+        if r(DEEPEST) < ratio {
+            for _ in 0..30 {
+                let mid = 0.5 * (lo + hi);
+                if r(mid.exp()) < ratio {
+                    lo = mid;
+                } else {
+                    hi = mid;
+                }
+            }
+        } else {
+            hi = lo;
+        }
+        let mut floor = hi.exp();
+        if at(floor).gain(low) < keep {
+            let (mut lo, mut hi) = (floor.ln(), 0.0_f32);
+            for _ in 0..30 {
+                let mid = 0.5 * (lo + hi);
+                if at(mid.exp()).gain(low) < keep {
+                    lo = mid;
+                } else {
+                    hi = mid;
+                }
+            }
+            floor = hi.exp();
+        }
+        at(floor)
+    }
 }
 
 /// A first-order allpass `(c + z^-1) / (1 + c z^-1)`. With `c` below 0 it delays low
@@ -279,7 +395,7 @@ impl Biquad {
         let w = TAU * corner / sample_rate;
         let cos = w.cos();
         // Slope 1: alpha = sin(w) / 2 * sqrt(2).
-        let alpha = w.sin() / 2.0 * std::f32::consts::SQRT_2;
+        let alpha = w.sin() / 2.0 * SQRT_2;
         let root = 2.0 * a.sqrt() * alpha;
         let (p, m) = (a + 1.0, a - 1.0);
         let (b0, b1, b2, a0, a1, a2) = if high {
@@ -319,6 +435,22 @@ impl Biquad {
         let num = (self.b0 + self.b1 * c1 + self.b2 * c2).hypot(self.b1 * s1 + self.b2 * s2);
         let den = (1.0 + self.a1 * c1 + self.a2 * c2).hypot(self.a1 * s1 + self.a2 * s2);
         num / den.max(1e-12)
+    }
+
+    /// The last input and output.
+    pub(crate) fn last(&self) -> (f32, f32) {
+        (self.x1, self.y1)
+    }
+
+    /// This filter as if it had been taking `x` and giving `y` (handed over from another).
+    pub(crate) fn primed(self, x: f32, y: f32) -> Self {
+        Biquad {
+            x1: x,
+            x2: x,
+            y1: y,
+            y2: y,
+            ..self
+        }
     }
 
     /// The same filter with new coefficients, keeping what it is filtering.
@@ -525,5 +657,60 @@ mod tests {
             assert!((-1.0..=1.0).contains(&value));
             assert_eq!(value.to_bits(), b.next().to_bits());
         }
+    }
+
+    #[test]
+    fn the_steep_shelf_is_what_it_says() {
+        let rate = 48_000.0;
+        let w = |hz: f32| TAU * hz / rate;
+        let shelf = SteepShelf {
+            corner: w(250.0),
+            floor: 0.01,
+        };
+        let mut filter = shelf.biquad();
+        // Its formula is the filter's response.
+        for hz in [40.0_f32, 82.0, 250.0, 1_000.0, 4_000.0] {
+            let got = filter.gain_at(rate, hz);
+            assert!((got - shelf.gain(w(hz))).abs() < 1e-3, "{hz} Hz: {got}");
+        }
+        // Flat a third below the corner (a first-order shelf there takes about 5 %), at
+        // its floor far above it.
+        assert!(shelf.gain(w(82.0)) > 0.99);
+        assert!((shelf.gain(w(8_000.0)) - 0.01).abs() < 0.002);
+        // Its phase delay, measured: a sine's lag through it.
+        let hz = 300.0;
+        let n = 48_000;
+        let (mut re, mut im) = (0.0_f32, 0.0_f32);
+        for i in 0..n {
+            let y = filter.process((w(hz) * i as f32).sin());
+            if i >= n / 2 {
+                re += y * (w(hz) * i as f32).sin();
+                im += y * (w(hz) * i as f32).cos();
+            }
+        }
+        let lag = -im.atan2(re) / w(hz);
+        assert!(
+            (lag - shelf.delay(w(hz))).abs() < 0.05,
+            "{lag} {}",
+            shelf.delay(w(hz))
+        );
+    }
+
+    #[test]
+    fn the_steep_shelf_design_meets_its_ratio_or_its_limit() {
+        let (low, high, corner) = (0.0108, 0.262, 0.0324);
+        for ratio in [0.9_f32, 0.5, 0.2] {
+            let shelf = SteepShelf::for_ratio(low, high, corner, ratio, 0.0);
+            let got = shelf.gain(high) / shelf.gain(low);
+            assert!((got - ratio).abs() < 0.01, "{ratio}: {got}");
+        }
+        // Kept from taking too much off the fundamental.
+        let kept = SteepShelf::for_ratio(low, high, low * 1.2, 0.01, 0.99);
+        assert!(kept.gain(low) >= 0.99 - 1e-4, "{kept:?}");
+        // Nonsense asks for nothing.
+        assert_eq!(
+            SteepShelf::for_ratio(low, high, corner, f32::NAN, 0.9).floor,
+            1.0
+        );
     }
 }
