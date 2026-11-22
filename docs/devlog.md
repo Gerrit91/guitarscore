@@ -6785,3 +6785,11 @@ amp, and was dropped. Most of the chugs' missing bass was the level: the DI came
 hotter than the preset's level (the amps' calibration, kept); the comparison tones set the
 string level to 0.88. Still missing: the DI's other strings ringing along and the thump
 below the note.
+
+2026-11-22: the palm mute fitted to how the chugs fade. On the owner's DI a chug's
+fundamental holds and its harmonics fade one after the other; the model's fundamental fell
+three times too fast and its harmonics vanished at once. Fitted to the band envelopes the
+palm's shelf is first order again (the steep one fitted much worse), keeps about 6
+harmonics, its fundamental rings 3.5 s, and the palm-muted strike is darker. Through the
+amp the chugs' shape is closer to the DI's but 2-3 dB lighter in the bass; the owner found
+it better by ear (see `docs/guitar-modelling.md`).

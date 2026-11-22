@@ -364,11 +364,40 @@ knob's middle darker than its heavy end. The palm mute needs a steeper loss filt
 - **Through the high-gain chain** at the DI's level the model's chugs now come within
   about 0.5 dB of the Quad Cortex at 63-127 Hz (+1.3 dB at 1-4.5 kHz; the whole spectrum
   3.6 dB rms, the DI's own 1.4). **Still apart**, the dry passages show: the DI has 5-14 dB more at 50 Hz (the hand's thump, below the note), at 101-127 Hz
-  (the open A string ringing along) and at 250-400 Hz (the other strings' overtones); the
+  (not the open A ringing along, as was thought here: see the next section) and at 250-400 Hz (the other strings' overtones); the
   model plays only the picked strings. And the first period of a chug leaves the loop
   before the palm acts on it, so its attack is as bright as the strike (2.5-3.2 kHz 12 dB
   over the DI's). Next: the strings ringing along (the coupling recording, 06) and the
   palm's effect on the strike.
+
+### The palm mute fitted to how the chugs fade (2026-11-22)
+
+- **What the DI's chugs do** (03 bar 27, low E eighths, per band from the hit to 440 ms):
+  the fundamental holds (about 5 dB down, as slowly as almost a ringing note), the 2nd
+  harmonic fades from +7 to -20 dB (against the fundamental's peak), the 3rd from +8 to
+  -36, 300-600 Hz from +12 to -43. The model (steep shelf, single-note fit) let the
+  fundamental fall 14 dB and everything from the 3rd harmonic on vanish within 100 ms: the
+  note did not come through after the hit (owner: "more of the actual note comes through
+  after the initial hit" on the Quad Cortex).
+- **The fit** (a scratch script, outside the repo): the band envelopes every 20 ms, the
+  palm at the knob's middle, its ends keeping the single notes' spread. Error 282 before;
+  first-order shelf 32, one-pole loss 34, the steep shelf 59 (its harmonics ring as long
+  as the fundamental, then nothing). So the palm's shelf is first order again
+  (`PALM_SECTIONS`; `SteepShelf` stays for a heavier mute or another string): light keeps
+  6.4 harmonics, heavy 4.4, the fundamental rings 3.5 and 2.9 s (low E, the limit raised to
+  6 s), the highs at 2 kHz 0.1 and 0.117 s; the strike is 0.71 as bright, its click 0.19
+  as loud. The second vibration (the DI shows a fast first 80 ms, then a slow fade) did not
+  help (30.6 with it at its limit).
+- **Through the high-gain chain**, against the DI through the same chain (rms of the
+  third-octave difference): bars 27-28 3.2 dB (4.0 before), both chug passages 2.8 (2.8),
+  the palm-muted chords 3.5 (3.4); but 63-127 Hz 2-3.5 dB under the DI's (within 1.2
+  before). The owner found it better by ear.
+- **Still apart:** the 2nd harmonic fades a little slower than the DI's and the
+  fundamental a little faster (a first-order shelf grows its loss more gently from the 1st
+  to the 2nd harmonic than the hand does); the hit has 3-6 dB less at 150-600 Hz; the DI's
+  hit has a thump at 30-45 Hz some 13 dB stronger. There is no open A ringing along in
+  these bars (110 Hz 37 dB down: the note above about it was wrong). A high E's palm-muted
+  highs now come out about -53 dB against the open note's (measured: -46 at most).
 
 ## The effect chain (2026-11-06)
 

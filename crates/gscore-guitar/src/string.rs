@@ -55,16 +55,25 @@ const LOW_CUT_Q: f32 = 0.707;
 /// pitch, within [`PALM_DECAY_RANGE`]). The hand at the bridge takes the highs (around
 /// 2 kHz) much sooner, and above the kept harmonics (the loss filter's corner) everything,
 /// so the pitch and the low mids stay heard while the brightness is gone.
-const PALM_DECAY: (f32, f32) = (1.7, 1.4);
+const PALM_DECAY: (f32, f32) = (3.53, 2.91);
 const PALM_DECAY_AT: f32 = 82.4;
-const PALM_DECAY_RANGE: (f32, f32) = (0.1, 3.0);
-const PALM_HIGH_DECAY: (f32, f32) = (0.104, 0.122);
-/// Fitted to the owner's single palm-muted notes with the second-order palm shelf
-/// (2026-11-22): a heavy mute keeps fewer harmonics flat and loses its body sooner, but its
-/// highs are no darker than a light one's (as measured). (A fit to the chugs, with a
-/// softer strike, matched the dry DI better but sounded further from the Quad Cortex
-/// through the amp: see `docs/guitar-modelling.md`.)
-const PALM_KEEPS: (f32, f32) = (3.2, 2.2);
+const PALM_DECAY_RANGE: (f32, f32) = (0.1, 6.0);
+const PALM_HIGH_DECAY: (f32, f32) = (0.1, 0.117);
+/// Fitted (2026-11-22) at the knob's middle, where a tab's palm mutes play, to how the
+/// owner's chugs fade after the hit (03, bar 27: low E eighths, per band): the fundamental
+/// holds, the 2nd to 7th harmonics fade one after the other. The ends keep the spread of
+/// the owner's single palm-muted notes: a heavy mute keeps fewer harmonics and loses its
+/// body sooner, but its highs are no darker than a light one's.
+const PALM_KEEPS: (f32, f32) = (6.4, 4.4);
+/// The palm's shelf: first order (1) or the steep second order (2). The steep one, flat up
+/// to the kept harmonics, fitted the chugs' fades much worse (its harmonics all ring as
+/// long as the fundamental, then nothing): a hand at the bridge damps each harmonic a
+/// little more than the one below (see `docs/guitar-modelling.md`).
+const PALM_SECTIONS: usize = 1;
+/// A palm-muted pick: its strike this much as bright and its click this much as loud (the
+/// hand on the strings takes the edge off the hit at once).
+const PALM_HARDNESS: f32 = 0.71;
+const PALM_CLICK: f32 = 0.19;
 /// A chug is played hard, and the hand takes energy out of the string from the start:
 /// the strike of a palm-muted note is this much stronger, so its low end is as full as an
 /// open note's.
@@ -337,12 +346,14 @@ impl StringVoice {
             Attack::Tap => 0.3,
             Attack::Legato | Attack::Scrape => 0.0,
         };
-        let hardness = if pluck.harmonic {
-            hardness * 0.3
+        let (hardness, click) = if pluck.harmonic {
+            (hardness * 0.3, click)
         } else if pluck.dead {
-            hardness * 0.5
+            (hardness * 0.5, click)
+        } else if pluck.palm_mute {
+            (hardness * PALM_HARDNESS, click * PALM_CLICK)
         } else {
-            hardness
+            (hardness, click)
         };
         // Harder strikes are brighter; a soft one rounds the edge of the pluck.
         let (soft, hard) = VELOCITY_HARDNESS;
@@ -585,7 +596,7 @@ impl StringVoice {
             } else {
                 self.model.treble_corner
             },
-            sections: if self.palm_muted() { 2 } else { 1 },
+            sections: if self.palm_muted() { PALM_SECTIONS } else { 1 },
         };
         // The second vibration: a little detuned (half each way would move the heard
         // pitch; the first stays exact), and it gives its energy to the bridge sooner.
