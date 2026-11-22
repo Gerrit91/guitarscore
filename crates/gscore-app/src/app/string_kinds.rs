@@ -38,8 +38,9 @@ fn tip(kind: StringKind) -> &'static str {
 pub(super) fn kind_tiles(ui: &mut egui::Ui, chosen: StringKind) -> Option<StringKind> {
     let tokens = style::tokens(ui);
     let mut picked = None;
-    ui.horizontal(|ui| {
-        ui.spacing_mut().item_spacing = vec2(8.0, 0.0);
+    // In a row; on a narrow screen (a phone) they wrap onto a second one.
+    ui.horizontal_wrapped(|ui| {
+        ui.spacing_mut().item_spacing = vec2(8.0, 8.0);
         for (kind, name) in KINDS {
             let (rect, response) = ui.allocate_exact_size(vec2(TILE.0, TILE.1), Sense::click());
             let selected = kind == chosen;

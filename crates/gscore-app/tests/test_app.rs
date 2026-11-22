@@ -4874,3 +4874,29 @@ fn bars_copied_in_one_tab_paste_in_another() {
     harness.run();
     assert_eq!(first_bar(&harness), source, "pasted in the other song");
 }
+
+#[test]
+fn the_song_tab_keeps_its_window_size_and_its_buttons_in_view_with_long_notes() {
+    let mut harness = app_with(Some(testdata("basic/steel_guitar_dadgad.gp")));
+    harness.state_mut().open_settings();
+    harness.run();
+    harness.get_by_label("Notes field").click();
+    harness.run();
+    let long: String = (1..=40)
+        .map(|line| format!("Line {line} of the notes\n"))
+        .collect();
+    harness.get_by_label("Notes field").type_text(&long);
+    harness.run();
+    // Frame after frame (a pointer resting on the notes repaints), nothing moves: the
+    // window does not grow, and the buttons stay below the notes, in the window.
+    let notes = harness.get_by_label("Notes field").rect();
+    let done = harness.get_by_label("Done").rect();
+    harness.hover_at(notes.center());
+    for _ in 0..20 {
+        harness.step();
+    }
+    assert_eq!(harness.get_by_label("Notes field").rect(), notes);
+    assert_eq!(harness.get_by_label("Done").rect(), done);
+    assert!(done.top() > notes.bottom(), "{done:?} under {notes:?}");
+    assert!(done.bottom() < 700.0, "in the window: {done:?}");
+}

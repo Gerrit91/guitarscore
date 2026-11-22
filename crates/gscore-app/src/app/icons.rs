@@ -38,6 +38,8 @@ pub(crate) enum Icon {
     ToEnd,
     /// Save (a floppy disk).
     Save,
+    /// Print (a printer with a sheet coming out).
+    Print,
     /// A new song (a page with a plus).
     NewSong,
     /// Restore a default (a counter-clockwise arrow).
@@ -48,6 +50,13 @@ pub(crate) enum Icon {
     Mixer,
     /// The measure grid (a 2x2 grid).
     Grid,
+    /// The full interface (a window with its side and bottom panels).
+    FullInterface,
+    /// A screen kept awake (a sun). Only the browser keeps the screen on.
+    #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
+    ScreenOn,
+    /// Fit the view to the screen's width (a double arrow between two edges).
+    FitWidth,
     /// Open (a folder).
     Open,
     /// Undo (an arrow curving left).
@@ -104,8 +113,6 @@ pub(crate) enum Icon {
     Filter,
     /// Step entry (a note with an arrow after it: each note moves the cursor on).
     StepEntry,
-    /// More choices (three dots in a row): a menu.
-    More,
     /// Mute (a loudspeaker with a cross after it).
     Mute,
     /// Solo (headphones).
@@ -520,6 +527,47 @@ pub(crate) fn paint(painter: &Painter, rect: Rect, color: Color32, icon: Icon) {
             );
             painter.rect_filled(label, 0.5, color);
         }
+        Icon::Print => {
+            // A printer: a sheet standing in its top slot, the body with its controls,
+            // and the printed sheet coming out at the front.
+            let sheet = Rect::from_center_size(
+                pos2(center.x, center.y - size * 0.24),
+                vec2(size * 0.48, size * 0.36),
+            );
+            painter.rect_stroke(sheet, 1.0, stroke, egui::StrokeKind::Inside);
+            let body = Rect::from_min_max(
+                pos2(center.x - size * 0.44, center.y - size * 0.1),
+                pos2(center.x + size * 0.44, center.y + size * 0.24),
+            );
+            painter.rect_stroke(body, 2.0, stroke, egui::StrokeKind::Inside);
+            painter.circle_filled(
+                pos2(body.right() - size * 0.12, body.top() + size * 0.1),
+                size * 0.045,
+                color,
+            );
+            painter.line_segment(
+                [
+                    pos2(body.left() + size * 0.1, body.top() + size * 0.1),
+                    pos2(body.left() + size * 0.34, body.top() + size * 0.1),
+                ],
+                stroke,
+            );
+            let printed = Rect::from_min_max(
+                pos2(center.x - size * 0.26, body.bottom() - size * 0.02),
+                pos2(center.x + size * 0.26, center.y + size * 0.42),
+            );
+            painter.rect_stroke(printed, 1.0, stroke, egui::StrokeKind::Inside);
+            for share in [0.36_f32, 0.64] {
+                let y = printed.top() + printed.height() * share;
+                painter.line_segment(
+                    [
+                        pos2(printed.left() + size * 0.08, y),
+                        pos2(printed.right() - size * 0.08, y),
+                    ],
+                    stroke,
+                );
+            }
+        }
         Icon::NewSong => {
             // A page with a folded corner and a plus on it.
             let page = Rect::from_center_size(center, vec2(size * 0.8, size)).shrink(0.75);
@@ -620,6 +668,73 @@ pub(crate) fn paint(painter: &Painter, rect: Rect, color: Color32, icon: Icon) {
                 ],
                 stroke,
             );
+        }
+        Icon::FullInterface => {
+            // The full interface: a window with its title bar and a side panel.
+            let frame = Rect::from_center_size(center, vec2(size * 0.96, size * 0.82));
+            painter.rect_stroke(frame, 2.0, stroke, egui::StrokeKind::Inside);
+            let inside = frame.shrink(1.5);
+            let bar = inside.height() * 0.22;
+            painter.rect_filled(
+                Rect::from_min_max(inside.min, pos2(inside.right(), inside.top() + bar)),
+                1.0,
+                color,
+            );
+            painter.rect_filled(
+                Rect::from_min_max(
+                    pos2(inside.left(), inside.top() + bar + 1.0),
+                    pos2(inside.left() + inside.width() * 0.28, inside.bottom()),
+                ),
+                1.0,
+                color,
+            );
+        }
+        Icon::ScreenOn => {
+            // A sun: the screen stays awake.
+            let radius = size * 0.22;
+            painter.circle_stroke(center, radius, stroke);
+            for step in 0..8 {
+                let direction = Vec2::angled(std::f32::consts::TAU * step as f32 / 8.0);
+                painter.line_segment(
+                    [
+                        center + direction * (radius + size * 0.1),
+                        center + direction * (radius + size * 0.26),
+                    ],
+                    stroke,
+                );
+            }
+        }
+        Icon::FitWidth => {
+            // The screen's edges, with an arrow stretching between them.
+            for side in [-1.0_f32, 1.0] {
+                let x = center.x + side * size * 0.42;
+                painter.line_segment(
+                    [
+                        pos2(x, center.y - size * 0.36),
+                        pos2(x, center.y + size * 0.36),
+                    ],
+                    stroke,
+                );
+            }
+            let tip = size * 0.28;
+            painter.line_segment(
+                [
+                    pos2(center.x - tip, center.y),
+                    pos2(center.x + tip, center.y),
+                ],
+                stroke,
+            );
+            for side in [-1.0_f32, 1.0] {
+                let x = center.x + side * tip;
+                painter.add(Shape::line(
+                    vec![
+                        pos2(x - side * size * 0.12, center.y - size * 0.12),
+                        pos2(x, center.y),
+                        pos2(x - side * size * 0.12, center.y + size * 0.12),
+                    ],
+                    stroke,
+                ));
+            }
         }
         Icon::Open => {
             // An open folder: the back with its tab, and the front flap tilted forward.
@@ -1077,11 +1192,6 @@ pub(crate) fn paint(painter: &Painter, rect: Rect, color: Color32, icon: Icon) {
                     (center.y + size * 0.02)..=(center.y + size * 0.38),
                 );
                 painter.rect_filled(cup, size * 0.06, color);
-            }
-        }
-        Icon::More => {
-            for x in [-0.3_f32, 0.0, 0.3] {
-                painter.circle_filled(center + vec2(x * size, 0.0), size * 0.08, color);
             }
         }
         Icon::MoveUp | Icon::MoveDown => {

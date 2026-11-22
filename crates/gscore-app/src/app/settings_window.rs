@@ -21,6 +21,14 @@ use crate::state::ThemeChoice;
 const SETTINGS_SIZE: egui::Vec2 = egui::vec2(780.0, 580.0);
 /// Smallest size the user may drag it to.
 const SETTINGS_MIN_SIZE: egui::Vec2 = egui::vec2(560.0, 400.0);
+/// The song notes' field at its smallest; it takes the room the fields leave.
+const NOTES_MIN_HEIGHT: f32 = 80.0;
+/// What a separator takes between the Song tab's notes and its buttons (egui's default).
+const SEPARATOR_ROOM: f32 = 6.0;
+/// The Song tab's field labels' column, and its fields' narrowest and widest.
+const FIELD_LABEL: f32 = 84.0;
+const FIELD_MIN: f32 = 200.0;
+const FIELD_MAX: f32 = 320.0;
 
 /// The window's tabs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -148,6 +156,25 @@ impl GuitarScoreApp {
         }
     }
 
+    /// What the settings window covers where its usual size does not fit the screen: the
+    /// whole of it, or in the practice view all but the drawer. `None`: a window of its
+    /// own size.
+    pub(super) fn settings_sheet(&self, ctx: &egui::Context) -> Option<egui::Rect> {
+        // Outside the practice view, below the window's own title bar (on the desktop), so
+        // the window can still be moved and closed.
+        let screen = ctx.content_rect();
+        let below_bar = if super::title_bar::WINDOW_CONTROLS {
+            screen.with_min_y(screen.top() + super::title_bar::TITLE_BAR_HEIGHT)
+        } else {
+            screen
+        };
+        let cover = self.practice_cover().map_or(below_bar, |(cover, hidden)| {
+            cover.with_max_y(cover.max.y - hidden)
+        });
+        let room = SETTINGS_SIZE + egui::vec2(2.0 * 8.0, 2.0 * 8.0);
+        (cover.width() < room.x || cover.height() < room.y).then_some(cover)
+    }
+
     /// The settings window, if it is open.
     pub(super) fn show_settings_window(&mut self, ctx: &egui::Context) {
         let Some(mut window) = self.settings_window.take() else {
@@ -188,53 +215,73 @@ impl GuitarScoreApp {
         let mut close = false;
         let mut apply = false;
         let mut apply_page = false;
-        egui::Window::new("Settings")
+        // Where its usual size does not fit (a phone), it covers the screen (in the
+        // practice view, all but the drawer) and is neither moved nor resized.
+        let sheet = self.settings_sheet(ctx);
+        let shown = egui::Window::new("Settings")
             .title_bar(false)
             .collapsible(false)
-            .resizable(true)
-            .default_size(SETTINGS_SIZE)
-            .min_size(SETTINGS_MIN_SIZE)
-            .current_pos(pos)
-            .frame(style::window_frame(ctx))
-            .show(ctx, |ui| {
-                if style::window_title_bar(ui, "Settings", &mut window.pos) {
-                    close = true;
-                }
-                let escape = style::dialog_body(ui, Margin::symmetric(16, 12), |ui| {
-                    ui.horizontal(|ui| {
-                        for (tab, label) in [
-                            (SettingsTab::Song, "Song"),
-                            (SettingsTab::Page, "Page layout"),
-                            (SettingsTab::Editor, "Editor"),
-                            (SettingsTab::Metronome, "Metronome"),
-                            (SettingsTab::Audio, "Audio I/O"),
-                        ] {
-                            ui.selectable_value(&mut window.tab, tab, label);
-                        }
-                    });
-                    ui.separator();
-                    match window.tab {
-                        SettingsTab::Song => {
-                            song_tab(ui, &mut window, &mut apply, &mut close);
-                        }
-                        SettingsTab::Page => {
-                            let has_song = self.document().is_some();
-                            page_tab(
-                                ui,
-                                &mut window.page,
-                                preview.as_deref(),
-                                has_song,
-                                &mut apply_page,
-                                &mut close,
-                            );
-                        }
-                        SettingsTab::Editor => self.editor_tab(ui),
-                        SettingsTab::Metronome => self.metronome_tab(ui),
-                        SettingsTab::Audio => self.audio_tab(ui, &mut window.soundfonts),
+            .frame(style::window_frame(ctx));
+        let shown = match sheet {
+            Some(cover) => shown
+                .resizable(false)
+                .fixed_pos(cover.min)
+                // The outline, a point on either side.
+                .fixed_size(cover.size() - egui::vec2(2.0, 2.0)),
+            None => shown
+                .resizable(true)
+                .default_size(SETTINGS_SIZE)
+                .min_size(SETTINGS_MIN_SIZE)
+                .current_pos(pos),
+        };
+        shown.show(ctx, |ui| {
+            if style::window_title_bar(ui, "Settings", &mut window.pos) {
+                close = true;
+            }
+            let escape = style::dialog_body(ui, Margin::symmetric(16, 12), |ui| {
+                ui.horizontal_wrapped(|ui| {
+                    for (tab, label) in [
+                        (SettingsTab::Song, "Song"),
+                        (SettingsTab::Page, "Page layout"),
+                        (SettingsTab::Editor, "Editor"),
+                        (SettingsTab::Metronome, "Metronome"),
+                        (SettingsTab::Audio, "Audio I/O"),
+                    ] {
+                        ui.selectable_value(&mut window.tab, tab, label);
                     }
                 });
-                close |= escape;
+                ui.separator();
+                // Every tab but the page layout (whose preview fills the window)
+                // scrolls inside the window, so the window keeps one size whichever
+                // tab is shown.
+                let tab = window.tab;
+                if tab == SettingsTab::Page {
+                    let has_song = self.document().is_some();
+                    page_tab(
+                        ui,
+                        &mut window.page,
+                        preview.as_deref(),
+                        has_song,
+                        &mut apply_page,
+                        &mut close,
+                    );
+                } else if tab == SettingsTab::Song {
+                    // Its notes take the room left, its buttons stay at the bottom.
+                    song_tab(ui, &mut window, &mut apply, &mut close);
+                } else {
+                    egui::ScrollArea::vertical()
+                        .id_salt(("settings_tab", format!("{tab:?}")))
+                        .auto_shrink([false, false])
+                        .show(ui, |ui| match tab {
+                            SettingsTab::Song | SettingsTab::Page => {}
+                            SettingsTab::Editor => self.editor_tab(ui),
+                            SettingsTab::Metronome => self.metronome_tab(ui),
+                            SettingsTab::Audio => self.audio_tab(ui, &mut window.soundfonts),
+                        });
+                }
             });
+            close |= escape;
+        });
         if close {
             self.settings_window = None;
             self.save_settings();
@@ -522,10 +569,10 @@ impl GuitarScoreApp {
         });
         ui.horizontal(|ui| {
             changed |= ui
-                .checkbox(
+                .add(style::switch(
                     &mut self.settings.midi_guitar,
                     "MIDI guitar, one channel per string",
-                )
+                ))
                 .on_hover_text(
                     "A guitar pickup in mono mode (Fishman TriplePlay, Roland GK, Jamstik): \
                      each note is entered on the string it was played on",
@@ -544,10 +591,10 @@ impl GuitarScoreApp {
             });
         });
         changed |= ui
-            .checkbox(
+            .add(style::switch(
                 &mut self.settings.midi_monitor,
                 "Hear the notes as they are played",
-            )
+            ))
             .on_hover_text("Monitoring: incoming notes sound at once through the track's sound")
             .changed();
         ui.label(
@@ -637,7 +684,10 @@ impl GuitarScoreApp {
         ui.add_space(4.0);
         let mut modelled = self.playback.modelled_guitars();
         if ui
-            .checkbox(&mut modelled, "Modelled guitars and basses (PM synthesis)")
+            .add(style::switch(
+                &mut modelled,
+                "Modelled guitars and basses (PM synthesis)",
+            ))
             .changed()
         {
             self.set_modelled_guitars(modelled);
@@ -700,7 +750,10 @@ impl GuitarScoreApp {
         ui.heading("Count-in");
         let mut count_in = self.playback.count_in();
         if ui
-            .checkbox(&mut count_in, "Count in before playback starts")
+            .add(style::switch(
+                &mut count_in,
+                "Count in before playback starts",
+            ))
             .changed()
         {
             self.set_count_in(count_in);
@@ -725,7 +778,10 @@ impl GuitarScoreApp {
         });
         let mut loops = self.playback.count_in_loops();
         if ui
-            .checkbox(&mut loops, "Count in again each time a loop starts over")
+            .add(style::switch(
+                &mut loops,
+                "Count in again each time a loop starts over",
+            ))
             .changed()
         {
             self.playback.set_count_in_loops(loops);
@@ -744,10 +800,10 @@ impl GuitarScoreApp {
             ui.radio_value(&mut self.view.theme, ThemeChoice::Light, "Light page");
             ui.radio_value(&mut self.view.theme, ThemeChoice::Dark, "Dark page");
         });
-        ui.checkbox(
+        ui.add(style::switch(
             &mut self.settings.audition_notes,
             "Play notes as they are entered",
-        )
+        ))
         .on_hover_text(
             "A fret typed into the score sounds briefly with the track's instrument (not \
              while the song plays)",
@@ -755,7 +811,7 @@ impl GuitarScoreApp {
         ui.indent("wait_for_whole_frets", |ui| {
             ui.add_enabled(
                 self.settings.audition_notes,
-                egui::Checkbox::new(
+                style::switch(
                     &mut self.settings.wait_for_whole_frets,
                     "Wait for a second digit (frets 1 and 2)",
                 ),
@@ -768,27 +824,27 @@ impl GuitarScoreApp {
 
         ui.separator();
         ui.heading("Song grid");
-        ui.checkbox(
+        ui.add(style::switch(
             &mut self.settings.grid_stripes,
             "Stripe every other track row",
-        )
+        ))
         .on_hover_text("A lighter background on every other row, to follow a track along");
 
         ui.separator();
         ui.heading("Playback");
-        ui.checkbox(
+        ui.add(style::switch(
             &mut self.settings.return_on_stop,
             "Go back to where playback started when it stops",
-        )
+        ))
         .on_hover_text(
             "Stop (and Space while playing) puts the cursor and the selection back where \
              they were when playback started; off, the cursor stays on the last played \
              beat and Space pauses. The song's end always goes back there",
         );
-        ui.checkbox(
+        ui.add(style::switch(
             &mut self.settings.flowing_cursor,
             "Cursor glides between the notes while playing",
-        )
+        ))
         .on_hover_text("Off, the playing cursor jumps from note to note");
 
         ui.separator();
@@ -807,16 +863,19 @@ impl GuitarScoreApp {
 
         ui.separator();
         ui.heading("Startup");
-        ui.checkbox(
+        ui.add(style::switch(
             &mut self.settings.reopen_last_file,
             "Reopen the tabs from last time at startup",
-        );
+        ));
         ui.label(RichText::new("Files that are no longer there are skipped.").weak());
         #[cfg(not(target_arch = "wasm32"))]
         if self.offers_desktop_entry() {
             let mut in_menu = self.has_desktop_entry();
             if ui
-                .checkbox(&mut in_menu, "Show GuitarScore in the applications menu")
+                .add(style::switch(
+                    &mut in_menu,
+                    "Show GuitarScore in the applications menu",
+                ))
                 .changed()
             {
                 self.set_desktop_entry(in_menu);
@@ -833,7 +892,10 @@ impl GuitarScoreApp {
         if self.offers_file_association() {
             let mut associated = self.has_file_association();
             if ui
-                .checkbox(&mut associated, "Open Guitar Pro files with GuitarScore")
+                .add(style::switch(
+                    &mut associated,
+                    "Open Guitar Pro files with GuitarScore",
+                ))
                 .changed()
             {
                 self.set_file_association(associated);
@@ -855,7 +917,10 @@ impl GuitarScoreApp {
             ui.heading("Updates");
             let mut daily = self.settings.check_for_updates == Some(true);
             if ui
-                .checkbox(&mut daily, "Check for a new version once a day")
+                .add(style::switch(
+                    &mut daily,
+                    "Check for a new version once a day",
+                ))
                 .changed()
             {
                 self.settings.check_for_updates = Some(daily);
@@ -908,66 +973,133 @@ impl GuitarScoreApp {
     }
 }
 
-/// The Song tab: one field per row, the notes below, then Apply/Revert.
+/// The Song tab: the fields (in two columns where the window is wide enough), the notes
+/// in the room they leave, and Apply, Revert and Done at the bottom, always in reach. Long
+/// notes scroll in their field; where even the fields do not fit (a phone on its side),
+/// they scroll above the buttons.
 fn song_tab(ui: &mut Ui, window: &mut SettingsWindow, apply: &mut bool, close: &mut bool) {
+    // Everything is inside one scroll area that fills the window, like the other tabs': a
+    // window that can be resized grows to whatever its contents need, so contents sized
+    // from its room must not stand outside a scroll area, or the window grows a little
+    // every frame. The notes are as tall as leaves the buttons in view below them.
+    let room = ui.available_height();
+    let spacing = ui.spacing().item_spacing.y;
+    let buttons = ui.spacing().interact_size.y + 3.0 * spacing + SEPARATOR_ROOM;
+    egui::ScrollArea::vertical()
+        .id_salt("song_tab")
+        .auto_shrink([false, false])
+        .show(ui, |ui| {
+            let top = ui.cursor().top();
+            song_fields(ui, window);
+            ui.label(SongTextField::Notes.label());
+            let used = ui.cursor().top() - top;
+            let height = (room - used - buttons).max(NOTES_MIN_HEIGHT);
+            song_notes(ui, window, height);
+            ui.separator();
+            ui.horizontal(|ui| {
+                if ui.button("Apply").clicked() {
+                    *apply = true;
+                }
+                if ui.button("Revert").clicked() {
+                    window.draft = window.base.clone();
+                }
+                if ui.button("Done").clicked() {
+                    *close = true;
+                }
+            });
+        });
+}
+
+/// The song's fields and its tempo: two label and field pairs a row where there is room
+/// for them, one on a narrow screen.
+fn song_fields(ui: &mut Ui, window: &mut SettingsWindow) {
     if window.base == SongInfo::default() && window.draft == SongInfo::default() {
         ui.label(RichText::new("Open a song to edit its information.").weak());
     }
-    egui::Grid::new("song_fields")
-        .num_columns(2)
-        .spacing([8.0, 4.0])
-        .show(ui, |ui| {
-            for field in SONG_TEXT_FIELDS {
-                if *field == SongTextField::Notes {
-                    continue;
+    let width = ui.available_width();
+    let gap = 24.0;
+    let spacing = 8.0;
+    let columns = if width >= 2.0 * (FIELD_LABEL + FIELD_MIN + spacing) + gap {
+        2
+    } else {
+        1
+    };
+    let field = ((width - (columns - 1) as f32 * gap) / columns as f32 - FIELD_LABEL - spacing)
+        .clamp(FIELD_MIN.min(width / 2.0), FIELD_MAX);
+    let fields: Vec<SongTextField> = SONG_TEXT_FIELDS
+        .iter()
+        .copied()
+        .filter(|field| *field != SongTextField::Notes)
+        .collect();
+    // The text fields, then the tempo in the last place; each row of `columns` places
+    // is a label of one width and its field, so the columns line up.
+    let places = fields.len() + 1;
+    let height = ui.spacing().interact_size.y;
+    for row in (0..places).collect::<Vec<_>>().chunks(columns) {
+        ui.horizontal(|ui| {
+            ui.spacing_mut().item_spacing.x = spacing;
+            for &place in row {
+                if place % columns != 0 {
+                    ui.add_space(gap - spacing);
                 }
-                ui.label(field.label());
-                let mut text = field.get(&window.draft);
-                let response = ui.add(egui::TextEdit::singleline(&mut text).desired_width(280.0));
-                ui.ctx().accesskit_node_builder(response.id, |node| {
-                    node.set_label(format!("{} field", field.label()));
-                });
-                if response.changed() {
-                    field.set(&mut window.draft, &text);
-                }
-                ui.end_row();
-            }
-            ui.label("Tempo");
-            ui.horizontal(|ui| {
-                let response = ui.add(
-                    egui::DragValue::new(&mut window.draft.tempo)
-                        .range(1..=MAX_TEMPO)
-                        .suffix(" BPM"),
+                let label = fields.get(place).map_or("Tempo", |field| field.label());
+                ui.allocate_ui_with_layout(
+                    egui::vec2(FIELD_LABEL, height),
+                    egui::Layout::left_to_right(egui::Align::Center),
+                    |ui| {
+                        ui.set_min_width(FIELD_LABEL);
+                        ui.label(label);
+                    },
                 );
-                ui.ctx()
-                    .accesskit_node_builder(response.id, |node| node.set_label("Tempo"));
-            });
-            ui.end_row();
+                match fields.get(place) {
+                    Some(text_field) => {
+                        let mut text = text_field.get(&window.draft);
+                        let response = ui.add_sized(
+                            egui::vec2(field, height),
+                            egui::TextEdit::singleline(&mut text),
+                        );
+                        ui.ctx().accesskit_node_builder(response.id, |node| {
+                            node.set_label(format!("{} field", text_field.label()));
+                        });
+                        if response.changed() {
+                            text_field.set(&mut window.draft, &text);
+                        }
+                    }
+                    None => {
+                        let response = ui.add(
+                            egui::DragValue::new(&mut window.draft.tempo)
+                                .range(1..=MAX_TEMPO)
+                                .suffix(" BPM"),
+                        );
+                        ui.ctx()
+                            .accesskit_node_builder(response.id, |node| node.set_label("Tempo"));
+                    }
+                }
+            }
         });
-    ui.label(SongTextField::Notes.label());
+    }
+}
+
+/// The song's notes, `height` tall: longer notes scroll inside the field.
+fn song_notes(ui: &mut Ui, window: &mut SettingsWindow, height: f32) {
     let mut notes = SongTextField::Notes.get(&window.draft);
-    let response = ui.add(
-        egui::TextEdit::multiline(&mut notes)
-            .desired_rows(4)
-            .desired_width(f32::INFINITY),
-    );
+    let response = egui::ScrollArea::vertical()
+        .id_salt("song_notes")
+        .max_height(height)
+        .auto_shrink([false, false])
+        .show(ui, |ui| {
+            ui.add(
+                egui::TextEdit::multiline(&mut notes)
+                    .desired_width(f32::INFINITY)
+                    .min_size(egui::vec2(0.0, height)),
+            )
+        })
+        .inner;
     ui.ctx()
         .accesskit_node_builder(response.id, |node| node.set_label("Notes field"));
     if response.changed() {
         SongTextField::Notes.set(&mut window.draft, &notes);
     }
-    ui.separator();
-    ui.horizontal(|ui| {
-        if ui.button("Apply").clicked() {
-            *apply = true;
-        }
-        if ui.button("Revert").clicked() {
-            window.draft = window.base.clone();
-        }
-        if ui.button("Done").clicked() {
-            *close = true;
-        }
-    });
 }
 
 /// The autosave choices, as the combo box shows them.

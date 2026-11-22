@@ -6846,3 +6846,33 @@ The `Sink` trait now has `follow` (a no-op for MIDI output), and `Transport` cal
 keyed to a sequence before any of its events is sent. Regression test:
 `a_rebuilt_sequence_puts_its_setup_on_its_own_tracks` (track 0 left, track 2 right, solo,
 unsolo: both keep their pan; without the fix the guitar reads 0). `cargo xtask ci` passes.
+
+## 2026-11-22: the practice view's opening hint and its corner menu
+
+Owner's look: the "Tap a bar to start there · tap another to loop" pill was unnecessary,
+the "⋯" menu in the header's corner should not be needed, and the drawer's icons can be
+smaller.
+
+- The pill is gone (with the `tapped` flag that only fed it); the header no longer adds
+  "tap a bar to loop from N" over "Bar N of M" either.
+- The menu is gone from the header and from the sideways phone's player. Its entries are
+  drawer tiles: "Full interface" (a window with its title bar and side panel, all builds),
+  and in the browser "Keep the screen on" and "Choose by screen width" (the last only while
+  the view is not chosen by width). The start screen, which has no drawer or player, now
+  offers "Full interface (editing)" under "Open a song…".
+- Drawer rows are laid out per row now: each row is only as wide as the tiles it shows and
+  centred, so the browser's extra tiles and a lone "Full interface" sit in the middle.
+  Tiles are a little lower (52 instead of 56 pt, 8 pt apart) and their icons 20 instead of
+  24 pt.
+- Checked at phone (390 × 844, open and shut), sideways phone (844 × 390) and tablet
+  (1180 × 820) sizes with temporary `egui_kittest` snapshots (not committed; practice
+  snapshots still await the owner's approval). `cargo xtask ci` and
+  `cargo xtask web --smoke` pass.
+
+2026-11-22, owner's second look at the drawer: the first tile row (loop, speed, trainer)
+sat a little right of the five-tile rows under it, because its row width counted one gap
+between its three *tiles* instead of the four inside its speed tile's three columns. A
+row's width now counts every column and the gaps inside spans, so the columns line up
+again. Added a printer tile to the last row: it asks for a file and writes the PDF
+(printed score), as File › Export › PDF does. Checked at a phone's width with a temporary
+snapshot (not committed); `cargo xtask ci` and `cargo xtask web --smoke` pass.

@@ -846,7 +846,7 @@ impl GuitarScoreApp {
             .frame(style::chrome_frame(&ctx, 0))
             .exact_size(title_bar::TITLE_BAR_HEIGHT)
             .resizable(false)
-            .show(ui, |ui| self.title_bar(ui));
+            .show(ui, |ui| self.title_bar(ui, true));
         egui::Panel::top("toolbar")
             .frame(style::chrome_frame(&ctx, 5))
             .show(ui, |ui| self.toolbar(ui));

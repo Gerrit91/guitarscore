@@ -17,16 +17,22 @@ use crate::fonts::BOLD;
 pub(super) const TITLE_BAR_HEIGHT: f32 = 34.0;
 /// Width of a window button.
 const WINDOW_BUTTON: f32 = 44.0;
+/// The window buttons' glyphs, and the practice view's way back to the full interface
+/// (a picture of the interface, which needs more room to be told apart).
+const GLYPH: f32 = 10.0;
+const BACK_ICON: f32 = 18.0;
 /// How close to the window's edge a press starts resizing.
 const RESIZE_MARGIN: f32 = 5.0;
 
 /// Whether the bar has window buttons and moves the window. A browser tab has its own,
 /// and the page cannot be minimized, maximized or closed from inside.
-const WINDOW_CONTROLS: bool = cfg!(not(target_arch = "wasm32"));
+pub(super) const WINDOW_CONTROLS: bool = cfg!(not(target_arch = "wasm32"));
 
 impl GuitarScoreApp {
-    /// The title bar.
-    pub(super) fn title_bar(&mut self, ui: &mut egui::Ui) {
+    /// The title bar; `menus` is whether it holds the menus (the practice view's has a
+    /// button back to the full interface in their place, the title and the window
+    /// buttons).
+    pub(super) fn title_bar(&mut self, ui: &mut egui::Ui, menus: bool) {
         let ctx = ui.ctx().clone();
         let rect = ui.max_rect();
         // The background first, so the menus and buttons drawn later win the pointer.
@@ -61,13 +67,28 @@ impl GuitarScoreApp {
         let mut menus_end = rect.left();
         ui.horizontal_centered(|ui| {
             ui.add_space(4.0);
-            menus_end = self.menu_bar(ui);
+            if menus {
+                menus_end = self.menu_bar(ui);
+            } else {
+                // The practice view's way back to the full interface, where the menus are.
+                let back = window_button(
+                    ui,
+                    Icon::FullInterface,
+                    "Back to the full interface",
+                    false,
+                    BACK_ICON,
+                );
+                menus_end = back.rect.right();
+                if back.clicked() {
+                    self.set_practice_view(super::PracticeChoice::Off);
+                }
+            }
             if !WINDOW_CONTROLS {
                 return;
             }
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 ui.spacing_mut().item_spacing.x = 0.0;
-                if window_button(ui, Icon::WindowClose, "Close window", true).clicked() {
+                if window_button(ui, Icon::WindowClose, "Close window", true, GLYPH).clicked() {
                     ctx.send_viewport_cmd(ViewportCommand::Close);
                 }
                 let (icon, label) = if maximized {
@@ -75,10 +96,12 @@ impl GuitarScoreApp {
                 } else {
                     (Icon::WindowMaximize, "Maximize window")
                 };
-                if window_button(ui, icon, label, false).clicked() {
+                if window_button(ui, icon, label, false, GLYPH).clicked() {
                     ctx.send_viewport_cmd(ViewportCommand::Maximized(!maximized));
                 }
-                if window_button(ui, Icon::WindowMinimize, "Minimize window", false).clicked() {
+                if window_button(ui, Icon::WindowMinimize, "Minimize window", false, GLYPH)
+                    .clicked()
+                {
                     ctx.send_viewport_cmd(ViewportCommand::Minimized(true));
                 }
             });
@@ -117,7 +140,15 @@ impl GuitarScoreApp {
 }
 
 /// A window button: the full bar height, an icon, a hover fill (red for close).
-fn window_button(ui: &mut egui::Ui, icon: Icon, label: &str, close: bool) -> egui::Response {
+/// A button of the bar, its icon drawn `size` points across (the window's own buttons'
+/// glyphs are small, as the systems draw them).
+fn window_button(
+    ui: &mut egui::Ui,
+    icon: Icon,
+    label: &str,
+    close: bool,
+    size: f32,
+) -> egui::Response {
     let (rect, response) =
         ui.allocate_exact_size(vec2(WINDOW_BUTTON, TITLE_BAR_HEIGHT), Sense::click());
     ui.ctx().accesskit_node_builder(response.id, |node| {
@@ -137,7 +168,7 @@ fn window_button(ui: &mut egui::Ui, icon: Icon, label: &str, close: bool) -> egu
     let ink = if hovered { Color32::WHITE } else { tokens.text };
     icons::paint(
         ui.painter(),
-        Rect::from_center_size(rect.center(), vec2(10.0, 10.0)),
+        Rect::from_center_size(rect.center(), vec2(size, size)),
         ink,
         icon,
     );

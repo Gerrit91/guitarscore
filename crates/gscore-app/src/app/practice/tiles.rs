@@ -1,6 +1,6 @@
 //! The drawer's touch-sized pieces: a tile (an icon, filled while it is on, a value in a
-//! badge on its corner), the handle's chevron, the popup a tile opens, and the
-//! count-in's length as a row of choices.
+//! badge on its corner), the drawer button's chevron, the way back from a tile's page,
+//! and the count-in's length as a row of choices.
 
 use egui::{Align2, Color32, FontFamily, FontId, Pos2, Rect, Sense, Stroke, vec2};
 
@@ -61,7 +61,7 @@ pub(super) fn tile_button(
         None => (tokens.control, ink),
     };
     ui.painter().rect_filled(rect, 10.0, fill);
-    let icon_rect = Rect::from_center_size(rect.center(), vec2(24.0, 24.0));
+    let icon_rect = Rect::from_center_size(rect.center(), vec2(20.0, 20.0));
     icons::paint(ui.painter(), icon_rect, ink, icon);
     if let Some(badge) = &look.badge {
         let font = FontId::new(11.0, FontFamily::Name(crate::fonts::BOLD.into()));
@@ -80,9 +80,10 @@ pub(super) fn tile_button(
     response
 }
 
-/// The drawer's handle across `rect`: a chevron pointing up while the drawer is shut (a
-/// tap or a swipe up opens it) and down while it is open (a tap or a swipe down shuts
-/// it). Returns whether the drawer should be open now.
+/// The drawer's button in `rect`, at the end of the player's row: a chevron pointing up
+/// while the drawer is shut (a tap or a swipe up opens it) and down while it is open (a
+/// tap or a swipe down shuts it), filled while it is open. Returns whether the drawer
+/// should be open now.
 pub(super) fn handle(ui: &mut egui::Ui, rect: Rect, open: bool) -> bool {
     let response = ui.interact(
         rect,
@@ -106,13 +107,12 @@ pub(super) fn handle(ui: &mut egui::Ui, rect: Rect, open: bool) -> bool {
             now = false;
         }
     }
-    let color = ui
-        .style()
-        .interact(&response)
-        .fg_stroke
-        .color
-        .gamma_multiply(0.7);
-    let (half, rise) = (16.0, if open { 4.0 } else { -4.0 });
+    let visuals = ui.style().interact(&response);
+    if open || response.hovered() || response.is_pointer_button_down_on() {
+        ui.painter().rect_filled(rect, 8.0, visuals.weak_bg_fill);
+    }
+    let color = visuals.fg_stroke.color;
+    let (half, rise) = (8.0, if open { 4.0 } else { -4.0 });
     let centre = rect.center();
     ui.painter().add(egui::Shape::line(
         vec![
@@ -120,19 +120,29 @@ pub(super) fn handle(ui: &mut egui::Ui, rect: Rect, open: bool) -> bool {
             centre + vec2(0.0, rise),
             centre + vec2(half, -rise),
         ],
-        Stroke::new(3.0, color),
+        Stroke::new(2.5, color),
     ));
     now
 }
 
-/// A tile's settings in a popup under it, sized for a finger.
-pub(super) fn popup(button: &egui::Response, contents: impl FnOnce(&mut egui::Ui)) {
-    egui::Popup::menu(button)
-        .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
-        .show(|ui| {
-            ui.set_min_width(280.0);
-            contents(ui);
-        });
+/// The way back from a tile's page to the tiles, in `rect`: a chevron pointing left.
+pub(super) fn back_button(ui: &mut egui::Ui, rect: Rect) -> egui::Response {
+    let response = ui.interact(rect, ui.scope_id().with("practice_back"), Sense::click());
+    response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, "Back"));
+    let visuals = ui.style().interact(&response);
+    if response.hovered() || response.is_pointer_button_down_on() {
+        ui.painter().rect_filled(rect, 8.0, visuals.weak_bg_fill);
+    }
+    let centre = rect.center();
+    ui.painter().add(egui::Shape::line(
+        vec![
+            centre + vec2(3.0, -8.0),
+            centre + vec2(-4.0, 0.0),
+            centre + vec2(3.0, 8.0),
+        ],
+        Stroke::new(2.5, visuals.fg_stroke.color),
+    ));
+    response
 }
 
 /// The count-in's length, one to four bars, as a row of choices; returns the one tapped.

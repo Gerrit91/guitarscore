@@ -52,6 +52,21 @@ const GAP: f32 = 36.0;
 /// The input trim's and the chain output's boxes: narrow, at the chain's two ends.
 const END_WIDTH: f32 = 44.0;
 const BOARD_HEIGHT: f32 = 114.0;
+/// The smallest gap between two boxes: a board whose row needs more room than its width
+/// leaves, even with these gaps, folds into two rows (a phone), the cable running down
+/// from the first row's end to the second row's start.
+const MIN_GAP: f32 = 8.0;
+/// How far the board's second row starts below its first.
+const ROW_STEP: f32 = BOARD_HEIGHT - 10.0;
+/// The narrowest the window's content gets (a small phone, 360 points: a folded row of
+/// four boxes still fits), and the room kept between the window and the screen's edges.
+const MIN_WIDTH: f32 = 310.0;
+const SCREEN_GUTTER: f32 = 8.0;
+/// In the practice view the window is a sheet on a narrow screen, and on one less tall
+/// than this (a phone on its side).
+const SHEET_BELOW_HEIGHT: f32 = 600.0;
+/// The window's frame around its content: the content's margins on either side.
+const FRAME_WIDTH: f32 = 32.0;
 /// The board's [`SoundChainWindow::selected`] value for the input trim's box.
 pub(super) const SELECT_INPUT: usize = BLOCKS + 1;
 /// The board's [`SoundChainWindow::selected`] value for the chain output's box.
@@ -375,10 +390,14 @@ fn strings_editor(
         TrackEngine::SoundFont | TrackEngine::MidiOut => None,
     }) else {
         // A synth (the SoundFont or a hardware one): what plays it on the left, the
-        // instrument it plays on the right, the same list as the track panel's.
-        ui.horizontal_top(|ui| {
+        // instrument it plays on the right (below it on a narrow screen), the same list as
+        // the track panel's.
+        let narrow = ui.available_width() < WIDTH;
+        side_by_side(ui, narrow, |ui| {
             ui.vertical(|ui| {
-                ui.set_width(300.0);
+                if !narrow {
+                    ui.set_width(300.0);
+                }
                 source(ui, actions);
                 if player.engine == TrackEngine::MidiOut {
                     if let Some(route) = midi_out_controls(ui, player, ports) {
@@ -742,12 +761,20 @@ fn preset_row(
     // Built-in tones by family, then the user's saved ones; compact here so the window
     // keeps its height (the track panel shows the full table).
     let mut chosen: Option<super::tone_picker::PickerChoice> = None;
-    ui.horizontal(|ui| {
+    // On a narrow screen the row wraps, and the copy, paste and A/B buttons take a line of
+    // their own.
+    let narrow = ui.available_width() < WIDTH;
+    let combo_width = if narrow {
+        (ui.available_width() - 130.0).clamp(150.0, 230.0)
+    } else {
+        230.0
+    };
+    header_row(ui, narrow, |ui| {
         // While A/B shows the tone as it was, the dropdown names it but cannot change it.
         let combo = ui
             .add_enabled_ui(!shown.comparing, |ui| {
                 egui::ComboBox::from_id_salt("sound_chain_tone")
-                    .width(230.0)
+                    .width(combo_width)
                     .selected_text(shown_name.clone())
                     .show_ui(ui, |ui| {
                         if ui.selectable_label(false, "Built-in").clicked() {
@@ -806,6 +833,9 @@ fn preset_row(
                 ui, program, kind, changed, built_in, working, window, actions,
             );
         });
+        if narrow {
+            ui.end_row();
+        }
         clip_buttons(
             ui,
             clip,
@@ -845,6 +875,25 @@ fn preset_row(
             }
             PickerChoice::Program(_) | PickerChoice::DrumKit(_) => {}
         }
+    }
+}
+
+/// One of the window's header rows: one line, or on a narrow screen wrapping onto the
+/// next.
+fn header_row<R>(ui: &mut egui::Ui, narrow: bool, add: impl FnOnce(&mut egui::Ui) -> R) -> R {
+    if narrow {
+        ui.horizontal_wrapped(add).inner
+    } else {
+        ui.horizontal(add).inner
+    }
+}
+
+/// Two columns side by side, their tops lined up; on a narrow screen one under the other.
+fn side_by_side<R>(ui: &mut egui::Ui, narrow: bool, add: impl FnOnce(&mut egui::Ui) -> R) -> R {
+    if narrow {
+        ui.vertical(add).inner
+    } else {
+        ui.horizontal_top(add).inner
     }
 }
 
@@ -1260,7 +1309,8 @@ fn small_icon_button(
 /// and the output's narrow box, joined by cables; under each block its mute and a trash
 /// can. A block can be dragged to another place; the block follows the mouse and the
 /// place it would land in is outlined, until it is let go there. `ends` is `None` for a
-/// board without them (the master's).
+/// board without them (the master's). Where the row does not fit the width there is
+/// (narrower than the window's usual width), the board folds into two rows.
 pub(super) fn board(
     ui: &mut egui::Ui,
     source: (&str, &str),
@@ -1271,7 +1321,6 @@ pub(super) fn board(
     ends: Option<ChainEnds>,
 ) -> BoardActions {
     let tokens = style::tokens(ui);
-    let (area, _) = ui.allocate_exact_size(vec2(WIDTH, BOARD_HEIGHT), Sense::hover());
     let count = BLOCKS.saturating_add(1);
     // The slots left to right, with their widths.
     let mut slots = vec![(Slot::Box(0), BOX.x)];
@@ -1282,19 +1331,18 @@ pub(super) fn board(
     if ends.is_some() {
         slots.push((Slot::Output, END_WIDTH));
     }
-    let boxes: f32 = slots.iter().map(|(_, width)| width).sum();
-    let gaps = slots.len().saturating_sub(1).max(1) as f32;
-    let gap = ((area.width() - 24.0 - boxes) / gaps).clamp(8.0, GAP);
-    let row = boxes + gap * gaps;
-    let top = area.top() + 10.0;
-    let mut x = area.left() + (area.width() - row) / 2.0;
+    let width = ui.available_width().min(WIDTH);
+    let layout = board_layout(&slots, width);
+    let height = if layout.wrap.is_some() {
+        BOARD_HEIGHT + ROW_STEP
+    } else {
+        BOARD_HEIGHT
+    };
+    let (area, _) = ui.allocate_exact_size(vec2(width, height), Sense::hover());
     let placed: Vec<(Slot, Rect)> = slots
         .iter()
-        .map(|&(slot, width)| {
-            let rect = Rect::from_min_size(pos2(x, top), vec2(width, BOX.y));
-            x += width + gap;
-            (slot, rect)
-        })
+        .zip(&layout.rects)
+        .map(|(&(slot, _), rect)| (slot, rect.translate(area.min.to_vec2())))
         .collect();
     let rect_of = |index: usize| {
         placed
@@ -1308,12 +1356,31 @@ pub(super) fn board(
     // Cables first, under the boxes: a straight line from one box's output jack to the next
     // box's input jack.
     let cable = Stroke::new(2.5, tokens.text_weak.gamma_multiply(0.8));
-    for pair in placed.windows(2) {
+    for (at, pair) in placed.windows(2).enumerate() {
         let [(_, a), (_, b)] = pair else {
             continue;
         };
         let (from, to) = (a.right_center(), b.left_center());
-        painter.line_segment([from, to], cable);
+        if layout.wrap == Some(at.saturating_add(1)) {
+            // Folded: out of the first row's end, down under it, back along to the second
+            // row's start and into it.
+            let out = (from.x + layout.gap / 2.0).min(area.right() - 4.0);
+            let back = (to.x - layout.gap / 2.0).max(area.left() + 4.0);
+            let under = (a.bottom() + 22.0 + b.top()) / 2.0;
+            painter.add(egui::Shape::line(
+                vec![
+                    from,
+                    pos2(out, from.y),
+                    pos2(out, under),
+                    pos2(back, under),
+                    pos2(back, to.y),
+                    to,
+                ],
+                cable,
+            ));
+        } else {
+            painter.line_segment([from, to], cable);
+        }
         for end in [from, to] {
             painter.circle_filled(end, 3.5, tokens.text_weak);
         }
@@ -1687,7 +1754,116 @@ pub(super) fn board(
             tokens,
         );
     }
+    // A block's mute and trash buttons are put where they belong, which moves the cursor
+    // to them: the window goes on under the whole board, whichever buttons it shows.
+    ui.advance_cursor_after_rect(area);
     actions
+}
+
+/// Where a board's slots go, relative to the board's top left corner.
+#[derive(Debug, Clone, PartialEq)]
+struct BoardLayout {
+    /// One rectangle per slot, in order.
+    rects: Vec<Rect>,
+    /// The first slot of the second row, when the board is folded.
+    wrap: Option<usize>,
+    /// The gap between two boxes in a row.
+    gap: f32,
+}
+
+/// Lays `slots` (each with its width) out across `width`: in one row with gaps of up to
+/// [`GAP`], or, where even the smallest gaps leave the row too wide, in two rows that start
+/// at the same edge (the first one holding the larger half).
+fn board_layout(slots: &[(Slot, f32)], width: f32) -> BoardLayout {
+    let row_width = |row: &[(Slot, f32)], gap: f32| -> f32 {
+        let boxes: f32 = row.iter().map(|(_, width)| width).sum();
+        boxes + gap * row.len().saturating_sub(1) as f32
+    };
+    let fits = row_width(slots, MIN_GAP) + 24.0 <= width;
+    let rows: Vec<&[(Slot, f32)]> = if fits {
+        vec![slots]
+    } else {
+        let (first, second) = slots.split_at(slots.len().div_ceil(2));
+        vec![first, second]
+    };
+    // One gap for every row, so the boxes of the two rows line up.
+    let gap = rows
+        .iter()
+        .map(|row| {
+            let boxes: f32 = row.iter().map(|(_, width)| width).sum();
+            let gaps = row.len().saturating_sub(1).max(1) as f32;
+            ((width - 24.0 - boxes) / gaps).clamp(MIN_GAP, GAP)
+        })
+        .fold(GAP, f32::min);
+    let widest = rows
+        .iter()
+        .map(|row| row_width(row, gap))
+        .fold(0.0, f32::max);
+    let left = ((width - widest) / 2.0).max(0.0);
+    let mut rects = Vec::with_capacity(slots.len());
+    for (line, row) in rows.iter().enumerate() {
+        let top = 10.0 + line as f32 * ROW_STEP;
+        let mut x = left;
+        for (_, slot_width) in *row {
+            rects.push(Rect::from_min_size(pos2(x, top), vec2(*slot_width, BOX.y)));
+            x += slot_width + gap;
+        }
+    }
+    BoardLayout {
+        rects,
+        wrap: rows.get(1).map(|_| rows.first().map_or(0, |row| row.len())),
+        gap,
+    }
+}
+
+/// Where the window goes and how its content is laid out.
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct Placement {
+    /// Its top left corner.
+    pos: Pos2,
+    /// The content's width.
+    width: f32,
+    /// The margin on either side of the content.
+    side: i8,
+    /// The body's height, where it scrolls (a narrow screen); `None`: as tall as it is.
+    body: Option<f32>,
+    /// Whether the body fills that height however little it shows (a sheet).
+    fill: bool,
+    /// How much of the body's bottom the floating drawer hides.
+    hidden: f32,
+}
+
+impl Placement {
+    /// A sheet over `cover` (everything but the drawer): as wide and as tall, the content
+    /// no wider than usual and centred, `hidden` of its bottom under the floating drawer.
+    fn sheet(cover: Rect, hidden: f32) -> Placement {
+        // The window's outline, one point on either side.
+        let inside = cover.width() - 2.0;
+        let side = ((inside - WIDTH) / 2.0).clamp(16.0, 120.0).floor();
+        Placement {
+            pos: cover.min,
+            width: (inside - 2.0 * side).max(MIN_WIDTH),
+            side: side as i8,
+            body: Some(
+                (cover.height() - super::title_bar::TITLE_BAR_HEIGHT - 24.0 - 2.0)
+                    .max(EDITOR_MIN_HEIGHT),
+            ),
+            fill: true,
+            hidden: hidden.max(0.0),
+        }
+    }
+}
+
+/// Whether the window is a sheet over `cover` (the practice view's room above the drawer):
+/// on a narrow screen, and on one not tall enough for it (a phone on its side).
+pub(super) fn is_sheet(cover: Rect) -> bool {
+    content_width(cover.width()) < WIDTH || cover.height() < SHEET_BELOW_HEIGHT
+}
+
+/// The width of the window's content on a screen `screen` points wide: its usual width,
+/// or on a narrower screen (a phone) what is left between the edges.
+fn content_width(screen: f32) -> f32 {
+    (screen - 2.0 * SCREEN_GUTTER - FRAME_WIDTH).clamp(MIN_WIDTH, WIDTH)
 }
 
 /// What was picked in a Cab or Room block's dropdown.
@@ -2345,10 +2521,60 @@ impl GuitarScoreApp {
             .tabs
             .get(self.active)
             .map(|tab| tab.document.editor().revision());
-        let size = vec2(WIDTH + 32.0, 600.0);
-        let pos = *window
-            .pos
-            .get_or_insert_with(|| style::centered_window_pos(ctx, size));
+        // On a narrow screen (a phone) the window is as wide as the screen leaves, starts
+        // near the top and stays on the screen; what does not fit below scrolls.
+        let screen = ctx.content_rect();
+        // In the practice view on a phone (or a phone on its side) the window is a sheet:
+        // it covers everything but the drawer, which stays on top of it.
+        let sheet = self.practice_sheet();
+        let place = match sheet {
+            Some((cover, hidden)) => Placement::sheet(cover, hidden),
+            None => {
+                // On a narrow screen (a phone) the window is as wide as the screen leaves,
+                // starts near the top and stays on the screen; what does not fit below
+                // scrolls.
+                let width = content_width(screen.width());
+                let narrow = width < WIDTH;
+                let size = vec2(width + FRAME_WIDTH, 600.0);
+                let pos = *window.pos.get_or_insert_with(|| {
+                    if narrow {
+                        pos2(screen.left() + SCREEN_GUTTER, screen.top() + SCREEN_GUTTER)
+                    } else {
+                        style::centered_window_pos(ctx, size)
+                    }
+                });
+                let pos = if narrow {
+                    let kept = pos2(
+                        pos.x
+                            .clamp(screen.left(), (screen.right() - size.x).max(screen.left())),
+                        pos.y
+                            .clamp(screen.top(), (screen.bottom() - 120.0).max(screen.top())),
+                    );
+                    window.pos = Some(kept);
+                    kept
+                } else {
+                    pos
+                };
+                // The body's height on a narrow screen: down to the screen's bottom, below
+                // the title bar and the margins.
+                let body = (screen.bottom()
+                    - pos.y
+                    - super::title_bar::TITLE_BAR_HEIGHT
+                    - 24.0
+                    - SCREEN_GUTTER)
+                    .max(EDITOR_MIN_HEIGHT);
+                Placement {
+                    pos,
+                    width,
+                    side: 16,
+                    body: narrow.then_some(body),
+                    fill: false,
+                    hidden: 0.0,
+                }
+            }
+        };
+        let (pos, width) = (place.pos, place.width);
+        let narrow = width < WIDTH;
         let mut actions = Actions::default();
         let Some(player) = self.track_player(window.track) else {
             return;
@@ -2486,48 +2712,50 @@ impl GuitarScoreApp {
                     actions.close = true;
                 }
                 egui::Frame::new()
-                    .inner_margin(Margin::symmetric(16, 12))
+                    .inner_margin(Margin::symmetric(place.side, 12))
                     .show(ui, |ui| {
-                        ui.set_width(WIDTH);
-                        if player.drums {
-                            parts_row(
-                                ui,
-                                &mut window.part,
-                                &mut window.selected,
-                                &dialed_in,
-                                &mut actions,
-                            );
-                            ui.separator();
-                        }
-                        // A drum part's level, or the tone: which one this preset plays,
-                        // another one, and saving it. Above the board so it stays in reach,
-                        // in a slot of its own height so the board does not jump when a
-                        // part is chosen.
-                        ui.vertical(|ui| {
-                            ui.set_min_height(HEADER_HEIGHT);
-                            if let Some(part) = window.part {
-                                ui.horizontal(|ui| {
-                                    ui.label(
-                                        RichText::new(format!("{} level", part.label()))
-                                            .color(style::tokens(ui).text_weak),
-                                    );
-                                    let mut level = part_level.unwrap_or(127);
-                                    if ui
-                                        .add(egui::Slider::new(&mut level, 0..=127))
-                                        .on_hover_text(
-                                            "The part's level inside the drum track, after its \
+                        ui.set_width(width);
+                        let mut body = |ui: &mut egui::Ui| {
+                            if player.drums {
+                                parts_row(
+                                    ui,
+                                    &mut window.part,
+                                    &mut window.selected,
+                                    &dialed_in,
+                                    &mut actions,
+                                );
+                                ui.separator();
+                            }
+                            // A drum part's level, or the tone: which one this preset plays,
+                            // another one, and saving it. Above the board so it stays in reach,
+                            // in a slot of its own height so the board does not jump when a
+                            // part is chosen.
+                            ui.vertical(|ui| {
+                                ui.set_min_height(HEADER_HEIGHT);
+                                if let Some(part) = window.part {
+                                    header_row(ui, narrow, |ui| {
+                                        ui.label(
+                                            RichText::new(format!("{} level", part.label()))
+                                                .color(style::tokens(ui).text_weak),
+                                        );
+                                        let mut level = part_level.unwrap_or(127);
+                                        if ui
+                                            .add(egui::Slider::new(&mut level, 0..=127))
+                                            .on_hover_text(
+                                                "The part's level inside the drum track, after its \
                                              chain (127 is unity)",
-                                        )
-                                        .changed()
-                                    {
-                                        actions.part_level = Some(level);
-                                    }
-                                    ui.add_space(16.0);
-                                    ui.label(
-                                        RichText::new("Room").color(style::tokens(ui).text_weak),
-                                    );
-                                    let mut room = part_room.unwrap_or(0);
-                                    if ui
+                                            )
+                                            .changed()
+                                        {
+                                            actions.part_level = Some(level);
+                                        }
+                                        ui.add_space(16.0);
+                                        ui.label(
+                                            RichText::new("Room")
+                                                .color(style::tokens(ui).text_weak),
+                                        );
+                                        let mut room = part_room.unwrap_or(0);
+                                        if ui
                                         .add(egui::Slider::new(&mut room, 0..=127))
                                         .on_hover_text(
                                             "How much of the part goes into the kit's one short \
@@ -2537,231 +2765,239 @@ impl GuitarScoreApp {
                                     {
                                         actions.part_room = Some(room);
                                     }
-                                    clip_buttons(ui, clip, None, &mut actions);
-                                });
-                            } else {
-                                let default_tone = self.playback.track_default_tone_name(
-                                    window.track,
-                                    player.program,
-                                    kind,
-                                );
-                                preset_row(
-                                    ui,
-                                    ShownPreset {
-                                        program: player.program,
-                                        kind,
-                                        clip,
-                                        compare: can_compare,
-                                        comparing,
-                                        basis: self
-                                            .tabs
-                                            .get(self.active)
-                                            .and_then(|tab| tab.tone_basis.get(&window.track))
-                                            .cloned(),
-                                    },
-                                    default_tone.as_deref(),
-                                    &tone,
-                                    &presets,
-                                    &mut window,
-                                    &mut actions,
-                                );
-                            }
-                        });
-                        ui.separator();
-                        // While A/B shows the tone as it was, its board and knobs are
-                        // shown but not edited.
-                        ui.add_enabled_ui(!comparing, |ui| {
-                            let chain = part_chain
-                                .as_ref()
-                                .map(|own| own.chain.clone())
-                                .unwrap_or_else(|| tone.chain.clone());
-                            let sound = tone.sound;
-                            // The first box names what plays the track: the strings, the MIDI
-                            // synth or a hardware port.
-                            let source = match player.engine {
-                                TrackEngine::Modelled(kind) => {
-                                    ("Strings".to_owned(), kind_name(kind).to_owned())
-                                }
-                                TrackEngine::SoundFont => (
-                                    "MIDI".to_owned(),
-                                    format!(
-                                        "{}: {}",
+                                        if narrow {
+                                            ui.end_row();
+                                        }
+                                        clip_buttons(ui, clip, None, &mut actions);
+                                    });
+                                } else {
+                                    let default_tone = self.playback.track_default_tone_name(
+                                        window.track,
                                         player.program,
-                                        gscore_model::program_name(player.program)
-                                    ),
-                                ),
-                                TrackEngine::MidiOut => {
-                                    ("MIDI out".to_owned(), player.midi_out.label())
+                                        kind,
+                                    );
+                                    preset_row(
+                                        ui,
+                                        ShownPreset {
+                                            program: player.program,
+                                            kind,
+                                            clip,
+                                            compare: can_compare,
+                                            comparing,
+                                            basis: self
+                                                .tabs
+                                                .get(self.active)
+                                                .and_then(|tab| tab.tone_basis.get(&window.track))
+                                                .cloned(),
+                                        },
+                                        default_tone.as_deref(),
+                                        &tone,
+                                        &presets,
+                                        &mut window,
+                                        &mut actions,
+                                    );
                                 }
-                            };
-                            let board = board(
-                                ui,
-                                (source.0.as_str(), source.1.as_str()),
-                                &chain,
-                                window.selected,
-                                board_origin(window.track, window.part),
-                                clipboard.as_ref(),
-                                Some(ChainEnds {
-                                    input_db: trim_db,
-                                    output_db: chain.output_db,
-                                }),
-                            );
-                            let mut board = board;
-                            // The board's keys, as the clicks they stand for.
-                            for key in std::mem::take(&mut window.pending_keys) {
-                                let place = window
+                            });
+                            ui.separator();
+                            // While A/B shows the tone as it was, its board and knobs are
+                            // shown but not edited.
+                            ui.add_enabled_ui(!comparing, |ui| {
+                                let chain = part_chain
+                                    .as_ref()
+                                    .map(|own| own.chain.clone())
+                                    .unwrap_or_else(|| tone.chain.clone());
+                                let sound = tone.sound;
+                                // The first box names what plays the track: the strings, the MIDI
+                                // synth or a hardware port.
+                                let source = match player.engine {
+                                    TrackEngine::Modelled(kind) => {
+                                        ("Strings".to_owned(), kind_name(kind).to_owned())
+                                    }
+                                    TrackEngine::SoundFont => (
+                                        "MIDI".to_owned(),
+                                        format!(
+                                            "{}: {}",
+                                            player.program,
+                                            gscore_model::program_name(player.program)
+                                        ),
+                                    ),
+                                    TrackEngine::MidiOut => {
+                                        ("MIDI out".to_owned(), player.midi_out.label())
+                                    }
+                                };
+                                let board = board(
+                                    ui,
+                                    (source.0.as_str(), source.1.as_str()),
+                                    &chain,
+                                    window.selected,
+                                    board_origin(window.track, window.part),
+                                    clipboard.as_ref(),
+                                    Some(ChainEnds {
+                                        input_db: trim_db,
+                                        output_db: chain.output_db,
+                                    }),
+                                );
+                                let mut board = board;
+                                // The board's keys, as the clicks they stand for.
+                                for key in std::mem::take(&mut window.pending_keys) {
+                                    let place = window
+                                        .selected
+                                        .checked_sub(1)
+                                        .filter(|place| *place < BLOCKS)
+                                        .filter(|place| {
+                                            chain.blocks.get(*place).is_some_and(|block| {
+                                                block.choice != BlockChoice::Empty
+                                            })
+                                        });
+                                    match key {
+                                        BoardKey::Previous | BoardKey::Next => {
+                                            board.select = Some(next_box(
+                                                board.select.unwrap_or(window.selected),
+                                                key == BoardKey::Next,
+                                            ));
+                                        }
+                                        BoardKey::Remove => board.remove = board.remove.or(place),
+                                        BoardKey::Mute => board.bypass = board.bypass.or(place),
+                                    }
+                                }
+                                if board.select.is_some() {
+                                    window.board_keys = true;
+                                }
+                                if let Some(index) = board.select {
+                                    window.selected = index;
+                                    // The first box is the track's source: the kit's, not a part's.
+                                    if index == 0 && window.part.is_some() {
+                                        window.part = None;
+                                    }
+                                }
+                                if let Some(clip) = board.copy {
+                                    actions.copy = Some(clip);
+                                }
+                                // The header's copy menu: the selected block or the whole chain.
+                                let selected_place = window
                                     .selected
                                     .checked_sub(1)
-                                    .filter(|place| *place < BLOCKS)
-                                    .filter(|place| {
-                                        chain
-                                            .blocks
-                                            .get(*place)
-                                            .is_some_and(|block| block.choice != BlockChoice::Empty)
-                                    });
-                                match key {
-                                    BoardKey::Previous | BoardKey::Next => {
-                                        board.select = Some(next_box(
-                                            board.select.unwrap_or(window.selected),
-                                            key == BoardKey::Next,
-                                        ));
-                                    }
-                                    BoardKey::Remove => board.remove = board.remove.or(place),
-                                    BoardKey::Mute => board.bypass = board.bypass.or(place),
+                                    .filter(|place| *place < BLOCKS);
+                                if actions.copy_block
+                                    && let Some(block) = selected_place
+                                        .and_then(|place| chain.blocks.get(place))
+                                        .filter(|block| block.choice != BlockChoice::Empty)
+                                {
+                                    actions.copy = Some(SoundClip::Block(block.clone()));
                                 }
-                            }
-                            if board.select.is_some() {
-                                window.board_keys = true;
-                            }
-                            if let Some(index) = board.select {
-                                window.selected = index;
-                                // The first box is the track's source: the kit's, not a part's.
-                                if index == 0 && window.part.is_some() {
-                                    window.part = None;
+                                if actions.copy_chain {
+                                    actions.copy = Some(SoundClip::Chain(Box::new(chain.clone())));
                                 }
-                            }
-                            if let Some(clip) = board.copy {
-                                actions.copy = Some(clip);
-                            }
-                            // The header's copy menu: the selected block or the whole chain.
-                            let selected_place = window
-                                .selected
-                                .checked_sub(1)
-                                .filter(|place| *place < BLOCKS);
-                            if actions.copy_block
-                                && let Some(block) = selected_place
-                                    .and_then(|place| chain.blocks.get(place))
-                                    .filter(|block| block.choice != BlockChoice::Empty)
-                            {
-                                actions.copy = Some(SoundClip::Block(block.clone()));
-                            }
-                            if actions.copy_chain {
-                                actions.copy = Some(SoundClip::Chain(Box::new(chain.clone())));
-                            }
-                            // Its paste: whatever was copied last.
-                            if actions.paste {
-                                match &clipboard {
-                                    Some(SoundClip::Chain(copied)) => {
-                                        actions.chain = Some(copied.as_ref().clone());
-                                    }
-                                    Some(SoundClip::Block(block)) => {
-                                        if let Some(place) =
-                                            selected_place.or_else(|| first_empty(&chain))
-                                        {
-                                            let mut changed = chain.clone();
-                                            if let Some(slot) = changed.blocks.get_mut(place) {
-                                                *slot = block.clone();
-                                            }
-                                            actions.chain = Some(changed);
-                                            window.selected = place.saturating_add(1);
+                                // Its paste: whatever was copied last.
+                                if actions.paste {
+                                    match &clipboard {
+                                        Some(SoundClip::Chain(copied)) => {
+                                            actions.chain = Some(copied.as_ref().clone());
                                         }
+                                        Some(SoundClip::Block(block)) => {
+                                            if let Some(place) =
+                                                selected_place.or_else(|| first_empty(&chain))
+                                            {
+                                                let mut changed = chain.clone();
+                                                if let Some(slot) = changed.blocks.get_mut(place) {
+                                                    *slot = block.clone();
+                                                }
+                                                actions.chain = Some(changed);
+                                                window.selected = place.saturating_add(1);
+                                            }
+                                        }
+                                        None => {}
                                     }
-                                    None => {}
                                 }
-                            }
-                            if let Some(place) = board.paste_block
-                                && let Some(SoundClip::Block(block)) = &clipboard
-                            {
-                                let mut changed = chain.clone();
-                                if let Some(slot) = changed.blocks.get_mut(place) {
-                                    *slot = block.clone();
-                                }
-                                actions.chain = Some(changed);
-                                window.selected = place.saturating_add(1);
-                            }
-                            if board.paste_chain
-                                && let Some(SoundClip::Chain(copied)) = &clipboard
-                            {
-                                actions.chain = Some(copied.as_ref().clone());
-                            }
-                            if let Some((place, block)) = board.dropped {
-                                let mut changed = chain.clone();
-                                if let Some(slot) = changed.blocks.get_mut(place) {
-                                    *slot = block.clone();
-                                }
-                                actions.chain = Some(changed);
-                                window.selected = place.saturating_add(1);
-                            }
-                            if let Some(place) = board.remove {
-                                let mut changed = chain.clone();
-                                if let Some(slot) = changed.blocks.get_mut(place) {
-                                    *slot = BlockSetting::default();
-                                }
-                                actions.chain = Some(changed);
-                                window.selected = place.saturating_add(1);
-                            }
-                            if let Some((place, choice)) = board.fill {
-                                let mut changed = chain.clone();
-                                if let Some(slot) = changed.blocks.get_mut(place) {
-                                    *slot = BlockSetting::of(choice);
-                                }
-                                actions.chain = Some(changed);
-                                window.selected = place.saturating_add(1);
-                            }
-                            if let Some(place) = board.bypass
-                                && let Some(block) = chain.blocks.get(place)
-                            {
-                                let mut changed = chain.clone();
-                                if let Some(slot) = changed.blocks.get_mut(place) {
-                                    slot.bypass = !block.bypass;
-                                }
-                                actions.chain = Some(changed);
-                            }
-                            // A block dragged to another place: the chain follows the board, so
-                            // the sound passes the blocks in the order shown.
-                            if let Some((from, to)) = board.moved {
-                                let mut changed = chain.clone();
-                                if move_block(&mut changed.blocks, from, to) {
+                                if let Some(place) = board.paste_block
+                                    && let Some(SoundClip::Block(block)) = &clipboard
+                                {
+                                    let mut changed = chain.clone();
+                                    if let Some(slot) = changed.blocks.get_mut(place) {
+                                        *slot = block.clone();
+                                    }
                                     actions.chain = Some(changed);
-                                    window.selected = to.saturating_add(1);
+                                    window.selected = place.saturating_add(1);
                                 }
-                            }
-                            ui.separator();
-                            // The chosen box's knobs, in an area of one height for every box of
-                            // the chain (taller only for a chain with an EQ, if the screen has
-                            // room), so the window keeps its size when another box is chosen.
-                            let tallest = if chain
-                                .blocks
-                                .iter()
-                                .any(|block| block.choice == BlockChoice::Eq)
-                            {
-                                EQ_EDITOR_HEIGHT
-                            } else {
-                                EDITOR_HEIGHT
-                            };
-                            let editor_height = (ctx.content_rect().height() - EDITOR_ROOM)
-                                .clamp(EDITOR_MIN_HEIGHT, tallest);
-                            egui::ScrollArea::vertical()
-                                .id_salt("sound chain editor")
-                                .auto_shrink([false, false])
-                                .max_height(editor_height)
-                                .show(ui, |ui| {
-                                    ui.set_min_height(editor_height);
-                                    if window.selected == SELECT_INPUT {
-                                        ui.label(RichText::new("Input trim").strong());
-                                        ui.horizontal(|ui| {
-                                            let mut trim = trim_db;
-                                            if round_knob(
+                                if board.paste_chain
+                                    && let Some(SoundClip::Chain(copied)) = &clipboard
+                                {
+                                    actions.chain = Some(copied.as_ref().clone());
+                                }
+                                if let Some((place, block)) = board.dropped {
+                                    let mut changed = chain.clone();
+                                    if let Some(slot) = changed.blocks.get_mut(place) {
+                                        *slot = block.clone();
+                                    }
+                                    actions.chain = Some(changed);
+                                    window.selected = place.saturating_add(1);
+                                }
+                                if let Some(place) = board.remove {
+                                    let mut changed = chain.clone();
+                                    if let Some(slot) = changed.blocks.get_mut(place) {
+                                        *slot = BlockSetting::default();
+                                    }
+                                    actions.chain = Some(changed);
+                                    window.selected = place.saturating_add(1);
+                                }
+                                if let Some((place, choice)) = board.fill {
+                                    let mut changed = chain.clone();
+                                    if let Some(slot) = changed.blocks.get_mut(place) {
+                                        *slot = BlockSetting::of(choice);
+                                    }
+                                    actions.chain = Some(changed);
+                                    window.selected = place.saturating_add(1);
+                                }
+                                if let Some(place) = board.bypass
+                                    && let Some(block) = chain.blocks.get(place)
+                                {
+                                    let mut changed = chain.clone();
+                                    if let Some(slot) = changed.blocks.get_mut(place) {
+                                        slot.bypass = !block.bypass;
+                                    }
+                                    actions.chain = Some(changed);
+                                }
+                                // A block dragged to another place: the chain follows the board, so
+                                // the sound passes the blocks in the order shown.
+                                if let Some((from, to)) = board.moved {
+                                    let mut changed = chain.clone();
+                                    if move_block(&mut changed.blocks, from, to) {
+                                        actions.chain = Some(changed);
+                                        window.selected = to.saturating_add(1);
+                                    }
+                                }
+                                ui.separator();
+                                // The chosen box's knobs, in an area of one height for every box of
+                                // the chain (taller only for a chain with an EQ, if the screen has
+                                // room), so the window keeps its size when another box is chosen.
+                                let tallest = if chain
+                                    .blocks
+                                    .iter()
+                                    .any(|block| block.choice == BlockChoice::Eq)
+                                {
+                                    EQ_EDITOR_HEIGHT
+                                } else {
+                                    EDITOR_HEIGHT
+                                };
+                                // Where the whole window scrolls (a phone), the knobs get
+                                // their full height.
+                                let editor_height = if place.body.is_some() {
+                                    tallest
+                                } else {
+                                    (ctx.content_rect().height() - EDITOR_ROOM)
+                                        .clamp(EDITOR_MIN_HEIGHT, tallest)
+                                };
+                                egui::ScrollArea::vertical()
+                                    .id_salt("sound chain editor")
+                                    .auto_shrink([false, false])
+                                    .max_height(editor_height)
+                                    .show(ui, |ui| {
+                                        ui.set_min_height(editor_height);
+                                        if window.selected == SELECT_INPUT {
+                                            ui.label(RichText::new("Input trim").strong());
+                                            ui.horizontal(|ui| {
+                                                let mut trim = trim_db;
+                                                if round_knob(
                                                 ui,
                                                 &mut trim,
                                                 TRIM_RANGE,
@@ -2778,27 +3014,27 @@ impl GuitarScoreApp {
                                             {
                                                 actions.trim = Some(trim);
                                             }
-                                            let (rect, response) = ui.allocate_exact_size(
-                                                vec2(10.0, 30.0),
-                                                Sense::hover(),
-                                            );
-                                            strips::paint_meter(
-                                                ui,
-                                                rect,
-                                                strips::Reading::measured(input),
-                                            );
-                                            response.on_hover_text(
+                                                let (rect, response) = ui.allocate_exact_size(
+                                                    vec2(10.0, 30.0),
+                                                    Sense::hover(),
+                                                );
+                                                strips::paint_meter(
+                                                    ui,
+                                                    rect,
+                                                    strips::Reading::measured(input),
+                                                );
+                                                response.on_hover_text(
                                             "The level before the chain (after the input trim), \
                                              left and right",
                                         );
-                                        });
-                                        return;
-                                    }
-                                    if window.selected == SELECT_OUTPUT {
-                                        ui.label(RichText::new("Chain output").strong());
-                                        ui.horizontal(|ui| {
-                                            let mut output_db = chain.output_db;
-                                            if round_knob(
+                                            });
+                                            return;
+                                        }
+                                        if window.selected == SELECT_OUTPUT {
+                                            ui.label(RichText::new("Chain output").strong());
+                                            ui.horizontal(|ui| {
+                                                let mut output_db = chain.output_db;
+                                                if round_knob(
                                                 ui,
                                                 &mut output_db,
                                                 knob_ranges::OUTPUT,
@@ -2817,72 +3053,99 @@ impl GuitarScoreApp {
                                                 changed.output_db = output_db;
                                                 actions.chain = Some(changed);
                                             }
-                                            let (rect, response) = ui.allocate_exact_size(
-                                                vec2(10.0, 30.0),
-                                                Sense::hover(),
-                                            );
-                                            strips::paint_meter(
-                                                ui,
-                                                rect,
-                                                strips::Reading::measured(output),
-                                            );
-                                            response.on_hover_text(
+                                                let (rect, response) = ui.allocate_exact_size(
+                                                    vec2(10.0, 30.0),
+                                                    Sense::hover(),
+                                                );
+                                                strips::paint_meter(
+                                                    ui,
+                                                    rect,
+                                                    strips::Reading::measured(output),
+                                                );
+                                                response.on_hover_text(
                                             "The level after the chain (with its output level), \
                                              left and right, before the fader",
                                         );
-                                        });
-                                        return;
-                                    }
-                                    match window.selected.checked_sub(1) {
-                                        None => {
-                                            let mut sound = sound;
-                                            if strings_editor(
-                                                ui,
-                                                &player,
-                                                &mut sound,
-                                                &ports,
-                                                &mut window.strings_tab,
-                                                &mut window.programs,
-                                                &mut actions,
-                                            ) {
-                                                actions.sound = Some(sound);
+                                            });
+                                            return;
+                                        }
+                                        match window.selected.checked_sub(1) {
+                                            None => {
+                                                let mut sound = sound;
+                                                if strings_editor(
+                                                    ui,
+                                                    &player,
+                                                    &mut sound,
+                                                    &ports,
+                                                    &mut window.strings_tab,
+                                                    &mut window.programs,
+                                                    &mut actions,
+                                                ) {
+                                                    actions.sound = Some(sound);
+                                                }
+                                            }
+                                            Some(place) => {
+                                                let edited = editor(ui, &chain, place, reduction);
+                                                if let Some(changed) = edited.chain {
+                                                    actions.chain = Some(changed);
+                                                }
+                                                actions.rebuild |= edited.rebuild;
+                                                if edited.load {
+                                                    actions.load = Some(place);
+                                                }
                                             }
                                         }
-                                        Some(place) => {
-                                            let edited = editor(ui, &chain, place, reduction);
-                                            if let Some(changed) = edited.chain {
-                                                actions.chain = Some(changed);
-                                            }
-                                            actions.rebuild |= edited.rebuild;
-                                            if edited.load {
-                                                actions.load = Some(place);
-                                            }
+                                    });
+                            });
+                            ui.add_space(6.0);
+                            ui.separator();
+                            ui.horizontal(|ui| {
+                                if ui
+                                    .button("Listen")
+                                    .on_hover_text("Play a short phrase through this chain")
+                                    .clicked()
+                                {
+                                    actions.listen = true;
+                                }
+                                ui.with_layout(
+                                    egui::Layout::right_to_left(egui::Align::Center),
+                                    |ui| {
+                                        if ui.button("Close").clicked() {
+                                            actions.close = true;
                                         }
-                                    }
+                                    },
+                                );
+                            });
+                        };
+                        // On a narrow screen the body scrolls under the title bar; at its
+                        // usual width it is drawn as it is (a scroll area would clip it to
+                        // the screen's height).
+                        if let Some(height) = place.body {
+                            egui::ScrollArea::vertical()
+                                .id_salt("sound chain body")
+                                .max_height(height)
+                                // An auto-sized window offers its contents only last
+                                // frame's height: ask for the room down to the screen's
+                                // bottom, or it never grows.
+                                .min_scrolled_height(height)
+                                // A sheet fills what it covers, however little it shows.
+                                .auto_shrink([false, !place.fill])
+                                .show(ui, |ui| {
+                                    body(ui);
+                                    // What the floating drawer hides can be scrolled out
+                                    // from under it.
+                                    ui.add_space(place.hidden);
                                 });
-                        });
-                        ui.add_space(6.0);
-                        ui.separator();
-                        ui.horizontal(|ui| {
-                            if ui
-                                .button("Listen")
-                                .on_hover_text("Play a short phrase through this chain")
-                                .clicked()
-                            {
-                                actions.listen = true;
-                            }
-                            ui.with_layout(
-                                egui::Layout::right_to_left(egui::Align::Center),
-                                |ui| {
-                                    if ui.button("Close").clicked() {
-                                        actions.close = true;
-                                    }
-                                },
-                            );
-                        });
+                        } else {
+                            body(ui);
+                        }
                     });
             });
         window.rect = shown.map(|shown| shown.response.rect);
+        if sheet.is_some() {
+            // A sheet is not moved; out of the practice view the window starts afresh.
+            window.pos = None;
+        }
         // Escape closes the window the user is looking at (a popup or a text field gets it
         // first).
         if style::escape_closes(ctx, egui::Id::unique(WINDOW_ID)) {
@@ -3098,6 +3361,82 @@ mod tests {
     #![allow(clippy::indexing_slicing, clippy::unwrap_used)]
 
     use super::*;
+
+    /// A track's board: the source, the input trim, the five places, the output.
+    fn track_slots() -> Vec<(Slot, f32)> {
+        let mut slots = vec![(Slot::Box(0), BOX.x), (Slot::Input, END_WIDTH)];
+        slots.extend((1..=BLOCKS).map(|index| (Slot::Box(index), BOX.x)));
+        slots.push((Slot::Output, END_WIDTH));
+        slots
+    }
+
+    #[test]
+    fn the_window_keeps_its_width_on_a_desktop_and_fits_a_phone() {
+        assert_eq!(content_width(1920.0), WIDTH);
+        let phone = content_width(390.0);
+        assert!(phone < WIDTH);
+        assert!(phone + FRAME_WIDTH + 2.0 * SCREEN_GUTTER <= 390.0);
+        assert_eq!(content_width(200.0), MIN_WIDTH);
+    }
+
+    #[test]
+    fn the_board_is_one_row_at_its_width_and_folds_in_two_on_a_phone() {
+        let slots = track_slots();
+        let wide = board_layout(&slots, WIDTH);
+        assert_eq!(wide.wrap, None);
+        assert_eq!(wide.rects.len(), slots.len());
+        let top = wide.rects[0].top();
+        assert!(wide.rects.iter().all(|rect| rect.top() == top));
+        for width in [MIN_WIDTH, content_width(360.0), content_width(390.0)] {
+            let folded = board_layout(&slots, width);
+            let wrap = folded.wrap.unwrap();
+            assert_eq!(wrap, slots.len().div_ceil(2));
+            let (first, second) = folded.rects.split_at(wrap);
+            // Both rows start at the same edge, one under the other, inside the width, and
+            // no two boxes overlap.
+            assert_eq!(first[0].left(), second[0].left());
+            assert!(second[0].top() >= first[0].bottom());
+            for row in [first, second] {
+                assert!(row.first().unwrap().left() >= 0.0);
+                assert!(row.last().unwrap().right() <= width, "{width}: {row:?}");
+                for pair in row.windows(2) {
+                    assert!(pair[1].left() - pair[0].right() >= MIN_GAP - 1e-3);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn a_sheet_covers_its_rect_with_its_content_centred_and_no_wider_than_usual() {
+        let phone = Rect::from_min_max(pos2(0.0, 0.0), pos2(390.0, 700.0));
+        let sheet = Placement::sheet(phone, 0.0);
+        assert_eq!(sheet.pos, phone.min);
+        assert!(sheet.fill);
+        assert!(sheet.width < WIDTH);
+        assert_eq!(
+            sheet.width + 2.0 * f32::from(sheet.side) + 2.0,
+            phone.width()
+        );
+        assert!(sheet.body.unwrap() < phone.height());
+        let side = Rect::from_min_max(pos2(0.0, 0.0), pos2(844.0, 390.0));
+        let sheet = Placement::sheet(side, 120.0);
+        assert_eq!(sheet.width, WIDTH);
+        assert_eq!(
+            sheet.width + 2.0 * f32::from(sheet.side) + 2.0,
+            side.width()
+        );
+        assert_eq!(sheet.hidden, 120.0);
+        assert!(sheet.body.unwrap() >= EDITOR_MIN_HEIGHT);
+    }
+
+    #[test]
+    fn the_master_board_without_ends_folds_too() {
+        let slots: Vec<(Slot, f32)> = (0..=BLOCKS)
+            .map(|index| (Slot::Box(index), BOX.x))
+            .collect();
+        assert_eq!(board_layout(&slots, WIDTH).wrap, None);
+        assert_eq!(board_layout(&slots, MIN_WIDTH).wrap, Some(3));
+    }
 
     #[test]
     fn a_block_dragged_to_another_place_slides_the_blocks_between() {
