@@ -155,6 +155,9 @@ impl GuitarModel {
                 // 1.4 kHz, then a steep roll-off.
                 tone: 1_400.0,
                 resonance: 1.43,
+                // The level the amps' input is calibrated for. (The owner's DI came in
+                // 8 dB hotter, 2026-11-22: its preamp's setting; the tones compared with
+                // it raise their string level to 0.88.)
                 level: 0.35,
                 bridge: 0.93,
                 low_cut: 68.0,

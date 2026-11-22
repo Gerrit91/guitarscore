@@ -335,6 +335,40 @@ the highs down faster without taking the fundamental as well (the loop's gain li
 relaxes the shelf), and a higher corner for the light mute fixed its timing but made the
 knob's middle darker than its heavy end. The palm mute needs a steeper loss filter.
 
+### The steep palm shelf and the chugs (2026-11-22)
+
+- **A second-order palm shelf** (`filters::SteepShelf`) replaces the palm's two first-order
+  sections: maximally flat on its poles and zeros, so its loss below the corner grows with
+  the fourth power of the frequency (a third below its corner it takes 0.6 %, a first-order
+  shelf about 5 %). The first-order shelf could not take the highs down as asked without
+  taking the fundamental too, and the loop's gain limit then relaxed it; the steep one
+  keeps the fundamental and takes the highs as fast as asked. Its gain and phase delay come
+  from the analog prototype at prewarped frequencies (exact), so the loop stays in tune.
+- **Fitted to the chugs** (the DI's low E eighths, 03 bars 27-28, velocity 67): the
+  palm-mute knob's middle, where a tab's palm mutes play. A chug's first 30 ms are already
+  dark (2.4-4.8 kHz some 20 dB under the fundamental), its fundamental swells about 5 dB
+  after the pick and holds through the eighth, its 4th-7th harmonics (300-600 Hz) stay;
+  the single palm-muted notes at the start of 03 are lighter mutes with a bright attack.
+  Now the middle keeps about 5.5 harmonics flat, the highs at 2 kHz ring 0.116 s, a
+  palm-muted pick strikes half as bright with a quarter of the click (`PALM_HARDNESS`,
+  `PALM_CLICK`) and 3.2 times as strong (`PALM_STRIKE`, was 1.4: a chug was 11 dB under a
+  chord, the DI's 4 dB). The chug's band levels in its attack, body and tail now come
+  within a few dB of the DI's (the error 750 to 24 on a -60 dB floor); the single notes'
+  highs ring 1.6-1.8 times the DI's (they were fitted to 1.16 before the chugs).
+- **Levels:** the fitted strings' chords came out 8 dB under the owner's DI, so in the
+  previews they drove the amps less than the DI (and the Quad Cortex's reamp) did. The DI's
+  level is its preamp's setting, while the amps are calibrated to the preset's own level
+  (`real_strings_crunch_at_half_gain_and_stay_clean_on_the_clean_voice`): the preset keeps
+  0.35, and the tones compared with the DI set their string level to 0.88.
+- **Still apart:** through the high-gain chain the model's chugs stay about 4 dB short at
+  63-127 Hz and 2 dB bright at 1-4.5 kHz against the Quad Cortex. The dry passages show
+  why: the DI has 5-14 dB more at 50 Hz (the hand's thump, below the note), at 101-127 Hz
+  (the open A string ringing along) and at 250-400 Hz (the other strings' overtones); the
+  model plays only the picked strings. And the first period of a chug leaves the loop
+  before the palm acts on it, so its attack is as bright as the strike (2.5-3.2 kHz 12 dB
+  over the DI's). Next: the strings ringing along (the coupling recording, 06) and the
+  palm's effect on the strike.
+
 ## The effect chain (2026-11-06)
 
 - **The board** (owner's design): per kind of string, six boxes in a fixed row joined by

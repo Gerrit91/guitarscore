@@ -6777,3 +6777,11 @@ high-gain chain was 6-7 dB short at 60-100 Hz on palm mutes and right on chords:
 Lead voice cut its input at 160 Hz, which left a palm-muted low E little to drive. Now 90 Hz
 (see `docs/guitar-modelling.md`, "The chugs"). The modelled palm mute's highs still ring too
 long; that needs a steeper loss filter (constants alone were tried and dropped).
+
+2026-11-22: the steep palm shelf. The palm mute's loss filter is a second-order shelf
+(`SteepShelf`), fitted to the owner's chugs at the knob's middle; a palm-muted pick
+strikes softer, clicks less and harder. The DI came in 8 dB hotter than the preset's
+level (the amps' calibration, kept): the comparison tones set the string level to 0.88. Tests
+loosened to the chugs' measured ranges (a muted attack's level, its highs against an open
+note). Through the high-gain chain the chugs are still short of bass: the DI's other
+strings ring along and its thump lies below the note, which the model does not make yet.

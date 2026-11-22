@@ -50,20 +50,29 @@ const BRIDGE_AT: f32 = 1_000.0;
 const LOW_CUT_Q: f32 = 0.707;
 /// A palm-muted string's 60 dB decay times and how far up it keeps the harmonics, at the
 /// light and the heavy end of the model's palm-mute knob (the middle is their geometric
-/// mean: 0.9 s, 0.03 s and the fifth harmonic). The fundamental's time is for a low E
+/// mean). The fundamental's time is for a low E
 /// (82.4 Hz): lower notes ring longer, higher ones shorter (by the square root of the
 /// pitch, within [`PALM_DECAY_RANGE`]). The hand at the bridge takes the highs (around
 /// 2 kHz) much sooner, and above the kept harmonics (the loss filter's corner) everything,
 /// so the pitch and the low mids stay heard while the brightness is gone.
-const PALM_DECAY: (f32, f32) = (2.0, 1.6);
+const PALM_DECAY: (f32, f32) = (2.0, 1.63);
 const PALM_DECAY_AT: f32 = 82.4;
 const PALM_DECAY_RANGE: (f32, f32) = (0.1, 3.0);
-const PALM_HIGH_DECAY: (f32, f32) = (0.13, 0.07);
-const PALM_KEEPS: (f32, f32) = (3.0, 3.0);
+const PALM_HIGH_DECAY: (f32, f32) = (0.107, 0.126);
+/// Fitted to the owner's DI with the second-order palm shelf (2026-11-22): the knob's
+/// middle (where a tab's palm mutes play) to the chugs (low E eighths), the ends spread as
+/// the single palm-muted notes spread. A heavy mute keeps fewer harmonics and loses its
+/// body sooner, but its highs are no darker than a light one's (as measured).
+const PALM_KEEPS: (f32, f32) = (6.6, 4.6);
+/// A palm-muted pick: its strike this much as bright, its click this much as loud (the
+/// hand on the strings takes the edge off at once: a chug's first 30 ms are already dark,
+/// 2.4-4.8 kHz some 20 dB under the fundamental).
+const PALM_HARDNESS: f32 = 0.5;
+const PALM_CLICK: f32 = 0.27;
 /// A chug is played hard, and the hand takes energy out of the string from the start:
 /// the strike of a palm-muted note is this much stronger, so its low end is as full as an
 /// open note's.
-const PALM_STRIKE: f32 = 1.4;
+const PALM_STRIKE: f32 = 3.2;
 /// Strings whose highs ring at least this long (s, their brilliance) are muted with the
 /// palm's shelf; darker ones with their own loss filter, at the palm's decay times.
 const PALM_SHELF_BRILLIANCE: f32 = 0.5;
@@ -332,12 +341,14 @@ impl StringVoice {
             Attack::Tap => 0.3,
             Attack::Legato | Attack::Scrape => 0.0,
         };
-        let hardness = if pluck.harmonic {
-            hardness * 0.3
+        let (hardness, click) = if pluck.harmonic {
+            (hardness * 0.3, click)
         } else if pluck.dead {
-            hardness * 0.5
+            (hardness * 0.5, click)
+        } else if pluck.palm_mute {
+            (hardness * PALM_HARDNESS, click * PALM_CLICK)
         } else {
-            hardness
+            (hardness, click)
         };
         // Harder strikes are brighter; a soft one rounds the edge of the pluck.
         let (soft, hard) = VELOCITY_HARDNESS;
