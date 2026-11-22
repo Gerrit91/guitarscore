@@ -6771,3 +6771,9 @@ guitars keep), fitted at 1120 Hz with the brilliance at 2.7 s; the decay per ban
 within about 1 dB/s of the DI's. Three tests were loosened to the measured ranges (the
 palm mute's highs against an open note, the palm-mute knob's darkness steps).
 
+
+2026-11-22: the chugs. Against the owner's Quad Cortex on the same DI, GuitarScore's
+high-gain chain was 6-7 dB short at 60-100 Hz on palm mutes and right on chords: the amp's
+Lead voice cut its input at 160 Hz, which left a palm-muted low E little to drive. Now 90 Hz
+(see `docs/guitar-modelling.md`, "The chugs"). The modelled palm mute's highs still ring too
+long; that needs a steeper loss filter (constants alone were tried and dropped).

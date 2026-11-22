@@ -317,6 +317,24 @@ again with it: corner 1120 Hz, brilliance 2.7 s (was 1.35), sustain 15.3 s (expo
 first 0.4 s the DI's mids and highs fall faster (23-48 dB/s) than later, the model's at one
 rate (a two-stage decay; the second vibration's job). The palm mute keeps its own shelf.
 
+### The chugs (2026-11-22)
+
+The owner heard the chugs thinner than the Quad Cortex. Measured on the palm-mute passages
+(third-octave spectra, each normalised to its total): the owner's DI through GuitarScore's
+high-gain chain was 6-7 dB short at 60-100 Hz against the Quad Cortex on the same DI, while
+on chords the same chain matched within 1 dB. The amp's Lead voice cut its input at 160 Hz
+(second order) before the stages: a chord's lows come back out of the clipping of all its
+notes together, a palm-muted low E (mostly its 82 Hz fundamental) was left little to drive.
+At 90 Hz the DI's chugs match (63-127 Hz +0.2 dB, the whole spectrum 1.4 dB rms) and the
+chords stay (0.9 dB rms). The lead tone the same way.
+
+The modelled strings' palm mute still falls short of the DI through the same chain
+(63-127 Hz -1.7 dB, 1-4.5 kHz +2.3 dB): its highs ring about 1.3-1.5 times as long as the
+DI's. Shortening them by the constants does not work: the mute's one-pole shelf cannot take
+the highs down faster without taking the fundamental as well (the loop's gain limit then
+relaxes the shelf), and a higher corner for the light mute fixed its timing but made the
+knob's middle darker than its heavy end. The palm mute needs a steeper loss filter.
+
 ## The effect chain (2026-11-06)
 
 - **The board** (owner's design): per kind of string, six boxes in a fixed row joined by
