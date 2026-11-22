@@ -6890,3 +6890,9 @@ but the picker compared the file's empty ones, so it matched nothing ("Unsaved t
 many built-in tones were imported from saved ones, so a saved tone lit up its built-in twin.
 The picker now compares a saved tone as it plays, and remembers per track the row last
 clicked (track panel or Sound chain window) while the track still plays it.
+
+2026-11-22: old saved tones get the newer knobs. A saved tone without inharmonicity,
+fretted sustain, treble corner or a pickup gets its kind's values when the settings load
+(what it already played with), and the settings file holds them from the next save, so
+the tone keeps its sound when the kind's defaults are fitted again. (`cargo xtask tones
+programs` already showed every imported tone's saved tone as changed before this.)

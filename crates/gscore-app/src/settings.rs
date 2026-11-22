@@ -1219,6 +1219,12 @@ impl Settings {
         }
         for preset in &mut self.string_presets {
             preset.chain.sanitize();
+            // A tone saved before a string knob existed gets the value it plays with (its
+            // kind's), written into the file at the next save: it sounds the same, and it
+            // keeps sounding so when the kind's defaults are fitted again.
+            if let Some(kind) = kind_from_id(&preset.kind) {
+                preset.sound = preset.sound.for_kind(kind);
+            }
         }
         for part in &mut self.drum_parts {
             part.chain.sanitize();
@@ -1419,6 +1425,41 @@ mod tests {
                 .count(),
             1
         );
+    }
+
+    #[test]
+    fn a_saved_tone_from_before_the_newer_string_knobs_gets_its_kinds_values() {
+        use gscore_play::StringKind;
+        let mut settings: Settings = serde_json::from_value(serde_json::json!({
+            "string_presets": [
+                { "name": "Old Lead", "kind": "electric", "sound": { "level": 0.3 } },
+                {
+                    "name": "Own Corner",
+                    "kind": "electric",
+                    "sound": { "level": 0.3, "treble_corner": 800.0 },
+                },
+            ],
+        }))
+        .expect("the settings");
+        let old = settings.string_presets[0].sound;
+        assert_eq!(old.treble_corner, None);
+        settings.sanitize();
+        let electric = gscore_audio::default_string_model(StringKind::Electric);
+        let filled = settings.string_presets[0].sound;
+        assert_eq!(
+            filled,
+            old.for_kind(StringKind::Electric),
+            "it plays the same"
+        );
+        assert_eq!(filled.treble_corner, Some(electric.treble_corner));
+        assert_eq!(filled.inharmonicity, Some(electric.inharmonicity));
+        assert_eq!(filled.fretted_sustain, Some(electric.fretted_sustain));
+        assert_ne!(filled.pickup, PickupSetting::Unset);
+        // A knob the tone was saved with stays its own; the file holds the values now.
+        assert_eq!(settings.string_presets[1].sound.treble_corner, Some(800.0));
+        let text = serde_json::to_string(&settings).expect("the settings as JSON");
+        let back: Settings = serde_json::from_str(&text).expect("read back");
+        assert_eq!(back.string_presets[0].sound, filled);
     }
 
     #[test]
