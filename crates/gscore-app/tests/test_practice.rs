@@ -50,6 +50,7 @@ fn the_wide_header_holds_only_the_player_and_the_rest_is_in_the_drawer() {
             "Count-in",
             "Metronome",
             "Faster",
+            "Print (PDF)",
             "Full interface",
         ] {
             assert!(

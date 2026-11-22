@@ -44,6 +44,7 @@ enum Item {
     Settings,
     Save,
     Open,
+    Print,
     ScreenOn,
     FullInterface,
     ByWidth,
@@ -68,6 +69,7 @@ const LAYOUT: &[&[(Item, usize)]] = &[
         (Item::Open, 1),
     ],
     &[
+        (Item::Print, 1),
         (Item::ScreenOn, 1),
         (Item::FullInterface, 1),
         (Item::ByWidth, 1),
@@ -145,6 +147,7 @@ impl GuitarScoreApp {
             | Item::Settings
             | Item::Save
             | Item::Open
+            | Item::Print
             | Item::FullInterface => true,
         }
     }
@@ -306,6 +309,13 @@ impl GuitarScoreApp {
                     self.ask_open(&ctx);
                 }
             }
+            Item::Print => {
+                let look = Tile::default();
+                if tile_button(ui, rect, Icon::Print, "Print (PDF)", &look).clicked() {
+                    self.practice.drawer = false;
+                    self.ask_export(crate::export::ExportFormat::Pdf, &ctx);
+                }
+            }
             Item::FullInterface => {
                 let look = Tile::default();
                 if tile_button(ui, rect, Icon::FullInterface, "Full interface", &look).clicked() {
@@ -391,10 +401,11 @@ fn tile_width(width: f32) -> f32 {
     ((width - (COLUMNS - 1) as f32 * TILE_GAP) / COLUMNS as f32).min(TILE.x)
 }
 
-/// How wide `row` is with tiles `tile_width` across.
+/// How wide `row` is with tiles `tile_width` across: every span is that many columns
+/// wide (with the gaps inside it), so a row of spans lines up with the rows beneath it.
 fn row_width(row: &[(Item, usize)], tile_width: f32) -> f32 {
     let spans: usize = row.iter().map(|(_, span)| *span).sum();
-    spans as f32 * tile_width + row.len().saturating_sub(1) as f32 * TILE_GAP
+    spans as f32 * tile_width + spans.saturating_sub(1) as f32 * TILE_GAP
 }
 
 /// How wide a row of tiles is when `width` is there for it.

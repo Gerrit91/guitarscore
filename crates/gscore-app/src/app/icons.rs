@@ -38,6 +38,8 @@ pub(crate) enum Icon {
     ToEnd,
     /// Save (a floppy disk).
     Save,
+    /// Print (a printer with a sheet coming out).
+    Print,
     /// A new song (a page with a plus).
     NewSong,
     /// Restore a default (a counter-clockwise arrow).
@@ -524,6 +526,47 @@ pub(crate) fn paint(painter: &Painter, rect: Rect, color: Color32, icon: Icon) {
                 pos2(body.right() - size * 0.26, body.bottom() - size * 0.22),
             );
             painter.rect_filled(label, 0.5, color);
+        }
+        Icon::Print => {
+            // A printer: a sheet standing in its top slot, the body with its controls,
+            // and the printed sheet coming out at the front.
+            let sheet = Rect::from_center_size(
+                pos2(center.x, center.y - size * 0.24),
+                vec2(size * 0.48, size * 0.36),
+            );
+            painter.rect_stroke(sheet, 1.0, stroke, egui::StrokeKind::Inside);
+            let body = Rect::from_min_max(
+                pos2(center.x - size * 0.44, center.y - size * 0.1),
+                pos2(center.x + size * 0.44, center.y + size * 0.24),
+            );
+            painter.rect_stroke(body, 2.0, stroke, egui::StrokeKind::Inside);
+            painter.circle_filled(
+                pos2(body.right() - size * 0.12, body.top() + size * 0.1),
+                size * 0.045,
+                color,
+            );
+            painter.line_segment(
+                [
+                    pos2(body.left() + size * 0.1, body.top() + size * 0.1),
+                    pos2(body.left() + size * 0.34, body.top() + size * 0.1),
+                ],
+                stroke,
+            );
+            let printed = Rect::from_min_max(
+                pos2(center.x - size * 0.26, body.bottom() - size * 0.02),
+                pos2(center.x + size * 0.26, center.y + size * 0.42),
+            );
+            painter.rect_stroke(printed, 1.0, stroke, egui::StrokeKind::Inside);
+            for share in [0.36_f32, 0.64] {
+                let y = printed.top() + printed.height() * share;
+                painter.line_segment(
+                    [
+                        pos2(printed.left() + size * 0.08, y),
+                        pos2(printed.right() - size * 0.08, y),
+                    ],
+                    stroke,
+                );
+            }
         }
         Icon::NewSong => {
             // A page with a folded corner and a plus on it.

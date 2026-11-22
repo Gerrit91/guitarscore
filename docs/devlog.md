@@ -6868,3 +6868,11 @@ smaller.
   (1180 × 820) sizes with temporary `egui_kittest` snapshots (not committed; practice
   snapshots still await the owner's approval). `cargo xtask ci` and
   `cargo xtask web --smoke` pass.
+
+2026-11-22, owner's second look at the drawer: the first tile row (loop, speed, trainer)
+sat a little right of the five-tile rows under it, because its row width counted one gap
+between its three *tiles* instead of the four inside its speed tile's three columns. A
+row's width now counts every column and the gaps inside spans, so the columns line up
+again. Added a printer tile to the last row: it asks for a file and writes the PDF
+(printed score), as File › Export › PDF does. Checked at a phone's width with a temporary
+snapshot (not committed); `cargo xtask ci` and `cargo xtask web --smoke` pass.
