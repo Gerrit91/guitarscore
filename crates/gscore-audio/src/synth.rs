@@ -674,6 +674,15 @@ fn neutral_channels(synth: &mut Synthesizer) {
 }
 
 impl Sink for SynthSink<'_> {
+    fn follow(&mut self, sequence: &Arc<Sequence>) {
+        // Before the sequence's setup is sent, so a pan (or volume) on a channel reaches
+        // the strip of the track it belongs to; otherwise a rebuilt sequence (solo, then
+        // unsolo) puts one track's setup on another's strip, and the strip that follows
+        // the track's own sound keeps the wrong pan.
+        self.2.follow(sequence);
+        self.3.follow(sequence);
+    }
+
     fn send_timed(&mut self, event: &TimedEvent) {
         // Note-offs still go through: a note the SoundFont began before the track was
         // given to the strings (switched while playing) must end.

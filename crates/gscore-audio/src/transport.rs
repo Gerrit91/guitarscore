@@ -96,6 +96,11 @@ pub(crate) trait Sink {
     /// Ends every sounding note and stale pitch bend of `sequence`'s channels, keeping
     /// program, volume and pan (a pause resumes with the same mix).
     fn silence(&mut self, sequence: &Sequence);
+
+    /// Takes `sequence` as the one whose events follow, before any of them is sent: a
+    /// backend that keys its channels to tracks re-keys them first, so the sequence's own
+    /// setup (program, volume, pan) reaches its own tracks.
+    fn follow(&mut self, _sequence: &Arc<Sequence>) {}
 }
 
 /// A sequence being played, paused or stopped.
@@ -149,6 +154,10 @@ impl Transport {
                 self.silence(out);
                 let old = self.scheduler.replace(Scheduler::new(sequence));
                 self.state = PlayState::Stopped;
+                // Before `seek` sends this sequence's setup: its channels are its tracks'.
+                if let Some(s) = &self.scheduler {
+                    out.follow(s.sequence());
+                }
                 return old.map(|s| Arc::clone(s.sequence()));
             }
             Command::Play => {
@@ -182,14 +191,25 @@ impl Transport {
                 out.send(event);
             }
             Command::Replace(sequence) => match &mut self.scheduler {
-                Some(s) => return Some(s.replace(sequence)),
-                None => self.scheduler = Some(Scheduler::new(sequence)),
+                Some(s) => {
+                    let old = s.replace(sequence);
+                    out.follow(s.sequence());
+                    return Some(old);
+                }
+                None => {
+                    self.scheduler = Some(Scheduler::new(sequence));
+                    if let Some(s) = &self.scheduler {
+                        out.follow(s.sequence());
+                    }
+                }
             },
             Command::Seek(tick) => {
                 self.silence(out);
                 if let Some(s) = &mut self.scheduler {
                     s.jump(tick, now);
                     if s.position() > 0 {
+                        // The setup is the sequence's own: its channels are its tracks'.
+                        out.follow(s.sequence());
                         for event in s.setup() {
                             out.send(event.event);
                         }

@@ -6793,3 +6793,21 @@ palm's shelf is first order again (the steep one fitted much worse), keeps about
 harmonics, its fundamental rings 3.5 s, and the palm-muted strike is darker. Through the
 amp the chugs' shape is closer to the DI's but 2-3 dB lighter in the bass; the owner found
 it better by ear (see `docs/guitar-modelling.md`).
+
+## 2026-11-22: a track's pan after solo and unsolo
+
+Owner report: a guitar panned right came back hard left after it was soloed and unsoloed.
+Solo rebuilds the sequence with only the soloed tracks, and a track's MIDI channel is its
+*position* in that sequence (the soloed guitar moves from channel 2 to 0), while the
+mixer's strips are keyed by song track and do not exist yet for the new sequence when the
+rebuild is loaded. The transport replaced the sequence, then a seek sent the new
+sequence's setup (program, volume, pan) before the next render block followed the
+sequence: the guitar's pan landed on the strip of the track now on channel 0 (the first
+track, panned left), and the follow that matched the guitar's strip to its own track then
+kept that left pan.
+
+The `Sink` trait now has `follow` (a no-op for MIDI output), and `Transport` calls it on
+`Load`, `Replace` and before a seek's setup, so the synth's mixer and modelled strings are
+keyed to a sequence before any of its events is sent. Regression test:
+`a_rebuilt_sequence_puts_its_setup_on_its_own_tracks` (track 0 left, track 2 right, solo,
+unsolo: both keep their pan; without the fix the guitar reads 0). `cargo xtask ci` passes.
