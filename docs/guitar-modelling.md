@@ -399,6 +399,26 @@ knob's middle darker than its heavy end. The palm mute needs a steeper loss filt
   these bars (110 Hz 37 dB down: the note above about it was wrong). A high E's palm-muted
   highs now come out about -53 dB against the open note's (measured: -46 at most).
 
+### The palm-muted hit's thud (2026-11-22)
+
+- **The owner:** the palm-muted power chords sound good now, the single-note hits "lack a
+  bit of the oomph".
+- **The DI's chug hit** (03 bar 27, first 15 ms, against the body's fundamental): +3 to
+  +9 dB at 95-1200 Hz and -18 at 2.4-4.8 kHz, gone to the body's balance within about
+  40 ms. The model's: -5 to 0 at 95-450 Hz and +9 at 1.2-2.4 kHz, a thin, bright hit; a
+  strike goes into the loop, so it cannot fade faster than the note.
+- **A thud:** a palm-muted pick on a magnetic pickup's string adds one push (a sine
+  period, like the click: `PickNoise::thud`) of 1.7 ms and 0.46 of the strike's
+  amplitude, most of it at 100-600 Hz, into what the pickup hears; the strike is 0.1 as
+  bright (the fit is flat below 0.2). Fitted to the first 80 ms by band: error 86 to 29;
+  the first 15 ms within 1-2 dB of the DI's up to 2.4 kHz. An acoustic's palm mute keeps
+  its strike (its attack would fall below the test's 0.6 of the open note's).
+- **Through the high-gain chain**, against the DI through the same chain: bars 27-28 rms
+  3.2 to 2.6 dB, 63-127 Hz -2.5 to -1.9, 1-4.5 kHz +1.9 to +1.1; both chug passages 2.8
+  to 2.5, the palm-muted chords 3.6 to 3.4.
+- **Known gap:** a palm-muted high E's highs come out about -57 dB against the open
+  note's (measured -46 at most): the palm is fitted on the low E only, not per pitch.
+
 ## The effect chain (2026-11-06)
 
 - **The board** (owner's design): per kind of string, six boxes in a fixed row joined by

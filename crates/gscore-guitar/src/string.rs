@@ -26,7 +26,7 @@ use std::f32::consts::{PI, TAU};
 use crate::filters::{Biquad, DcBlocker, Noise};
 use crate::model::StringModel;
 use crate::pick::{PickNoise, Tension};
-use crate::pickup::PickupComb;
+use crate::pickup::{Pickup, PickupComb};
 use crate::string_loop::{Loop, MAX_STIFFNESS_STAGES, Tuning, dispersion};
 
 /// A hammer-on or pull-off reaches its new pitch within this long, in seconds.
@@ -70,10 +70,17 @@ const PALM_KEEPS: (f32, f32) = (6.4, 4.4);
 /// long as the fundamental, then nothing): a hand at the bridge damps each harmonic a
 /// little more than the one below (see `docs/guitar-modelling.md`).
 const PALM_SECTIONS: usize = 1;
-/// A palm-muted pick: its strike this much as bright and its click this much as loud (the
-/// hand on the strings takes the edge off the hit at once).
-const PALM_HARDNESS: f32 = 0.71;
+/// A palm-muted pick on a string a magnetic pickup hears (the owner's electric; an
+/// acoustic's palm mute keeps its strike): its strike this much as bright and its click
+/// this much as loud (the hand on the strings takes the edge off the hit at once).
+const PALM_HARDNESS: f32 = 0.1;
 const PALM_CLICK: f32 = 0.19;
+/// And its thud, the pick shoving the damped string at the pickup: one push of this level
+/// (against the strike's amplitude) and width (seconds), most of it at 100-600 Hz. Fitted
+/// with the strike's brightness to the first 80 ms of the owner's chugs (2026-11-22): a
+/// chug's hit is a low-mid thud (some 8 dB over the note's body at 100-600 Hz within
+/// 15 ms), gone within about 40 ms.
+const PALM_THUD: (f32, f32) = (0.46, 0.0017);
 /// A chug is played hard, and the hand takes energy out of the string from the start:
 /// the strike of a palm-muted note is this much stronger, so its low end is as full as an
 /// open note's.
@@ -350,7 +357,7 @@ impl StringVoice {
             (hardness * 0.3, click)
         } else if pluck.dead {
             (hardness * 0.5, click)
-        } else if pluck.palm_mute {
+        } else if pluck.palm_mute && self.model.pickup != Pickup::None {
             (hardness * PALM_HARDNESS, click * PALM_CLICK)
         } else {
             (hardness, click)
@@ -361,6 +368,9 @@ impl StringVoice {
         let amplitude = amplitude * velocity.powf(VELOCITY_LEVEL_EXPONENT);
         self.pick
             .start(amplitude * click * self.model.pick_noise, hardness);
+        if pluck.palm_mute && !pluck.dead && self.model.pickup != Pickup::None {
+            self.pick.thud(amplitude * PALM_THUD.0, PALM_THUD.1);
+        }
         if !pluck.dead && !pluck.harmonic {
             self.tension.strike(amplitude, self.model.attack_pitch);
         }

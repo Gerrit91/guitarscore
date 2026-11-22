@@ -43,6 +43,10 @@ pub(crate) struct PickNoise {
     /// The scrape's envelope now and its fall per sample.
     scrape: f32,
     scrape_fall: f32,
+    /// A palm-muted pick's thud: where it is, how long and how loud.
+    thud_at: usize,
+    thud_length: usize,
+    thud_level: f32,
 }
 
 impl PickNoise {
@@ -56,6 +60,9 @@ impl PickNoise {
             click_level: 0.0,
             scrape: 0.0,
             scrape_fall: 0.0,
+            thud_at: 0,
+            thud_length: 0,
+            thud_level: 0.0,
         }
     }
 
@@ -74,9 +81,22 @@ impl PickNoise {
         self.scrape_fall = (-1.0 / (between(SCRAPE) * self.sample_rate)).exp();
     }
 
+    /// Adds a thud to the click: one push of `width` seconds and `strength` (a palm-muted
+    /// pick shoving the damped string at the pickup).
+    pub(crate) fn thud(&mut self, strength: f32, width: f32) {
+        if !(strength.is_finite() && strength > 0.0 && width.is_finite() && width > 0.0) {
+            return;
+        }
+        self.thud_length = ((width * self.sample_rate).round() as usize).max(2);
+        self.thud_at = 0;
+        self.thud_level = strength;
+    }
+
     /// Whether anything is still sounding.
     pub(crate) fn is_active(&self) -> bool {
-        self.click_at < self.click_length || self.scrape > SCRAPE_END
+        self.click_at < self.click_length
+            || self.thud_at < self.thud_length
+            || self.scrape > SCRAPE_END
     }
 
     /// The next sample (0 once over).
@@ -87,6 +107,11 @@ impl PickNoise {
             let phase = self.click_at as f32 / self.click_length as f32;
             out += (TAU * phase).sin() * self.click_level;
             self.click_at = self.click_at.saturating_add(1);
+        }
+        if self.thud_at < self.thud_length {
+            let phase = self.thud_at as f32 / self.thud_length as f32;
+            out += (TAU * phase).sin() * self.thud_level;
+            self.thud_at = self.thud_at.saturating_add(1);
         }
         if self.scrape > SCRAPE_END {
             out += self.filter.process(self.noise.next()) * self.scrape;
@@ -101,6 +126,7 @@ impl PickNoise {
     /// Stops at once.
     pub(crate) fn clear(&mut self) {
         self.click_at = self.click_length;
+        self.thud_at = self.thud_length;
         self.scrape = 0.0;
         self.filter.reset();
     }

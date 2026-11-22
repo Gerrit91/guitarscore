@@ -6829,6 +6829,12 @@ harmonics, its fundamental rings 3.5 s, and the palm-muted strike is darker. Thr
 amp the chugs' shape is closer to the DI's but 2-3 dB lighter in the bass; the owner found
 it better by ear (see `docs/guitar-modelling.md`).
 
+2026-11-22: the palm-muted hit's thud. The single-note chugs lacked "oomph" (owner): the
+DI's hit is a low-mid thud, some 8 dB over the note's body at 100-600 Hz for about 15 ms,
+the model's was thin and bright. A palm-muted pick on an electric now adds a 1.7 ms push
+to what the pickup hears and strikes darker; through the high-gain amp the chugs come
+closer to the DI's (bars 27-28 2.6 dB rms against 3.2, the bass -1.9 dB against -2.5).
+
 ## 2026-11-22: a track's pan after solo and unsolo
 
 Owner report: a guitar panned right came back hard left after it was soloed and unsoloed.
