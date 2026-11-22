@@ -68,6 +68,10 @@ pub(super) struct Tab {
     /// so a changed tone shows as "Lead (changed)" in the Sound chain window and the track
     /// panel. Kept while the song is open.
     pub(super) tone_basis: std::collections::BTreeMap<usize, String>,
+    /// By track: the built-in or saved tone last chosen from a list, so its row is the one
+    /// marked while the track plays it, even when other tones have the same settings (many
+    /// built-in tones were imported from saved ones). Kept while the song is open.
+    pub(super) tone_choice: std::collections::BTreeMap<usize, super::tone_picker::PickerChoice>,
     /// The cursor and revision the view last scrolled to, to scroll only on a change.
     pub(super) shown_cursor: Option<(Cursor, u64)>,
     /// A bar was clicked in the song grid: the view turns to the cursor as playback turns
@@ -154,6 +158,7 @@ impl Tab {
             palette_anchor: None,
             play_origin: None,
             tone_basis: std::collections::BTreeMap::new(),
+            tone_choice: std::collections::BTreeMap::new(),
             shown_cursor: None,
             turn_to_cursor: false,
             grid_keys: false,

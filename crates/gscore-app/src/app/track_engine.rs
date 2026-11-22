@@ -115,8 +115,13 @@ impl GuitarScoreApp {
         let default_tone = self
             .playback
             .track_default_tone_name(track, player.program, kind);
+        let chosen = self
+            .tabs
+            .get(self.active)
+            .and_then(|tab| tab.tone_choice.get(&track));
         let current = current_tone_choice(
             &tone,
+            chosen,
             default_tone.as_deref(),
             &self.settings.string_presets,
         );
@@ -135,10 +140,11 @@ impl GuitarScoreApp {
     /// Gives `track` `tone` as its own sound (kept with the song, part A), played by
     /// modelled strings, and plays the short Listen phrase unless the song is playing.
     /// This is the picker's choice: it belongs to this track alone.
-    pub(super) fn choose_track_tone(&mut self, track: usize, tone: Tone) {
+    pub(super) fn choose_track_tone(&mut self, track: usize, choice: PickerChoice, tone: Tone) {
         let Some(player) = self.track_player(track) else {
             return;
         };
+        self.remember_tone_choice(track, choice);
         let Some(mut sound) = self.open_track_sound(track) else {
             return;
         };
@@ -156,6 +162,14 @@ impl GuitarScoreApp {
                 Ok(_) => {}
                 Err(error) => self.notice = Some(error),
             }
+        }
+    }
+
+    /// Notes that `choice` was the row chosen for `track`, so it is the one marked while the
+    /// track plays its tone.
+    pub(super) fn remember_tone_choice(&mut self, track: usize, choice: PickerChoice) {
+        if let Some(tab) = self.tabs.get_mut(self.active) {
+            tab.tone_choice.insert(track, choice);
         }
     }
 
@@ -321,11 +335,16 @@ impl GuitarScoreApp {
             .playback
             .track_default_tone_name(track, player.program, tone.kind);
         let presets = &self.settings.string_presets;
-        let named = |tone: &Tone| match current_tone_choice(tone, default_tone.as_deref(), presets)
-        {
-            Some(PickerChoice::BuiltIn(name) | PickerChoice::Saved { name, .. }) => Some(name),
-            _ => None,
-        };
+        let chosen = self
+            .tabs
+            .get(self.active)
+            .and_then(|tab| tab.tone_choice.get(&track));
+        let named =
+            |tone: &Tone| match current_tone_choice(tone, chosen, default_tone.as_deref(), presets)
+            {
+                Some(PickerChoice::BuiltIn(name) | PickerChoice::Saved { name, .. }) => Some(name),
+                _ => None,
+            };
         let new_name = named(tone);
         let old_name = named(&old);
         let Some(tab) = self.tabs.get_mut(self.active) else {
@@ -475,6 +494,10 @@ impl GuitarScoreApp {
         let Some(mut sound) = self.open_track_sound(track) else {
             return;
         };
+        // Back on the built-in tone: a saved one with the same settings is not the one.
+        if let Some(tab) = self.tabs.get_mut(self.active) {
+            tab.tone_choice.remove(&track);
+        }
         if sound.tone.take().is_some() {
             self.set_track_sound(track, sound, false);
         }

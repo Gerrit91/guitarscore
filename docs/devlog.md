@@ -6882,3 +6882,11 @@ row's width now counts every column and the gaps inside spans, so the columns li
 again. Added a printer tile to the last row: it asks for a file and writes the PDF
 (printed score), as File › Export › PDF does. Checked at a phone's width with a temporary
 snapshot (not committed); `cargo xtask ci` and `cargo xtask web --smoke` pass.
+
+2026-11-22: the clicked tone is the marked one. Owner report: a saved tone clicked in the
+track panel often was not highlighted. Two causes: a saved tone from before the newer string
+knobs (inharmonicity, fretted sustain, treble corner) plays with its kind's values for them,
+but the picker compared the file's empty ones, so it matched nothing ("Unsaved tone"); and
+many built-in tones were imported from saved ones, so a saved tone lit up its built-in twin.
+The picker now compares a saved tone as it plays, and remembers per track the row last
+clicked (track panel or Sound chain window) while the track still plays it.
