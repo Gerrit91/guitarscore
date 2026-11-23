@@ -6938,3 +6938,9 @@ program 27 plays electric strings.
 2026-11-23: a dark score tile in the practice view's drawer (owner's wish): a crescent
 moon, lit while the score page is dark; a tap switches the page between light and dark,
 as the View menu does. It sits in the last row, beside the browser's own tiles.
+
+2026-11-23: a compact mixer for the practice view on a small screen (owner's wish).
+Below the width where the drawer floats, the strips are 96 points wide instead of 140:
+the fader has no meter scale, and the top row holds only the pan knob and a Sends button
+whose popup shows the whole row (pan, reverb, chorus, comp, a kit's room). The full
+interface's mixer is unchanged.

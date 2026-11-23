@@ -20,6 +20,13 @@ const STRIP_WIDTH: f32 = 140.0;
 /// A drum part's strip, narrower than a track's (its fader still fits: the fixed parts of
 /// the fader take 100 points).
 const PART_STRIP_WIDTH: f32 = 116.0;
+/// A strip's width in the compact mixer (the practice view on a small screen): no meter
+/// scale, and only the pan knob on top, the sends behind a button.
+const COMPACT_STRIP_WIDTH: f32 = 96.0;
+/// A knob row narrower than this shows the pan knob and a button for the sends.
+const COMPACT_KNOBS: f32 = 110.0;
+/// A fader area narrower than this has no meter scale.
+const COMPACT_FADER: f32 = 100.0;
 /// Height of the knob row at the top of a strip (pan, the sends and their labels).
 const TOP_HEIGHT: f32 = 40.0;
 /// A knob's diameter, and the distance between knob centres.
@@ -56,12 +63,23 @@ pub(crate) struct MixerState {
     editing_db: Option<DbEdit>,
     /// The drum tracks whose part strips are open.
     open_parts: std::collections::BTreeSet<usize>,
+    /// The compact strips (set by the view that draws them, each frame).
+    pub(crate) compact: bool,
 }
 
 impl MixerState {
     /// Whether the part strips of `track` are open.
     fn parts_open(&self, track: usize) -> bool {
         self.open_parts.contains(&track)
+    }
+
+    /// A strip's width: `wide`, or the compact one.
+    fn width(&self, wide: f32) -> f32 {
+        if self.compact {
+            COMPACT_STRIP_WIDTH.min(wide)
+        } else {
+            wide
+        }
     }
 
     /// Opens or closes the part strips of `track`.
@@ -174,7 +192,8 @@ fn track_strip(
 ) {
     // The strip's background is the track's: clicking it selects the track, as the track's
     // row in the song grid does (the cursor moves there and the track panel shows it).
-    let (rect, response) = ui.allocate_exact_size(vec2(STRIP_WIDTH, height), Sense::click());
+    let (rect, response) =
+        ui.allocate_exact_size(vec2(state.width(STRIP_WIDTH), height), Sense::click());
     ui.ctx().accesskit_node_builder(response.id, |node| {
         node.set_label(format!("Track {}: {}", index.saturating_add(1), row.name));
         node.set_role(egui::Role::Button);
@@ -316,7 +335,7 @@ fn master_strip(
     state: &mut MixerState,
     actions: &mut Vec<GridAction>,
 ) {
-    let (rect, _) = ui.allocate_exact_size(vec2(STRIP_WIDTH, height), Sense::hover());
+    let (rect, _) = ui.allocate_exact_size(vec2(state.width(STRIP_WIDTH), height), Sense::hover());
     let visuals = ui.visuals().clone();
     ui.painter().line_segment(
         [rect.left_top(), rect.left_bottom()],
@@ -453,7 +472,7 @@ fn bus_strip(
         meter,
         height,
     } = strip;
-    let (rect, _) = ui.allocate_exact_size(vec2(STRIP_WIDTH, height), Sense::hover());
+    let (rect, _) = ui.allocate_exact_size(vec2(state.width(STRIP_WIDTH), height), Sense::hover());
     let visuals = ui.visuals().clone();
     ui.painter().line_segment(
         [rect.left_top(), rect.left_bottom()],
@@ -710,7 +729,8 @@ fn part_strip(
     actions: &mut Vec<GridAction>,
 ) {
     let id = part_id(track, part.part);
-    let (rect, response) = ui.allocate_exact_size(vec2(PART_STRIP_WIDTH, height), Sense::hover());
+    let (rect, response) =
+        ui.allocate_exact_size(vec2(state.width(PART_STRIP_WIDTH), height), Sense::hover());
     // A block dragged from a chain board onto this part's strip goes into its chain.
     if let Some(drag) = response.dnd_release_payload::<DraggedBlock>() {
         actions.push(GridAction::PasteBlock {
@@ -954,7 +974,7 @@ fn metronome_strip(
 ) {
     /// The id of the metronome's controls (the master's is `usize::MAX`).
     const METRONOME: usize = usize::MAX - 1;
-    let (rect, _) = ui.allocate_exact_size(vec2(STRIP_WIDTH, height), Sense::hover());
+    let (rect, _) = ui.allocate_exact_size(vec2(state.width(STRIP_WIDTH), height), Sense::hover());
     let visuals = ui.visuals().clone();
     ui.painter().line_segment(
         [rect.left_top(), rect.left_bottom()],
@@ -1105,6 +1125,11 @@ fn knobs(
     name: &str,
     actions: &mut Vec<GridAction>,
 ) {
+    // Too narrow for the sends: the pan knob, and a button that shows the whole row.
+    if sends.is_some() && area.width() < COMPACT_KNOBS {
+        compact_knobs(ui, area, index, pan, sends, room, name, actions);
+        return;
+    }
     let knob_y = area.top() + KNOB_SIZE / 2.0 + 2.0;
     let at = |dx: f32| {
         Rect::from_center_size(
@@ -1261,6 +1286,55 @@ fn knobs(
     }
 }
 
+/// [`knobs`] in a narrow strip: the pan knob, and a button whose popup holds the whole row
+/// (pan and the sends).
+#[allow(clippy::too_many_arguments)]
+fn compact_knobs(
+    ui: &mut egui::Ui,
+    area: Rect,
+    index: usize,
+    pan: u8,
+    sends: Option<(u8, u8, u8)>,
+    room: Option<u8>,
+    name: &str,
+    actions: &mut Vec<GridAction>,
+) {
+    let half = Rect::from_min_max(area.min, pos2(area.center().x, area.bottom()));
+    knobs(ui, half, index, pan, None, None, name, actions);
+    let button = Rect::from_center_size(
+        pos2(
+            area.right() - KNOB_SIZE / 2.0 - 4.0,
+            area.top() + KNOB_SIZE / 2.0 + 2.0,
+        ),
+        vec2(KNOB_SIZE + 4.0, KNOB_SIZE),
+    );
+    let response = ui.interact(button, ui.scope_id().with(("sends", index)), Sense::click());
+    response.widget_info(|| {
+        egui::WidgetInfo::labeled(egui::Role::Button, true, format!("Sends {name}"))
+    });
+    let response = response.on_hover_text("The sends: reverb, chorus and comp (a kit's room)");
+    let visuals = ui.style().interact(&response);
+    ui.painter().rect_filled(button, 4.0, visuals.weak_bg_fill);
+    icons::paint(
+        ui.painter(),
+        button.shrink(3.0),
+        visuals.fg_stroke.color,
+        icons::Icon::Mixer,
+    );
+    ui.painter().text(
+        pos2(button.center().x, button.bottom() + 2.0),
+        Align2::CENTER_TOP,
+        "Sends",
+        FontId::proportional(8.0),
+        ui.visuals().weak_text_color(),
+    );
+    egui::Popup::menu(&response).show(|ui| {
+        let width = if room.is_some() { 132.0 } else { 124.0 };
+        let (row, _) = ui.allocate_exact_size(vec2(width, TOP_HEIGHT), Sense::hover());
+        knobs(ui, row, index, pan, sends, room, name, actions);
+    });
+}
+
 #[allow(clippy::too_many_arguments)]
 fn fader(
     ui: &mut egui::Ui,
@@ -1375,7 +1449,9 @@ fn fader(
         Stroke::new(1.0, Color32::from_rgb(0x30, 0x30, 0x30)),
     );
     paint_gain_scale(ui, gain_scale, area, unity);
-    paint_meter_scale(ui, meter_scale, area);
+    if area.width() >= COMPACT_FADER {
+        paint_meter_scale(ui, meter_scale, area);
+    }
     paint_meter(ui, meter, level);
     let meter_response = ui.interact(meter, ui.scope_id().with(("meter", index)), Sense::hover());
     meter_response.on_hover_text(if level.measured {

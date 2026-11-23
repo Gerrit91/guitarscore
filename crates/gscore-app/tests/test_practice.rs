@@ -365,3 +365,24 @@ fn the_desktops_title_bar_leads_back_to_the_full_interface() {
     harness.run_steps(4);
     assert_eq!(harness.state().settings().practice_view, "off");
 }
+
+#[test]
+fn on_a_phone_the_mixers_sends_are_behind_a_button() {
+    let mut harness = practice(egui::vec2(390.0, 760.0));
+    harness.get_by_label("Mixer").click();
+    harness.run_steps(6);
+    assert!(harness.query_by_label("Pan Rhythm Guitar").is_some());
+    assert!(harness.query_by_label("Reverb Rhythm Guitar").is_none());
+    harness.get_by_label("Sends Rhythm Guitar").click();
+    harness.run_steps(6);
+    assert!(
+        harness.query_by_label("Reverb Rhythm Guitar").is_some(),
+        "the sends open over the strip"
+    );
+    // On a wide screen the strips show them all.
+    let mut wide = practice(egui::vec2(1180.0, 820.0));
+    wide.get_by_label("Mixer").click();
+    wide.run_steps(6);
+    assert!(wide.query_by_label("Reverb Rhythm Guitar").is_some());
+    assert!(wide.query_by_label("Sends Rhythm Guitar").is_none());
+}
