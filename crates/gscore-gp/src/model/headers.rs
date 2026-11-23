@@ -107,6 +107,9 @@ impl Default for MeasureHeader {
 pub struct Marker {
     pub title: String,
     pub color: i32,
+    /// GuitarScore addition: the section's letter in a GP6/GP7 file (`A`, `B`, ...), shown
+    /// in Guitar Pro beside the title; `None` when it had none.
+    pub letter: Option<String>,
 }
 
 impl Marker {
@@ -120,6 +123,7 @@ impl Default for Marker {
         Marker {
             title: "Section".to_owned(),
             color: Self::DEFAULT_COLOR,
+            letter: None,
         }
     }
 }

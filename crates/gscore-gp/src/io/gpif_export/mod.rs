@@ -556,8 +556,15 @@ impl WriteGpifInGpifStringOrder for Song {
                 xml.push_str("<DoubleBar/>");
             }
             if let Some(marker) = &mh.marker {
+                // GuitarScore fix: the section's letter, as Guitar Pro writes it (it was
+                // left out).
+                let letter = marker
+                    .letter
+                    .as_deref()
+                    .map(|letter| format!("<Letter>{}</Letter>", escape_xml(letter)))
+                    .unwrap_or_default();
                 xml.push_str(&format!(
-                    "<Section><Text>{}</Text></Section>",
+                    "<Section>{letter}<Text>{}</Text></Section>",
                     escape_xml(&marker.title)
                 ));
             }

@@ -330,6 +330,8 @@ impl Song {
                 Some(GpMarker {
                     title: title.to_owned(),
                     color: i32::try_from(color.rgb()).unwrap_or(0),
+                    // A renamed section keeps its letter.
+                    letter: previous.as_ref().and_then(|marker| marker.letter.clone()),
                 })
             };
             Ok(Change {

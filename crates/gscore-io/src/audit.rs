@@ -318,10 +318,6 @@ const VERDICTS: &[(&str, Verdict)] = &[
         Verdict::Known("a whammy bar held over the next beats"),
     ),
     ("Beat <Rasgueado>", Verdict::Known("a rasgueado's pattern")),
-    (
-        "MasterBar <Letter>",
-        Verdict::Known("a section's letter (A, B, ...)"),
-    ),
     ("MasterBar <Length>", Verdict::Known("a bar's own length")),
     (
         "Lyrics text",

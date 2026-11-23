@@ -322,6 +322,12 @@ impl SongGpifOps for Song {
                 mh.marker = Some(Marker {
                     title: title.to_string(),
                     color: Marker::DEFAULT_COLOR,
+                    // Kept as written, an empty one too (Guitar Pro writes one on every
+                    // section).
+                    letter: section
+                        .letter
+                        .as_deref()
+                        .map(|letter| letter.trim().to_owned()),
                 });
             }
 
