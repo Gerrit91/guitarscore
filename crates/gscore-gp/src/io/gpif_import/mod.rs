@@ -33,6 +33,7 @@ pub(crate) trait SongGpifOps {
 mod beats;
 mod gp6_drums;
 mod staves;
+pub(crate) mod tempo;
 
 /// The chord diagrams of a GP7 track's staves, by their id.
 fn extract_diagrams(track: &Track) -> HashMap<i32, ChordDiagram> {
@@ -262,11 +263,12 @@ impl SongGpifOps for Song {
                 mh.key_signature.is_minor = key.mode == "Minor";
             }
 
-            // Tempo at this bar
+            // Tempo at this bar (a change later in the bar goes on its beat, see `tempo`)
             if let Some(automations) = &gpif.master_track.automations {
                 for auto in &automations.automations {
                     if auto.automation_type == "Tempo"
                         && usize::try_from(auto.bar).ok() == Some(mh_idx)
+                        && auto.position <= 0.0
                         && let Some(tempo_str) = automation_tempo(auto)
                     {
                         mh.tempo = truncate_f64_to_i32(tempo_str.parse::<f64>().unwrap_or(0.0));
@@ -556,6 +558,23 @@ impl SongGpifOps for Song {
         // is the highest (as its tuning list is, see `extract_tuning`).
         flip_note_strings(&mut self.tracks);
         convert_trills(&mut self.tracks, false);
+        // GuitarScore addition: tempo changes inside a bar go on their beats.
+        let mid_bar: Vec<(usize, f64, u16)> = gpif
+            .master_track
+            .automations
+            .iter()
+            .flat_map(|automations| &automations.automations)
+            .filter(|auto| auto.automation_type == "Tempo" && auto.position > 0.0)
+            .filter_map(|auto| {
+                let tempo = automation_tempo(auto)?.parse::<f64>().ok()?;
+                Some((
+                    usize::try_from(auto.bar).ok()?,
+                    f64::from(auto.position),
+                    u16::try_from(truncate_f64_to_i32(tempo)).ok()?,
+                ))
+            })
+            .collect();
+        tempo::place_mid_bar_tempos(self, &mid_bar);
         // GuitarScore: a grace beat becomes a grace note attached to its main note where
         // nothing is lost, as the editor works with attached grace notes. Writing turns
         // them back into grace beats (`Song::with_grace_beats`).

@@ -296,7 +296,6 @@ pub(crate) struct Automation {
     pub bar: i32,
     // GP7 stores this as a fractional position within the bar in `[0.0, 1.0)`
     // (e.g. `0.75`), not an integer tick offset.
-    #[expect(dead_code, reason = "part of the GPIF format; parsed, not used yet")]
     #[serde(rename = "Position", default)]
     pub position: f32,
 }

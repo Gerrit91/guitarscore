@@ -204,3 +204,35 @@ fn kept_beat_elements_and_section_letters_round_trip_through_gpif() {
         ("Intro", Some("A"))
     );
 }
+
+/// A tempo change inside a bar (a written ritardando) survives a GP7 round trip on its
+/// beat, and one at a bar's very end becomes the next bar's tempo.
+#[test]
+fn tempo_changes_inside_a_bar_round_trip_through_gpif() {
+    use crate::io::gpif_import::tempo::{beat_tempo, mid_bar_tempos};
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../testdata/basic/note_lengths.gp");
+    let mut song = Song::default();
+    song.read_gp(&std::fs::read(path).expect("the test file"))
+        .expect("read");
+    // The second bar holds several beats: the second one changes the tempo.
+    let beats = &mut song.tracks[0].measures[1].voices[0].beats;
+    assert!(beats.len() > 1, "the bar has several beats");
+    beats[1].effect.mix_table_change = Some(crate::model::MixTableChange {
+        tempo: Some(crate::model::MixTableItem {
+            value: 93,
+            ..Default::default()
+        }),
+        ..Default::default()
+    });
+    let written = mid_bar_tempos(&song);
+    assert_eq!(written.len(), 1, "{written:?}");
+
+    let bytes = song.write_gp().expect("written");
+    let mut reread = Song::default();
+    reread.read_gp(&bytes).expect("read back");
+    let beats = &reread.tracks[0].measures[1].voices[0].beats;
+    assert_eq!(beat_tempo(&beats[1]), Some(93));
+    assert_eq!(beat_tempo(&beats[0]), None);
+    assert_eq!(mid_bar_tempos(&reread), written);
+}

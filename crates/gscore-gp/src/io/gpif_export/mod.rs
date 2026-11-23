@@ -120,6 +120,12 @@ impl WriteGpifInGpifStringOrder for Song {
                 ));
             }
         }
+        // GuitarScore addition: tempo changes inside a bar, at their position in it.
+        for (bar, position, tempo) in gpif_import::tempo::mid_bar_tempos(self) {
+            xml.push_str(&format!(
+                "<Automation><Type>Tempo</Type><Value>{tempo} 2</Value><Bar>{bar}</Bar><Position>{position}</Position></Automation>"
+            ));
+        }
         xml.push_str("</Automations>");
         // GuitarScore addition: the master volume and pan.
         if let Some((volume, pan)) = self.master_volume_pan {
