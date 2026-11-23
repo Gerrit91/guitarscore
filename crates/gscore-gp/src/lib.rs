@@ -25,5 +25,6 @@ mod io;
 pub mod model;
 
 pub use io::error::{GpError, GpResult};
+pub use io::gpif::fingerprint::{gpif_fingerprint, xml_fingerprint};
 pub use io::track_name_as_stored;
 pub use model::*;

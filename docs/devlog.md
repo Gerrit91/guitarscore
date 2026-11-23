@@ -6999,3 +6999,18 @@ and once it is whole: its written lengths make `enters` of one of its notes
 four brackets. A bracket also clears the up-stems under it. The edit palette's length
 tiles follow the cursor's beat (value, dots, tuplet), as in Guitar Pro, so a triplet beat
 lights the triplet tile; an empty placeholder beat keeps the chosen length for entry.
+
+2026-11-23: the save audit. The save's own check compares songs, so it cannot see what the
+reader never picked up (the slap and pop marks were such a loss). `gscore-cli audit`
+saves GP7 files again in memory and compares their `score.gpif`, element by element and
+property by property, keyed by where each sits (`gscore_gp::gpif_fingerprint`); every
+key a save loses has a verdict in `gscore-io/src/audit.rs`: rebuilt by Guitar Pro (a
+note's pitch copies, stem directions, default pickup values, a drum kit's notation table,
+empty lyrics lines, tuning and capo written on the track as Guitar Pro 6 does) or a known
+loss still to fix. `cargo xtask corpus` runs it over `testdata/` and `corpus/` and fails on
+a loss without a verdict; a test does the same for the test files. Over the owner's 69
+files: 85 known losses, among them dead notes (written as `Dead`, Guitar Pro reads
+`Muted`), tapping (a note property in Guitar Pro), the flags of bends and harmonics, the
+note a hammer-on goes to, dynamics (Guitar Pro writes one on every beat), hairpins, wah,
+section letters, some lyrics and tempo changes, a track's sound changes, chord diagram
+libraries, fret counts and Guitar Pro's own playback settings.

@@ -5,6 +5,7 @@
 // MIT, see crates/gscore-gp/LICENSE-guitarpro). Changes: docs/guitarpro.md.
 
 mod bars;
+pub(crate) mod fingerprint;
 
 use serde::Deserialize;
 

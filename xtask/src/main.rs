@@ -34,7 +34,9 @@ Tasks:
                         (downloaded once, checked, compressed with ffmpeg) unless
                         --soundfont PATH (shipped as it is) or
                         --no-soundfont is given; --smoke checks it in headless Chromium
-  corpus                Run the opt-in corpus tests (not implemented yet)";
+  corpus [PATH...]      Save the GP7 files in testdata/ and corpus/ (or PATH) again and
+                        fail if a save loses something that has no verdict yet
+                        (`gscore-cli audit`; the verdicts are in gscore-io's audit)";
 
 /// Error type of every task: a message for the person running it.
 type TaskResult = Result<(), String>;
@@ -62,9 +64,7 @@ fn run(args: &[String]) -> TaskResult {
         "bench" => bench(&root, rest),
         "tones" => tones::run(&root, rest),
         "web" => web::run(&root, rest),
-        "corpus" => {
-            Err("`corpus` is not implemented yet (backlog, AGENTS.md section 9)".to_owned())
-        }
+        "corpus" => corpus(&root, rest),
         "help" | "--help" | "-h" => {
             println!("{USAGE}");
             Ok(())
@@ -111,6 +111,35 @@ fn ci(root: &std::path::Path, skip_wasm: bool) -> TaskResult {
     }
     println!("==> cargo xtask layers");
     layers::run(root, skip_wasm)
+}
+
+/// `gscore-cli audit --check` in a release build over `testdata/` and the private
+/// `corpus/` (if there is one), or over the given files and folders: saving any of them
+/// must lose nothing that has no verdict yet.
+fn corpus(root: &std::path::Path, paths: &[String]) -> TaskResult {
+    let mut args: Vec<String> = [
+        "run",
+        "--quiet",
+        "--release",
+        "--package",
+        "gscore-cli",
+        "--",
+        "audit",
+        "--check",
+    ]
+    .iter()
+    .map(|arg| (*arg).to_owned())
+    .collect();
+    if paths.is_empty() {
+        args.push("testdata".to_owned());
+        if root.join("corpus").is_dir() {
+            args.push("corpus".to_owned());
+        }
+    } else {
+        args.extend(paths.iter().cloned());
+    }
+    let args: Vec<&str> = args.iter().map(String::as_str).collect();
+    cmd::run_status(&cmd::cargo(), &args, root)
 }
 
 /// `gscore-cli bench --check` in a release build on the given files, the files in

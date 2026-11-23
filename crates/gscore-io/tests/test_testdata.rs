@@ -422,3 +422,26 @@ fn slap_pop_and_tapping_round_trip_through_gp7() {
     }
     assert_eq!(reread.beat(at(3)).unwrap().slap(), None);
 }
+
+/// Saving a test file as GP7 again loses nothing that has no verdict (see
+/// `gscore_io::audit`; `cargo xtask corpus` runs the same check over more files).
+#[test]
+fn saving_the_test_files_loses_nothing_unexplained() {
+    use gscore_io::audit::{Verdict, gp7_save_losses, verdict};
+    let mut checked = 0;
+    for entry in std::fs::read_dir(testdata("basic")).unwrap() {
+        let path = entry.unwrap().path();
+        if path.extension().is_none_or(|extension| extension != "gp") {
+            continue;
+        }
+        let losses = gp7_save_losses(&std::fs::read(&path).unwrap()).unwrap();
+        let new: Vec<&str> = losses
+            .iter()
+            .filter(|loss| verdict(&loss.key) == Verdict::Unexplained)
+            .map(|loss| loss.key.as_str())
+            .collect();
+        assert!(new.is_empty(), "{}: {new:?}", path.display());
+        checked += 1;
+    }
+    assert!(checked > 0, "no .gp test files");
+}
