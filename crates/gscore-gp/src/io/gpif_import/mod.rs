@@ -19,7 +19,7 @@ use crate::model::{
     enums::*,
     headers::{Marker, MeasureHeader},
     key_signature::*,
-    measure::Measure,
+    measure::{Measure, SoundChange},
     midi::MidiChannel,
     note::Note as SongNote,
     song::*,
@@ -146,32 +146,37 @@ impl SongGpifOps for Song {
         self.writer = gpif.score.tabber.clone();
         self.copyright = gpif.score.copyright.clone();
         self.instructions = gpif.score.instructions.clone();
+        // GuitarScore addition: the words-and-music credit and the page header and footer
+        // templates, kept so a save writes them back exactly.
+        self.words_and_music = gpif.score.words_and_music.clone();
+        self.first_page_header = gpif.score.first_page_header.clone();
+        self.first_page_footer = gpif.score.first_page_footer.clone();
+        self.page_header = gpif.score.page_header.clone();
+        self.page_footer = gpif.score.page_footer.clone();
         // Notices
-        self.score_systems_layout = gpif
-            .score
-            .score_systems_layout
-            .clone()
-            .filter(|layout| !layout.trim().is_empty());
-        self.score_systems_default = gpif
-            .score
-            .score_systems_default
-            .clone()
-            .filter(|layout| !layout.trim().is_empty());
+        self.score_systems_layout = gpif.score.score_systems_layout.clone();
+        self.score_systems_default = gpif.score.score_systems_default.clone();
         if !gpif.score.notices.is_empty() {
             self.notice = gpif.score.notices.lines().map(|l| l.to_string()).collect();
         }
 
         // 2. Tempo from MasterTrack automations
+        self.gpif_tempo_text = None;
         if let Some(automations) = &gpif.master_track.automations {
             for auto in &automations.automations {
-                if auto.automation_type == "Tempo"
-                    && auto.bar == 0
-                    && let Some(tempo_str) = automation_tempo(auto)
-                {
-                    // An unreadable tempo counts as 120 BPM.
-                    self.tempo = tempo_str
-                        .parse::<f64>()
-                        .map_or(120, |v| clamp_i16(truncate_f64_to_i32(v)));
+                if auto.automation_type == "Tempo" && auto.bar == 0 {
+                    // GuitarScore addition: the tempo's name (`<Text>`), kept as written.
+                    if let Some(text) = auto.text.as_deref().map(str::trim)
+                        && !text.is_empty()
+                    {
+                        self.gpif_tempo_text = Some(text.to_owned());
+                    }
+                    if let Some(tempo_str) = automation_tempo(auto) {
+                        // An unreadable tempo counts as 120 BPM.
+                        self.tempo = tempo_str
+                            .parse::<f64>()
+                            .map_or(120, |v| clamp_i16(truncate_f64_to_i32(v)));
+                    }
                 }
             }
         }
@@ -190,6 +195,59 @@ impl SongGpifOps for Song {
             })
             .and_then(|effect| effect.parameters.as_deref())
             .and_then(master_volume_pan);
+        // GuitarScore addition: Guitar Pro's whole master effect chain, kept so a save
+        // writes every effect back (only volume and pan are used).
+        self.gpif_master_effects = gpif
+            .master_track
+            .rse
+            .as_ref()
+            .and_then(|rse| rse.master.as_ref())
+            .map(|master| {
+                master
+                    .effects
+                    .iter()
+                    .map(|effect| MasterEffectInfo {
+                        id: effect.id.clone(),
+                        by_pass: effect.by_pass.is_some(),
+                        parameters: effect.parameters.clone(),
+                        bypassed_automations: effect.bypassed_automations.clone(),
+                        automations: effect
+                            .automations
+                            .as_ref()
+                            .map(|wrapper| {
+                                wrapper
+                                    .automations
+                                    .iter()
+                                    .map(|automation| MasterAutomation {
+                                        automation_type: automation.automation_type.clone(),
+                                        linear: automation.linear.as_deref() == Some("true"),
+                                        bar: automation.bar,
+                                        position: automation.position,
+                                        visible: automation.visible.as_deref() != Some("false"),
+                                        text: automation
+                                            .text
+                                            .as_deref()
+                                            .map(str::trim)
+                                            .filter(|text| !text.is_empty())
+                                            .map(str::to_owned),
+                                        value: automation
+                                            .value
+                                            .as_ref()
+                                            .and_then(|value| value.items.first())
+                                            .map(|value| value.trim().to_owned())
+                                            .unwrap_or_default(),
+                                    })
+                                    .collect()
+                            })
+                            .unwrap_or_default(),
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        // GuitarScore addition: GP8's audio tracks and Guitar Pro's score views, kept
+        // verbatim.
+        self.gpif_audio_tracks = gpif.audio_tracks_raw.clone();
+        self.gpif_score_views = gpif.score_views_raw.clone();
 
         // 2b. SyncPoint anchors (GP8 audio sync): musical position → audio
         // frame offset into the embedded backing track.
@@ -390,6 +448,7 @@ impl SongGpifOps for Song {
             if let Some(raw) = gpif.track_raw.get(t_idx) {
                 track.gpif_sounds = raw.sounds.clone();
                 track.gpif_audio_engine = raw.audio_engine.clone();
+                track.gpif_playback = raw.playback.clone();
             }
 
             // Color
@@ -547,11 +606,27 @@ impl SongGpifOps for Song {
                 &diagrams,
             );
             track.bars_per_system = g_track.bars_per_system.filter(|bars| *bars > 0);
+            // GuitarScore addition: the track's bars-per-line layout as written, and its
+            // bypassed automations, so a save writes them back.
+            track.gpif_systems_layout = g_track.systems_layout.clone();
+            track.gpif_systems_default = g_track.systems_default.clone();
+            track.gpif_bypassed_automations = g_track
+                .rse
+                .as_ref()
+                .and_then(|rse| rse.channel_strip.as_ref())
+                .and_then(|strip| strip.bypassed_automations.clone());
             apply_breaks(
                 &mut track.measures,
                 g_track.systems_layout.as_deref(),
                 g_track.page_breaks.as_deref(),
             );
+            // GuitarScore addition: a track's sound changes during the song are kept on
+            // their bar.
+            for (bar, changes) in track_sound_changes(g_track) {
+                if let Some(measure) = track.measures.get_mut(bar) {
+                    measure.sound_changes = changes;
+                }
+            }
             self.tracks.push(track);
         }
         // GuitarScore fix: GPIF numbers strings from the lowest; the legacy model's string 1
@@ -628,6 +703,43 @@ impl SongGpifOps for Song {
 
 /// The id of the master effect that holds the master volume and pan.
 pub(crate) const MASTER_VOLUME_PAN: &str = "I01_VolumeAndPan";
+
+/// GuitarScore addition: a track's sound changes, by bar, from its `Sound` automations:
+/// the RSE sound it switches to and where in the bar. A hostile bar index or position is
+/// dropped rather than written back somewhere else.
+fn track_sound_changes(track: &Track) -> Vec<(usize, Vec<SoundChange>)> {
+    let mut by_bar: Vec<(usize, Vec<SoundChange>)> = Vec::new();
+    for wrapper in &track.automations {
+        for automation in &wrapper.automations {
+            if automation.automation_type != "Sound" {
+                continue;
+            }
+            let Ok(bar) = usize::try_from(automation.bar) else {
+                continue;
+            };
+            let Some(value) = automation
+                .value
+                .as_ref()
+                .and_then(|value| value.items.first())
+            else {
+                continue;
+            };
+            let value = value.trim();
+            if value.is_empty() || !automation.position.is_finite() {
+                continue;
+            }
+            let change = SoundChange {
+                position: automation.position.clamp(0.0, 1.0),
+                value: value.to_owned(),
+            };
+            match by_bar.iter_mut().find(|(known, _)| *known == bar) {
+                Some((_, changes)) => changes.push(change),
+                None => by_bar.push((bar, vec![change])),
+            }
+        }
+    }
+    by_bar
+}
 
 /// The master volume and pan from `I01_VolumeAndPan`'s parameters (`volume pan`, each 0.0
 /// to 1.0), or `None` if they are not two finite numbers.

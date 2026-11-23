@@ -112,6 +112,19 @@ pub struct Track {
     /// GuitarScore addition: the track's GP7 `<AudioEngineState>` element exactly as the
     /// file had it (`RSE` or `MIDI`), written back unchanged.
     pub gpif_audio_engine: Option<String>,
+    /// GuitarScore addition: Guitar Pro's per-track playback settings (palm-mute and
+    /// auto-accentuation strength, auto-brush, playing style, one channel per string, the
+    /// track icon, a forced sound), each element exactly as the file wrote it. GuitarScore
+    /// does not use them; kept so a save does not lose them.
+    pub gpif_playback: Vec<String>,
+    /// GuitarScore addition: the track's `<SystemsLayout>` (bars per line) exactly as the
+    /// file wrote it, and its `<SystemsDefautLayout>`, so an empty or unchanged layout is
+    /// written back as it was; the model's line breaks are written when they changed it.
+    pub gpif_systems_layout: Option<String>,
+    pub gpif_systems_default: Option<String>,
+    /// GuitarScore addition: the track's `<RSE><ChannelStrip><ByPassedAutomations>` text
+    /// (the automation types Guitar Pro has switched off), kept so a save does not lose it.
+    pub gpif_bypassed_automations: Option<String>,
     /// GuitarScore addition: a GP6/GP7 track's typed lyric lines when it is not the song's
     /// lyric track (backing vocals): `(line, start bar from 1, text)`, as
     /// [`crate::model::Lyrics::lines`]; written back on the track.
@@ -253,6 +266,10 @@ impl Default for Track {
             symbol: None,
             gpif_sounds: None,
             gpif_audio_engine: None,
+            gpif_playback: Vec::new(),
+            gpif_systems_layout: None,
+            gpif_systems_default: None,
+            gpif_bypassed_automations: None,
             gpif_lyrics: Vec::new(),
             sound_state: None,
             staves: Vec::new(),

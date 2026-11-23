@@ -258,3 +258,159 @@ fn other_tracks_typed_lyrics_round_trip_through_gpif() {
     assert_eq!(reread.lyrics.lines, vec![(0, 1, "la la".to_owned())]);
     assert_eq!(reread.tracks[1].gpif_lyrics, song.tracks[1].gpif_lyrics);
 }
+
+/// A track's sound changing during the song (Guitar Pro's `Sound` automations) survives a
+/// GP7 round trip on its bar, and the bar-0 sound every file writes is kept as well.
+#[test]
+fn track_sound_changes_round_trip_through_gpif() {
+    use crate::model::SoundChange;
+    let mut song = Song::default();
+    song.read_gp(include_bytes!(
+        "../../../../../testdata/basic/note_lengths.gp"
+    ))
+    .expect("read");
+    assert!(
+        !song.tracks[0].measures[0].sound_changes.is_empty(),
+        "the file starts with a sound"
+    );
+    song.tracks[0].measures[1].sound_changes = vec![SoundChange {
+        position: 0.5,
+        value: "Stringed/Electric Guitars/Clean Guitar;Clean;Factory".to_owned(),
+    }];
+
+    let bytes = song.write_gp().expect("written");
+    let mut reread = Song::default();
+    reread.read_gp(&bytes).expect("read back");
+    assert_eq!(
+        reread.tracks[0].measures[0].sound_changes,
+        song.tracks[0].measures[0].sound_changes
+    );
+    assert_eq!(
+        reread.tracks[0].measures[1].sound_changes,
+        song.tracks[0].measures[1].sound_changes
+    );
+}
+
+/// The page header and footer templates, the words-and-music credit, Guitar Pro 8's audio
+/// track list and its score views survive a GP7 round trip.
+#[test]
+fn song_templates_and_raw_sections_round_trip_through_gpif() {
+    let mut song = Song::default();
+    song.read_gp(include_bytes!(
+        "../../../../../testdata/basic/note_lengths.gp"
+    ))
+    .expect("read");
+    assert!(
+        song.gpif_audio_tracks.is_some(),
+        "the file has audio tracks"
+    );
+    song.words_and_music = "Words & Music".to_owned();
+    song.first_page_header = "<html><body>%TITLE%</body></html>".to_owned();
+    song.first_page_footer = "<html><body>Page %page%</body></html>".to_owned();
+    song.page_header = "<html><body>%ARTIST%</body></html>".to_owned();
+    song.page_footer = "<html><body>Page %page%/%pages%</body></html>".to_owned();
+    song.gpif_score_views =
+        Some("<ScoreViews><ScoreView id=\"1\"/><ScoreView id=\"2\"/></ScoreViews>".to_owned());
+
+    let bytes = song.write_gp().expect("written");
+    let mut reread = Song::default();
+    reread.read_gp(&bytes).expect("read back");
+    assert_eq!(reread.words_and_music, song.words_and_music);
+    assert_eq!(reread.first_page_header, song.first_page_header);
+    assert_eq!(reread.first_page_footer, song.first_page_footer);
+    assert_eq!(reread.page_header, song.page_header);
+    assert_eq!(reread.page_footer, song.page_footer);
+    assert_eq!(reread.gpif_score_views, song.gpif_score_views);
+    assert_eq!(reread.gpif_audio_tracks, song.gpif_audio_tracks);
+}
+
+/// Guitar Pro's master effect chain is written back, including its bypassed automations;
+/// a master volume change later in the song stays, and the bar-0 value follows the model.
+#[test]
+fn master_effects_and_volume_changes_round_trip_through_gpif() {
+    use crate::model::MasterAutomation;
+    let mut song = Song::default();
+    song.read_gp(include_bytes!(
+        "../../../../../testdata/basic/note_lengths.gp"
+    ))
+    .expect("read");
+    assert!(
+        !song.gpif_master_effects.is_empty(),
+        "the file has master effects"
+    );
+    let Some(volume_pan) = song
+        .gpif_master_effects
+        .iter_mut()
+        .find(|effect| effect.id == crate::io::gpif_import::MASTER_VOLUME_PAN)
+    else {
+        panic!("the file has a volume-and-pan effect");
+    };
+    volume_pan.bypassed_automations = Some("DSPParam_00".to_owned());
+    volume_pan.automations.push(MasterAutomation {
+        automation_type: "DSPParam_00".to_owned(),
+        linear: false,
+        bar: 0,
+        position: 0.0,
+        visible: true,
+        text: None,
+        value: "0.9".to_owned(),
+    });
+    volume_pan.automations.push(MasterAutomation {
+        automation_type: "DSPParam_00".to_owned(),
+        linear: false,
+        bar: 2,
+        position: 0.0,
+        visible: true,
+        text: None,
+        value: "0.4".to_owned(),
+    });
+    // A change to the model's master volume must reach the written parameters.
+    song.master_volume_pan = Some((0.25, 0.5));
+
+    let bytes = song.write_gp().expect("written");
+    let mut reread = Song::default();
+    reread.read_gp(&bytes).expect("read back");
+    assert_eq!(reread.master_volume_pan, Some((0.25, 0.5)));
+    let effect = reread
+        .gpif_master_effects
+        .iter()
+        .find(|effect| effect.id == crate::io::gpif_import::MASTER_VOLUME_PAN)
+        .expect("the effect is written");
+    assert_eq!(effect.bypassed_automations.as_deref(), Some("DSPParam_00"));
+    let later = effect
+        .automations
+        .iter()
+        .find(|automation| automation.bar == 2)
+        .expect("the mid-song change is written");
+    assert_eq!(later.value, "0.4");
+    let start = effect
+        .automations
+        .iter()
+        .find(|automation| automation.bar == 0 && automation.automation_type == "DSPParam_00")
+        .expect("the starting volume is written");
+    assert_eq!(start.value, "0.25");
+}
+
+/// An empty `<SystemsLayout>` (a track laid out by Guitar Pro's default) survives, and so
+/// does the tempo's name on the bar-0 automation.
+#[test]
+fn empty_systems_layout_and_tempo_text_round_trip_through_gpif() {
+    let mut song = Song::default();
+    song.read_gp(include_bytes!(
+        "../../../../../testdata/basic/note_lengths.gp"
+    ))
+    .expect("read");
+    song.tracks[0].gpif_systems_layout = Some(String::new());
+    song.tracks[0].gpif_systems_default = Some("3".to_owned());
+    for measure in &mut song.tracks[0].measures {
+        measure.line_break = crate::model::LineBreak::None;
+    }
+    song.gpif_tempo_text = Some("Allegro".to_owned());
+
+    let bytes = song.write_gp().expect("written");
+    let mut reread = Song::default();
+    reread.read_gp(&bytes).expect("read back");
+    assert_eq!(reread.tracks[0].gpif_systems_layout.as_deref(), Some(""));
+    assert_eq!(reread.tracks[0].gpif_systems_default.as_deref(), Some("3"));
+    assert_eq!(reread.gpif_tempo_text.as_deref(), Some("Allegro"));
+}

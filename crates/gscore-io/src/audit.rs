@@ -309,104 +309,11 @@ const VERDICTS: &[(&str, Verdict)] = &[
              moment, only one of them is heard)",
         ),
     ),
-    (
-        "Automation type Sound",
-        Verdict::Known("a track's sound changes during the song"),
-    ),
-    ("Automation <Text>", Verdict::Known("an automation's text")),
-    (
-        "RSE <Effect>",
-        Verdict::Known("Guitar Pro's master effects (its own playback)"),
-    ),
-    (
-        "RSE <ByPass>",
-        Verdict::Known("Guitar Pro's master effects (its own playback)"),
-    ),
-    (
-        "RSE <Parameters>",
-        Verdict::Known("Guitar Pro's master effects (its own playback)"),
-    ),
-    (
-        "RSE <ByPassedAutomations>",
-        Verdict::Known("Guitar Pro's master effects (its own playback)"),
-    ),
-    (
-        "Track <PalmMute>",
-        Verdict::Known("Guitar Pro's playback setting of the track"),
-    ),
-    (
-        "Track <AutoAccentuation>",
-        Verdict::Known("Guitar Pro's playback setting of the track"),
-    ),
-    (
-        "Track <AutoBrush>",
-        Verdict::Known("Guitar Pro's playback setting of the track"),
-    ),
-    (
-        "Track <PlayingStyle>",
-        Verdict::Known("Guitar Pro's playback setting of the track"),
-    ),
-    (
-        "Track <UseOneChannelPerString>",
-        Verdict::Known("Guitar Pro's playback setting of the track"),
-    ),
-    (
-        "Track <ForcedSound>",
-        Verdict::Known("Guitar Pro's playback setting of the track"),
-    ),
-    (
-        "Track <IconId>",
-        Verdict::Known("the track's icon in Guitar Pro"),
-    ),
-    (
-        "Track <SystemsLayout>",
-        Verdict::Known("a track's bars per line"),
-    ),
-    (
-        "Track <SystemsDefautLayout>",
-        Verdict::Known("a track's bars per line"),
-    ),
-    (
-        "Score <ScoreSystemsLayout>",
-        Verdict::Known("the score's bars per line"),
-    ),
-    (
-        "Score <PageHeader>",
-        Verdict::Known("the page header's template"),
-    ),
-    (
-        "Score <PageFooter>",
-        Verdict::Known("the page footer's template"),
-    ),
-    (
-        "Score <FirstPageHeader>",
-        Verdict::Known("the first page's header template"),
-    ),
-    (
-        "Score <FirstPageFooter>",
-        Verdict::Known("the first page's footer template"),
-    ),
-    (
-        "Score <WordsAndMusic>",
-        Verdict::Known("the words-and-music line's template"),
-    ),
-    (
-        "GPIF <ScoreViews>",
-        Verdict::Known("Guitar Pro's score views"),
-    ),
-    (
-        "GPIF <ScoreView>",
-        Verdict::Known("Guitar Pro's score views"),
-    ),
-    (
-        "GPIF <AudioTracks>",
-        Verdict::Known("Guitar Pro 8's audio tracks"),
-    ),
+    ("Staff <Number>", Verdict::Known("the number of frets")),
     (
         "Staff Property FretCount",
         Verdict::Known("the number of frets"),
     ),
-    ("Staff <Number>", Verdict::Known("the number of frets")),
     (
         "Staff Property PartialCapoFret",
         Verdict::Known("a partial capo"),

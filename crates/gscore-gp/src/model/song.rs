@@ -38,6 +38,15 @@ pub struct Song {
     pub instructions: String,
     pub comments: String,
     pub notice: Vec<String>,
+    /// GuitarScore addition: Guitar Pro's `<WordsAndMusic>` credit line, kept as written
+    /// (the reader also uses it for an empty words or music field).
+    pub words_and_music: String,
+    /// GuitarScore addition: Guitar Pro's page header and footer templates (HTML in CDATA,
+    /// with `%TITLE%`-style placeholders), kept verbatim so a save does not lose them.
+    pub page_header: String,
+    pub page_footer: String,
+    pub first_page_header: String,
+    pub first_page_footer: String,
 
     pub tracks: Vec<Track>,
     pub measure_headers: Vec<MeasureHeader>,
@@ -59,6 +68,20 @@ pub struct Song {
     /// GuitarScore addition: GP7's master volume and pan (the `I01_VolumeAndPan` master
     /// effect), each 0.0 to 1.0 (pan 0.5 is the middle); `None` if the file had none.
     pub master_volume_pan: Option<(f32, f32)>,
+    /// GuitarScore addition: Guitar Pro's master effect chain (every `<Effect>` of the
+    /// master `<RSE>`), kept so a save writes its effects back; only the volume and pan one
+    /// is used (see [`Song::master_volume_pan`]) and is written from the model.
+    pub gpif_master_effects: Vec<MasterEffectInfo>,
+    /// GuitarScore addition: Guitar Pro 8's `<AudioTracks>` element exactly as written
+    /// (mostly empty), kept so a save does not lose it.
+    pub gpif_audio_tracks: Option<String>,
+    /// GuitarScore addition: Guitar Pro's `<ScoreViews>` element exactly as written (a list
+    /// of view ids), kept verbatim. It may list ids that no longer match the tracks after
+    /// heavy editing; mapping it to GuitarScore's own views is still open.
+    pub gpif_score_views: Option<String>,
+    /// GuitarScore addition: the bar-0 tempo automation's `<Text>` ("Moderate", "Allegro"),
+    /// if the file names its tempo there; kept so a save does not lose it.
+    pub gpif_tempo_text: Option<String>,
 
     pub page_setup: PageSetup,
     /// GuitarScore addition: Guitar Pro's systems layout for all tracks shown together
@@ -102,6 +125,11 @@ impl Default for Song {
             comments: String::new(),
             notice: Vec::new(),
             instructions: String::new(),
+            words_and_music: String::new(),
+            page_header: String::new(),
+            page_footer: String::new(),
+            first_page_header: String::new(),
+            first_page_footer: String::new(),
             tracks: Vec::new(),
             measure_headers: Vec::new(),
             channels: Vec::with_capacity(64),
@@ -127,8 +155,45 @@ impl Default for Song {
 
             master_effect: RseMasterEffect::default(),
             master_volume_pan: None,
+            gpif_master_effects: Vec::new(),
+            gpif_audio_tracks: None,
+            gpif_score_views: None,
+            gpif_tempo_text: None,
         }
     }
+}
+
+/// GuitarScore addition: one master effect of Guitar Pro's chain (its `<Effect>` element:
+/// the id names the effect, `<ByPass/>` switches it off, `<Parameters>` holds its values,
+/// and it may carry bypassed automations and automation points). Kept so a save writes back
+/// what GuitarScore does not edit.
+#[derive(Debug, Clone, PartialEq)]
+pub struct MasterEffectInfo {
+    pub id: String,
+    pub by_pass: bool,
+    /// The effect's parameter list exactly as written, if it has one.
+    pub parameters: Option<String>,
+    /// The automation types Guitar Pro has switched off (`<ByPassedAutomations>`).
+    pub bypassed_automations: Option<String>,
+    /// The effect's automation points (the master volume's mid-song changes among them).
+    pub automations: Vec<MasterAutomation>,
+}
+
+/// GuitarScore addition: one automation point of a master effect (Guitar Pro's
+/// `<Automation>`), kept so a mid-song master volume change is not lost.
+#[derive(Debug, Clone, PartialEq)]
+pub struct MasterAutomation {
+    pub automation_type: String,
+    pub linear: bool,
+    /// The 0-based bar it sits in.
+    pub bar: i32,
+    /// The fraction of the bar where it happens.
+    pub position: f32,
+    pub visible: bool,
+    /// Its own text label (`<Text>`, e.g. a tempo's name), if it has one.
+    pub text: Option<String>,
+    /// Its value exactly as written (`0.66`, `125 2`, ...).
+    pub value: String,
 }
 
 /// GuitarScore addition: the parts of GP7's `Content/LayoutConfiguration` beside each

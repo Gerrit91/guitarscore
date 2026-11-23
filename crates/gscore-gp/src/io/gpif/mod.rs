@@ -42,6 +42,14 @@ pub(crate) struct Gpif {
     /// (Guitar Pro's `<Sounds>` and `<AudioEngineState>`); see [`capture_track_raw`].
     #[serde(skip)]
     pub track_raw: Vec<TrackRaw>,
+    /// GuitarScore addition: GP8's `<AudioTracks>` element kept verbatim, if the file has
+    /// one.
+    #[serde(skip)]
+    pub audio_tracks_raw: Option<String>,
+    /// GuitarScore addition: Guitar Pro's `<ScoreViews>` element kept verbatim, if the file
+    /// has one.
+    #[serde(skip)]
+    pub score_views_raw: Option<String>,
 }
 
 /// The parts of one GPIF track that are kept exactly as the file has them.
@@ -52,6 +60,12 @@ pub(crate) struct TrackRaw {
     pub sounds: Option<String>,
     /// The whole `<AudioEngineState>` element (`RSE` or `MIDI`).
     pub audio_engine: Option<String>,
+    /// GuitarScore addition: Guitar Pro's per-track playback settings, each element
+    /// exactly as written (`<PalmMute>`, `<AutoAccentuation>`, `<AutoBrush>`,
+    /// `<PlayingStyle>`, `<UseOneChannelPerString>`, `<IconId>`, `<ForcedSound>`). They
+    /// are not modelled because GuitarScore does not use them; kept so a save does not
+    /// lose them.
+    pub playback: Vec<String>,
 }
 
 /// One element captured verbatim from a track.
@@ -59,6 +73,23 @@ pub(crate) struct TrackRaw {
 enum RawElement {
     Sounds,
     AudioEngine,
+    /// One of the track's playback settings (see [`TrackRaw::playback`]).
+    Playback,
+}
+
+/// GuitarScore addition: whether `name` is one of the per-track playback settings kept
+/// verbatim.
+fn is_playback_element(name: &str) -> bool {
+    matches!(
+        name,
+        "PalmMute"
+            | "AutoAccentuation"
+            | "AutoBrush"
+            | "PlayingStyle"
+            | "UseOneChannelPerString"
+            | "IconId"
+            | "ForcedSound"
+    )
 }
 
 /// Captures the raw XML of the elements of each `score.gpif` track that are kept
@@ -102,6 +133,7 @@ pub(crate) fn capture_track_raw(xml: &str) -> Vec<TrackRaw> {
                     let captured = match name {
                         "Sounds" => Some(RawElement::Sounds),
                         "AudioEngineState" => Some(RawElement::AudioEngine),
+                        _ if depth == 4 && is_playback_element(name) => Some(RawElement::Playback),
                         _ => None,
                     };
                     if let Some(captured) = captured {
@@ -125,6 +157,11 @@ pub(crate) fn capture_track_raw(xml: &str) -> Vec<TrackRaw> {
                                 track.audio_engine = Some(raw.to_owned());
                             }
                         }
+                        (name, Some(raw)) if depth == 3 && is_playback_element(name) => {
+                            if let Some(track) = tracks.last_mut() {
+                                track.playback.push(raw.to_owned());
+                            }
+                        }
                         _ => {}
                     }
                 }
@@ -138,6 +175,7 @@ pub(crate) fn capture_track_raw(xml: &str) -> Vec<TrackRaw> {
                         match captured {
                             RawElement::Sounds => track.sounds = Some(raw.to_owned()),
                             RawElement::AudioEngine => track.audio_engine = Some(raw.to_owned()),
+                            RawElement::Playback => track.playback.push(raw.to_owned()),
                         }
                     }
                     capturing = None;
@@ -151,6 +189,77 @@ pub(crate) fn capture_track_raw(xml: &str) -> Vec<TrackRaw> {
     tracks
 }
 
+/// GuitarScore addition: captures the `<AudioTracks>` and `<ScoreViews>` elements of a
+/// GPIF score exactly as written (both direct children of `<GPIF>`): Guitar Pro 8's audio
+/// track list and Guitar Pro's score views, which the serde model does not hold.
+pub(crate) fn capture_gpif_sections(xml: &str) -> (Option<String>, Option<String>) {
+    use quick_xml::events::Event;
+
+    let mut reader = quick_xml::Reader::from_str(xml);
+    reader.config_mut().trim_text(false);
+    let mut depth: usize = 0;
+    // The element being captured: its name, where it starts, and its depth.
+    let mut capturing: Option<(&'static str, usize, usize)> = None;
+    let mut audio_tracks: Option<String> = None;
+    let mut score_views: Option<String> = None;
+    let position = |reader: &quick_xml::Reader<&[u8]>| {
+        usize::try_from(reader.buffer_position()).unwrap_or(usize::MAX)
+    };
+
+    loop {
+        let start = position(&reader);
+        let event = match reader.read_event() {
+            Ok(event) => event,
+            Err(_) => break,
+        };
+        match &event {
+            Event::Start(element) => {
+                depth = depth.saturating_add(1);
+                if capturing.is_none() && depth == 2 {
+                    let name = element.name();
+                    let captured = match name.as_ref() {
+                        "AudioTracks" => Some("AudioTracks"),
+                        "ScoreViews" => Some("ScoreViews"),
+                        _ => None,
+                    };
+                    if let Some(captured) = captured {
+                        capturing = Some((captured, start, depth));
+                    }
+                }
+            }
+            Event::Empty(element) => {
+                // A self-closing element is complete at once; its parent is at `depth`.
+                if capturing.is_none() && depth == 1 {
+                    let name = element.name();
+                    let raw = xml.get(start..position(&reader)).map(str::to_owned);
+                    match name.as_ref() {
+                        "AudioTracks" => audio_tracks = raw,
+                        "ScoreViews" => score_views = raw,
+                        _ => {}
+                    }
+                }
+            }
+            Event::End(_) => {
+                if let Some((which, begin, element_depth)) = capturing
+                    && element_depth == depth
+                {
+                    let raw = xml.get(begin..position(&reader)).map(str::to_owned);
+                    match which {
+                        "AudioTracks" => audio_tracks = raw,
+                        "ScoreViews" => score_views = raw,
+                        _ => {}
+                    }
+                    capturing = None;
+                }
+                depth = depth.saturating_sub(1);
+            }
+            Event::Eof => break,
+            _ => {}
+        }
+    }
+    (audio_tracks, score_views)
+}
+
 /// Regression tests for the verbatim track elements.
 #[cfg(test)]
 mod raw_tests {
@@ -160,6 +269,7 @@ mod raw_tests {
     fn sounds_and_audio_engine_are_captured_verbatim_per_track() {
         let xml = "<GPIF><Tracks count=\"2\">\
             <Track id=\"0\"><Name>A</Name>\
+            <PalmMute>0.3</PalmMute><AutoBrush /><IconId>24</IconId>\
             <Sounds><Sound><Name><![CDATA[Blues]]></Name><Path>Stringed/EG</Path>\
             <RSE><EffectChain><Effect id=\"E1\"><Parameters>0.1 0.2</Parameters></Effect>\
             </EffectChain></RSE></Sound></Sounds>\
@@ -169,6 +279,14 @@ mod raw_tests {
         let raw = capture_track_raw(xml);
         assert_eq!(raw.len(), 2);
         let first = raw.first().expect("one per track");
+        assert_eq!(
+            first.playback,
+            [
+                "<PalmMute>0.3</PalmMute>",
+                "<AutoBrush />",
+                "<IconId>24</IconId>"
+            ]
+        );
         assert_eq!(
             first.sounds.as_deref(),
             Some(
@@ -199,6 +317,24 @@ mod raw_tests {
             raw.get(1).and_then(|track| track.sounds.as_deref()),
             Some("<Sounds><Sound/></Sounds>")
         );
+    }
+
+    #[test]
+    fn audio_tracks_and_score_views_are_captured_verbatim() {
+        let xml = "<GPIF><Score><Title>A</Title></Score>\
+            <MasterTrack><Tracks>0</Tracks></MasterTrack>\
+            <AudioTracks>\n</AudioTracks>\
+            <Tracks><Track id=\"0\"><Name>A</Name></Track></Tracks>\
+            <ScoreViews><ScoreView id=\"1\"/><ScoreView id=\"2\"/></ScoreViews></GPIF>";
+        let (audio, views) = capture_gpif_sections(xml);
+        assert_eq!(audio.as_deref(), Some("<AudioTracks>\n</AudioTracks>"));
+        assert_eq!(
+            views.as_deref(),
+            Some("<ScoreViews><ScoreView id=\"1\"/><ScoreView id=\"2\"/></ScoreViews>")
+        );
+        let (audio, views) = capture_gpif_sections("<GPIF><AudioTracks/></GPIF>");
+        assert_eq!(audio.as_deref(), Some("<AudioTracks/>"));
+        assert!(views.is_none());
     }
 }
 
@@ -232,6 +368,15 @@ pub(crate) struct Score {
     pub instructions: String,
     #[serde(default)]
     pub notices: String,
+    /// The first page's header and footer templates (HTML in CDATA), and the later pages'.
+    #[serde(rename = "FirstPageHeader", default)]
+    pub first_page_header: String,
+    #[serde(rename = "FirstPageFooter", default)]
+    pub first_page_footer: String,
+    #[serde(rename = "PageHeader", default)]
+    pub page_header: String,
+    #[serde(rename = "PageFooter", default)]
+    pub page_footer: String,
     /// Bars per line when every track is shown (Guitar Pro's multitrack view), `"4 4 2"`;
     /// the per-track `SystemsLayout` is for one track on its own.
     #[serde(rename = "ScoreSystemsLayout", default)]
@@ -278,6 +423,15 @@ pub(crate) struct MasterEffect {
     pub id: String,
     #[serde(rename = "Parameters", default)]
     pub parameters: Option<String>,
+    /// `<ByPass />` switches the effect off.
+    #[serde(rename = "ByPass", default)]
+    pub by_pass: Option<EnableTag>,
+    /// GuitarScore addition: the automation types Guitar Pro has switched off.
+    #[serde(rename = "ByPassedAutomations", default)]
+    pub bypassed_automations: Option<String>,
+    /// GuitarScore addition: the effect's automation points.
+    #[serde(rename = "Automations", default)]
+    pub automations: Option<AutomationsWrapper>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -298,6 +452,15 @@ pub(crate) struct Automation {
     // (e.g. `0.75`), not an integer tick offset.
     #[serde(rename = "Position", default)]
     pub position: f32,
+    /// GuitarScore addition: `true` when the automation is interpolated between points.
+    #[serde(rename = "Linear", default)]
+    pub linear: Option<String>,
+    /// GuitarScore addition: whether Guitar Pro shows the automation.
+    #[serde(rename = "Visible", default)]
+    pub visible: Option<String>,
+    /// GuitarScore addition: an automation's own text label.
+    #[serde(rename = "Text", default)]
+    pub text: Option<String>,
 }
 
 /// `<Value>` content of an automation. Most automation types (Tempo, …) use
@@ -357,6 +520,10 @@ pub(crate) struct Track {
     /// `"4 4 3"` (GP7; the last count goes on for the rest).
     #[serde(rename = "SystemsLayout", default)]
     pub systems_layout: Option<String>,
+    /// GuitarScore addition: Guitar Pro's default bars per line of this track
+    /// (`SystemsDefautLayout`, with Guitar Pro's spelling).
+    #[serde(rename = "SystemsDefautLayout", default)]
+    pub systems_default: Option<String>,
     /// GuitarScore addition: the bars at which a new page starts (0-based), a GuitarScore
     /// attribute (Guitar Pro has no page breaks).
     #[serde(rename = "@gsPageBreaks", default)]
@@ -394,6 +561,12 @@ pub(crate) struct Track {
     /// syllables are also on the beats).
     #[serde(rename = "Lyrics", default)]
     pub lyrics: Option<TrackLyrics>,
+    /// GuitarScore addition: the track's automations. Guitar Pro writes several
+    /// `<Automations>` blocks (its starting volume and pan, and the sound changes); a
+    /// `Sound` one must be written back or a track whose sound changes during the song
+    /// loses that change.
+    #[serde(rename = "Automations", default)]
+    pub automations: Vec<AutomationsWrapper>,
 }
 
 /// GuitarScore addition: `<Lyrics>` of a track, one `<Line>` per lyric line.
@@ -505,6 +678,9 @@ pub(crate) struct TrackRse {
 pub(crate) struct ChannelStrip {
     #[serde(rename = "Parameters", default)]
     pub parameters: Option<String>,
+    /// GuitarScore addition: the automation types Guitar Pro has switched off.
+    #[serde(rename = "ByPassedAutomations", default)]
+    pub bypassed_automations: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]

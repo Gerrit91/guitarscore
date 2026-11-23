@@ -7030,3 +7030,15 @@ already plays them; one at a bar's very end becomes the next bar's tempo), a res
 and the typed lyrics of every track, not only the lyric track's. Over the owner's 69 files 64
 kinds of loss are left; `docs/save-audit-handover.md` lists them with an approach for each,
 for whoever continues.
+
+2026-11-24: the save audit's kept-verbatim losses. A track's sound changing during the song
+is kept on its bar (bar 0's automation too, as Guitar Pro writes it) and written again, so
+inserting or deleting bars carries it along. Guitar Pro's per-track playback settings (icon,
+palm-mute strength, playing style, ...), its master effect chain (bypass, parameters,
+bypassed automations and automation points, so a master volume change mid-song and the
+bar-0 value both survive), GP8's audio tracks, its score views, the page header and footer
+templates, the words-and-music credit, each track's systems layout (an empty one included),
+the channel strip's bypassed automations and the tempo's name are kept or written back.
+Over the owner's 59 band files the audit now reports 36 known losses (from 52) and the
+test files 28 (from 46), with no unexplained loss. `docs/guitarpro.md` change 52 has the
+code; `docs/save-audit-handover.md` marks what is done.

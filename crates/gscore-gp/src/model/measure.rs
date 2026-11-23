@@ -29,6 +29,22 @@ pub struct Measure {
     /// GuitarScore addition: Guitar Pro's opaque layout properties for this bar (its
     /// design mode's width scale, and whatever else the file wrote), kept verbatim.
     pub x_properties: Vec<XProperty>,
+    /// GuitarScore addition: the sound changes written in this bar (Guitar Pro's `Sound`
+    /// automations), kept so a save does not lose a track's RSE sound changing during the
+    /// song. They sit on the bar, so inserting, moving or deleting bars carries them
+    /// along instead of leaving them pointing at the wrong bar.
+    pub sound_changes: Vec<SoundChange>,
+}
+
+/// GuitarScore addition: a track's sound change at some point in a bar (Guitar Pro's
+/// `Sound` automation): the RSE sound it switches to, as written
+/// (`Stringed/Electric Guitars/Overdrive Guitar;Blues;Factory`).
+#[derive(Debug, Clone, PartialEq)]
+pub struct SoundChange {
+    /// Where in the bar it happens: Guitar Pro's fraction of the bar (`0.0` to `1.0`).
+    pub position: f32,
+    /// The sound, exactly as the file wrote it.
+    pub value: String,
 }
 
 impl Default for Measure {
@@ -47,6 +63,7 @@ impl Default for Measure {
             line_break: LineBreak::None,
             simile_mark: None,
             x_properties: Vec::new(),
+            sound_changes: Vec::new(),
         }
     }
 }

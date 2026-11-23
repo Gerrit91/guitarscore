@@ -366,3 +366,23 @@ Code comments mark changed spots with "GuitarScore". Each fix could be offered u
     tied across bar lines). The model keeps only the destination, so the writer finds the
     origins per staff and voice: the last note on the tied note's string, also across bar
     lines; a rest ends it, grace beats are passed over. Tests in the module.
+52. The save audit's remaining verbatim data (`src/io/gpif/{mod,bars}.rs`,
+    `src/io/gpif_import/{mod,helpers}.rs`, `src/io/gpif_export/{mod,helpers}.rs`,
+    `src/model/{song,track,measure}.rs`, `src/io/gpx/mod.rs`, 2026-11-24): a save still
+    dropped several things the model does not use. A track's sound changes during the song
+    (Guitar Pro's `Sound` automations) are kept on their bar (`Measure::sound_changes`) and
+    written as `<Track><Automations>` again, bar 0's too, so editing bars carries them
+    along; Guitar Pro's per-track playback settings (`PalmMute`, `AutoAccentuation`,
+    `AutoBrush`, `PlayingStyle`, `UseOneChannelPerString`, `IconId`, `ForcedSound`) are
+    kept element by element (`Track::gpif_playback`); the song's page header and footer
+    templates and its words-and-music credit are kept (`Song::page_header`,
+    `page_footer`, `first_page_header`, `first_page_footer`, `words_and_music`); the whole
+    master effect chain including its bypass, bypassed automations and automation points
+    (`Song::gpif_master_effects`, so a master volume change later in the song survives and
+    the bar-0 value follows the model), GP8's `<AudioTracks>` and Guitar Pro's
+    `<ScoreViews>` verbatim (`Song::gpif_audio_tracks`, `gpif_score_views`), each track's
+    `<SystemsLayout>`/`SystemsDefautLayout` (an empty one included, with the derived layout
+    winning once the model's breaks differ, `Track::gpif_systems_layout`), the channel
+    strip's `<ByPassedAutomations>`, and the bar-0 tempo automation's `<Text>`
+    (`Song::gpif_tempo_text`). `capture_gpif_sections` keeps the two whole GPIF sections
+    verbatim. Tests in `gpif_export/repeat_tests.rs` and `gpif/mod.rs`.

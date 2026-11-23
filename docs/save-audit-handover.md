@@ -49,6 +49,8 @@ push or open PRs, check the branch right before each commit).
 | tempo changes inside a bar are kept on their beats | tempo automations at a position inside a bar (a written ritardando) |
 | a rest keeps the dynamic it was read with | a rest's `<Dynamic>` |
 | typed lyrics on other tracks (backing vocals) are kept on their track | the typed lyric lines of every track but the song's lyric track |
+| a track's sound changes are kept on their bars | `Automation type Sound` after bar 0 (kept on each bar's measure and written again, bar 0 too) |
+| Guitar Pro's playback settings, mix and templates are kept | the per-track playback settings, the master effect chain (bypass, parameters, bypassed automations, automation points), GP8's audio tracks, the score views, the page header and footer templates, the words-and-music credit, the systems layouts (empty ones too), the channel strip's bypassed automations and the tempo's name |
 
 Earlier on `main`: slap and pop as beat properties (`2bfebad`).
 
@@ -77,20 +79,12 @@ audit test guards it too once the verdict is gone.
 owner** (GP7 on Windows; files go through `~/Dropbox`; one file per fresh Guitar Pro start).
 Our reader reading it back proves nothing about Guitar Pro.
 
-## What is left (64 kinds over the owner's 69 files)
+## What is left (36 kinds over the 59 GP7 files in `~/svn/wyw/main/tabs`)
 
-Ordered by what matters most. Counts are "lost occurrences in N files".
+Ordered by what matters most. Counts are "lost occurrences in N files" and come from
+`gscore-cli audit ~/svn/wyw/main/tabs`; the test files keep 28 (`gscore-cli audit testdata`).
 
-### 1. A track's sound changes during the song (`Automation type Sound`, 561 in 69)
-
-549 of them are each track's sound at bar 0, which the kept `<Sounds>` already holds (the
-track `<Automations>` element is not written at all). **12 are real sound changes later in a
-song**: lost. They point at bars by number, so keeping them verbatim goes stale on bar edits.
-Suggested: keep a track's sound automations per bar (on the bar's measure of that track, or on
-the bar header with the track index) as `(position, value)` and write `<Track><Automations>`
-again (bar 0 too, as Guitar Pro writes it). Then the verdict can go.
-
-### 2. The staff block (`Staff ...`, about 20 keys, in every file)
+### 1. The staff block (`Staff ...`, about 20 keys, in every file)
 
 Our writer writes tuning and capo as track-level properties (Guitar Pro 6 style); Guitar Pro 7
 writes `<Staves><Staff><Properties>` with: `Tuning` (plus `<Flat>`, `<Instrument>`, `<Label>`,
@@ -110,34 +104,10 @@ writes `<Staves><Staff><Properties>` with: `Tuning` (plus `<Flat>`, `<Instrument
 - This changes the written structure: **Guitar Pro check needed** (does Guitar Pro 7 read the
   staff block we write, and still the track-level properties we wrote so far?).
 
-### 3. Guitar Pro's per-track playback settings (`Track <...>`, 7 keys, in every file)
-
-`<PalmMute>`, `<AutoAccentuation>`, `<AutoBrush>`, `<PlayingStyle>`, `<UseOneChannelPerString>`,
-`<IconId>`, `<ForcedSound>`. GuitarScore does not use them. They are track-level and point at
-nothing: keep each verbatim on the track (as `gpif_sounds` is; `capture_track_raw` can capture
-more elements) and write it back.
-
-### 4. Song-level templates and Guitar Pro's own mix
-
-- `Score <PageHeader>`, `<PageFooter>`, `<FirstPageHeader>`, `<FirstPageFooter>`,
-  `<WordsAndMusic>` (in every file): the page header and footer templates. Keep verbatim on the
-  song; check how the page setup is already read and written (`page_setup`, `stylesheet` on
-  `gscore_gp::model::Song`).
-- `RSE <Effect>`, `<ByPass>`, `<Parameters>` (every file), `<ByPassedAutomations>` (18 files):
-  Guitar Pro's master effects. Only `I01_VolumeAndPan` is read (as the master volume and pan);
-  keep the rest verbatim and write it beside it.
-- `GPIF <AudioTracks>` (63 files): Guitar Pro 8's audio track list, mostly empty. Keep verbatim.
-- `GPIF <ScoreViews>` / `<ScoreView>` (6 files): Guitar Pro's score views. They refer to
-  tracks; GuitarScore has its own score views (kept in the song's notes). Look at how they
-  relate before deciding (mapping them to GuitarScore's views would be best).
-- `Track <SystemsLayout>`, `<SystemsDefautLayout>` (12 files), `Score <ScoreSystemsLayout>`
-  (8 files): bars per line. The writer writes them, so some cases are lost: trace which.
-
-### 5. The small rest (1-2 files each)
+### 2. The small rest (1-2 files each)
 
 - `Note <Tie>` (7 in 2): a tie written as a `<Tie>` element; check how the reader reads ties.
 - `MasterBar <Length>` (2 in 2): a bar's own length.
-- `Automation <Text>` (2 in 2): an automation's text label.
 - `Note XProperty 688062467` with `<Int>`, `<XProperties>` (2 in 2): Guitar Pro's extra note
   properties; beats already keep theirs (`Beat::x_properties`), notes do not.
 - `Note <Float>` (7 in 1), and one bend's shape (`Bended`, `Bend*` in 1 file): trace.
@@ -145,6 +115,9 @@ more elements) and write it back.
   (`fold_grace_beats`), so the beat's kept elements have nowhere to go.
 - `Automation type Tempo` (1 in 1): a tempo change at the very end of a bar (position 1)
   when the next bar starts with its own: the same moment, only one is heard. Arguably no loss.
+
+Still open from the fixed items: `GPIF <ScoreViews>` is kept verbatim, so its ids can go stale
+when tracks are deleted; mapping it to GuitarScore's own views is the better fix.
 
 ## Useful facts found on the way
 

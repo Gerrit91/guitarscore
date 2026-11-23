@@ -71,6 +71,11 @@ impl WriteGpifInGpifStringOrder for Song {
         xml.push_str(&format!("<Album>{}</Album>", escape_xml(&self.album)));
         xml.push_str(&format!("<Words>{}</Words>", escape_xml(&self.words)));
         xml.push_str(&format!("<Music>{}</Music>", escape_xml(&self.author)));
+        // GuitarScore addition: the words-and-music credit as written.
+        xml.push_str(&format!(
+            "<WordsAndMusic>{}</WordsAndMusic>",
+            cdata(&self.words_and_music)
+        ));
         xml.push_str(&format!(
             "<Copyright>{}</Copyright>",
             escape_xml(&self.copyright)
@@ -82,6 +87,16 @@ impl WriteGpifInGpifStringOrder for Song {
         ));
         let notices = self.notice.join("\n");
         xml.push_str(&format!("<Notices>{}</Notices>", escape_xml(&notices)));
+        // GuitarScore addition: the page header and footer templates (HTML in CDATA), kept
+        // so a save does not lose them; Guitar Pro writes them, empty ones included.
+        for (name, template) in [
+            ("FirstPageHeader", &self.first_page_header),
+            ("FirstPageFooter", &self.first_page_footer),
+            ("PageHeader", &self.page_header),
+            ("PageFooter", &self.page_footer),
+        ] {
+            xml.push_str(&format!("<{name}>{}</{name}>", cdata(template)));
+        }
         // The multitrack view's bars per line, as the file had them.
         if let Some(default) = &self.score_systems_default {
             xml.push_str(&format!(
@@ -103,9 +118,15 @@ impl WriteGpifInGpifStringOrder for Song {
         xml.push_str("<MasterTrack>");
         xml.push_str(&format!("<Tracks>{}</Tracks>", track_ids.join(" ")));
         xml.push_str("<Automations>");
-        // Bar-0 tempo (always)
+        // Bar-0 tempo (always); GuitarScore addition: its name (`<Text>`), when the file
+        // gave one.
+        let tempo_text = self
+            .gpif_tempo_text
+            .as_deref()
+            .map(|text| format!("<Text>{}</Text>", cdata(text)))
+            .unwrap_or_default();
         xml.push_str(&format!(
-            "<Automation><Type>Tempo</Type><Value>{} 2</Value><Bar>0</Bar><Position>0</Position></Automation>",
+            "<Automation><Type>Tempo</Type><Linear>false</Linear><Bar>0</Bar><Position>0</Position><Visible>true</Visible>{tempo_text}<Value>{} 2</Value></Automation>",
             self.tempo
         ));
         // Per-measure tempo changes
@@ -127,16 +148,38 @@ impl WriteGpifInGpifStringOrder for Song {
             ));
         }
         xml.push_str("</Automations>");
-        // GuitarScore addition: the master volume and pan.
-        if let Some((volume, pan)) = self.master_volume_pan {
-            xml.push_str(&format!(
-                "<RSE><Master><Effect id=\"{}\"><Parameters>{} {}</Parameters></Effect></Master></RSE>",
+        // GuitarScore addition: Guitar Pro's master effect chain, every effect written back
+        // as it was read; the volume and pan one comes from the model so a change is saved.
+        let mut master_effects = String::new();
+        for effect in &self.gpif_master_effects {
+            let volume_pan = if effect.id == gpif_import::MASTER_VOLUME_PAN {
+                self.master_volume_pan
+            } else {
+                None
+            };
+            master_effects.push_str(&master_effect_xml(effect, volume_pan));
+        }
+        if let Some((volume, pan)) = self.master_volume_pan
+            && !self
+                .gpif_master_effects
+                .iter()
+                .any(|effect| effect.id == gpif_import::MASTER_VOLUME_PAN)
+        {
+            master_effects.push_str(&format!(
+                "<Effect id=\"{}\"><Parameters>{} {}</Parameters></Effect>",
                 gpif_import::MASTER_VOLUME_PAN,
                 volume.clamp(0.0, 1.0),
                 pan.clamp(0.0, 1.0)
             ));
         }
+        if !master_effects.is_empty() {
+            xml.push_str(&format!("<RSE><Master>{master_effects}</Master></RSE>"));
+        }
         xml.push_str("</MasterTrack>");
+        // GuitarScore addition: GP8's audio tracks, kept verbatim.
+        if let Some(audio_tracks) = &self.gpif_audio_tracks {
+            xml.push_str(audio_tracks);
+        }
 
         // Tracks
         xml.push_str("<Tracks>");
@@ -173,10 +216,31 @@ impl WriteGpifInGpifStringOrder for Song {
             xml.push_str(&format!("<Color>{r} {g} {b}</Color>"));
             // GuitarScore addition: line (and page) breaks as Guitar Pro's systems layout,
             // the bars of each line; without breaks Guitar Pro lays the track out itself.
-            if let Some(systems) = systems_layout(&track.measures) {
+            // An empty or unchanged layout is written back exactly as the file had it.
+            let derived = systems_layout(&track.measures);
+            let layout = match (&derived, &track.gpif_systems_layout) {
+                (Some(derived), Some(original)) if derived == original => Some(original.clone()),
+                (Some(derived), _) => Some(derived.clone()),
+                // No break in the model: keep the file's own layout only when it has no
+                // break either (an empty one, or one that just ends); otherwise the breaks
+                // were removed and writing the old layout would put them back.
+                (None, Some(original)) if !layout_implies_break(original, track.measures.len()) => {
+                    Some(original.clone())
+                }
+                _ => None,
+            };
+            if let Some(layout) = layout {
+                let default = track.gpif_systems_default.as_deref().unwrap_or("4");
                 xml.push_str(&format!(
-                    "<SystemsDefautLayout>4</SystemsDefautLayout><SystemsLayout>{systems}</SystemsLayout>"
+                    "<SystemsDefautLayout>{}</SystemsDefautLayout><SystemsLayout>{}</SystemsLayout>",
+                    escape_xml(default),
+                    escape_xml(&layout)
                 ));
+            }
+            // GuitarScore addition: Guitar Pro's per-track playback settings (its icon,
+            // palm-mute strength, playing style, ...), kept exactly as the file had them.
+            for element in &track.gpif_playback {
+                xml.push_str(element);
             }
             // GuitarScore addition: the instrument, as read by the importer. Drum tracks
             // from GP3-5 (no instrument type) are written as a drum kit.
@@ -317,10 +381,19 @@ impl WriteGpifInGpifStringOrder for Song {
             }
             // GuitarScore addition: the track's mixer and playback state in the places
             // Guitar Pro 7 reads them (volume and pan are RSE channel-strip parameters).
-            xml.push_str(&format!(
-                "<RSE><ChannelStrip version=\"E56\"><Parameters>{}</Parameters></ChannelStrip></RSE>",
+            // Its bypassed automations are written back inside the strip.
+            let mut channel_strip = format!(
+                "<RSE><ChannelStrip version=\"E56\"><Parameters>{}</Parameters>",
                 rse_parameters(volume, pan)
-            ));
+            );
+            if let Some(bypassed) = &track.gpif_bypassed_automations {
+                channel_strip.push_str(&format!(
+                    "<ByPassedAutomations>{}</ByPassedAutomations>",
+                    escape_xml(bypassed)
+                ));
+            }
+            channel_strip.push_str("</ChannelStrip></RSE>");
+            xml.push_str(&channel_strip);
             // GuitarScore addition: the track's RSE sound and audio engine choice, kept
             // exactly as the file had them (`<Sounds>` holds CDATA and an open-ended effect
             // chain, so it is not modeled). New tracks have neither.
@@ -367,6 +440,25 @@ impl WriteGpifInGpifStringOrder for Song {
                     ));
                 }
                 xml.push_str("</Lyrics>");
+            }
+            // GuitarScore addition: the track's sound changes during the song, as Guitar
+            // Pro's `Sound` automations on their bars (bar 0's included, as Guitar Pro
+            // writes it). A save used to lose every sound change after the first bar.
+            let mut sound_automations = String::new();
+            for (bar, measure) in track.measures.iter().enumerate() {
+                for change in &measure.sound_changes {
+                    sound_automations.push_str(&format!(
+                        "<Automation><Type>Sound</Type><Linear>false</Linear><Bar>{bar}</Bar>\
+                         <Position>{}</Position><Visible>true</Visible><Value>{}</Value></Automation>",
+                        change.position,
+                        cdata(&change.value)
+                    ));
+                }
+            }
+            if !sound_automations.is_empty() {
+                xml.push_str("<Automations>");
+                xml.push_str(&sound_automations);
+                xml.push_str("</Automations>");
             }
             xml.push_str("</Track>");
         }
@@ -660,6 +752,10 @@ impl WriteGpifInGpifStringOrder for Song {
         }
         xml.push_str("</Rhythms>");
 
+        // GuitarScore addition: Guitar Pro's score views, kept verbatim.
+        if let Some(score_views) = &self.gpif_score_views {
+            xml.push_str(score_views);
+        }
         xml.push_str("</GPIF>");
         Ok(xml)
     }
@@ -681,6 +777,68 @@ fn collect_diagrams(track: &Track) -> Vec<ChordDiagram> {
         }
     }
     diagrams
+}
+
+/// GuitarScore addition: one master effect as GPIF: its bypass, parameters, bypassed
+/// automations and automation points. `volume_pan`, on the volume and pan effect, replaces
+/// its parameters and the bar-0 volume and pan automation with the model's values.
+fn master_effect_xml(effect: &MasterEffectInfo, volume_pan: Option<(f32, f32)>) -> String {
+    let mut xml = format!("<Effect id=\"{}\">", escape_xml(&effect.id));
+    if effect.by_pass {
+        xml.push_str("<ByPass />");
+    }
+    match (volume_pan, &effect.parameters) {
+        (Some((volume, pan)), _) => xml.push_str(&format!(
+            "<Parameters>{} {}</Parameters>",
+            volume.clamp(0.0, 1.0),
+            pan.clamp(0.0, 1.0)
+        )),
+        (None, Some(parameters)) => {
+            xml.push_str(&format!(
+                "<Parameters>{}</Parameters>",
+                escape_xml(parameters)
+            ));
+        }
+        (None, None) => {}
+    }
+    if let Some(bypassed) = &effect.bypassed_automations {
+        xml.push_str(&format!(
+            "<ByPassedAutomations>{}</ByPassedAutomations>",
+            escape_xml(bypassed)
+        ));
+    }
+    if !effect.automations.is_empty() {
+        xml.push_str("<Automations>");
+        for automation in &effect.automations {
+            let value = match volume_pan {
+                Some((volume, pan)) if automation.bar == 0 && automation.position <= 0.0 => {
+                    match automation.automation_type.as_str() {
+                        "DSPParam_00" => format!("{}", volume.clamp(0.0, 1.0)),
+                        "DSPParam_01" => format!("{}", pan.clamp(0.0, 1.0)),
+                        _ => automation.value.clone(),
+                    }
+                }
+                _ => automation.value.clone(),
+            };
+            let text = automation
+                .text
+                .as_deref()
+                .map(|text| format!("<Text>{}</Text>", cdata(text)))
+                .unwrap_or_default();
+            xml.push_str(&format!(
+                "<Automation><Type>{}</Type><Linear>{}</Linear><Bar>{}</Bar><Position>{}</Position><Visible>{}</Visible>{text}<Value>{}</Value></Automation>",
+                escape_xml(&automation.automation_type),
+                automation.linear,
+                automation.bar,
+                automation.position,
+                automation.visible,
+                escape_xml(&value)
+            ));
+        }
+        xml.push_str("</Automations>");
+    }
+    xml.push_str("</Effect>");
+    xml
 }
 
 /// A MIDI value from the channel table, or `default` when the track has no channel.
@@ -727,6 +885,17 @@ fn systems_layout(measures: &[Measure]) -> Option<String> {
         from = start;
     }
     Some(counts.join(" "))
+}
+
+/// GuitarScore addition: whether a written systems layout starts a new line before the
+/// last bar (so it disagrees with a model whose measures have no break).
+fn layout_implies_break(layout: &str, measures: usize) -> bool {
+    layout
+        .split_whitespace()
+        .next()
+        .and_then(|count| count.parse::<usize>().ok())
+        .filter(|count| *count > 0 && *count < measures)
+        .is_some()
 }
 
 /// GuitarScore addition: Guitar Pro's opaque layout properties (`<XProperties>`), written
