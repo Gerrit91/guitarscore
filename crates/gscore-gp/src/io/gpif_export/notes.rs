@@ -10,7 +10,13 @@ use super::*;
 // ---------------------------------------------------------------------------
 
 /// `tie_origin`: a tie starts from this note (the next note on its string is tied to it).
-pub(super) fn build_note_xml(note: &Note, note_id: i32, tie_origin: bool) -> String {
+/// `slap`: the beat's tapping, slap or pop, which GPIF marks on each of its notes.
+pub(super) fn build_note_xml(
+    note: &Note,
+    note_id: i32,
+    tie_origin: bool,
+    slap: &SlapEffect,
+) -> String {
     let mut s = format!("<Note id=\"{note_id}\"><Properties>");
 
     s.push_str(&format!(
@@ -85,6 +91,13 @@ pub(super) fn build_note_xml(note: &Note, note_id: i32, tie_origin: bool) -> Str
     }
     if note.effect.left_hand_tapped {
         s.push_str("<Property name=\"LeftHandTapped\"><Enable /></Property>");
+    }
+    // GuitarScore addition: the beat's tapping, slap or pop, as Guitar Pro marks it.
+    match slap {
+        SlapEffect::Tapping => s.push_str("<Property name=\"Tapped\"><Enable /></Property>"),
+        SlapEffect::Slapping => s.push_str("<Property name=\"Slapped\"><Enable /></Property>"),
+        SlapEffect::Popping => s.push_str("<Property name=\"Popped\"><Enable /></Property>"),
+        SlapEffect::None => {}
     }
     if note.effect.show_string_number {
         s.push_str("<Property name=\"ShowStringNumber\"><Enable /></Property>");

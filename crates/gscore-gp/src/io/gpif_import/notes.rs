@@ -31,6 +31,20 @@ pub(crate) fn finger_name(finger: &Fingering) -> Option<&'static str> {
     })
 }
 
+/// The beat's tapping, slap or pop that GPIF marks on its note (`Tapped`, `Slapped`,
+/// `Popped`; the legacy model keeps it on the beat). GuitarScore addition.
+pub(super) fn slap_of(g_note: &Note) -> SlapEffect {
+    for prop in &g_note.properties.properties {
+        match prop.name.as_str() {
+            "Tapped" => return SlapEffect::Tapping,
+            "Slapped" => return SlapEffect::Slapping,
+            "Popped" => return SlapEffect::Popping,
+            _ => {}
+        }
+    }
+    SlapEffect::None
+}
+
 pub(super) fn convert_note(
     g_note: &Note,
     velocity: i16,

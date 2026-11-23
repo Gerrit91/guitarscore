@@ -35,7 +35,12 @@ pub(super) fn build_beat_xml(
         for note in &beat.notes {
             let note_id = next_id(next_note_id)?;
             note_ids.push(note_id);
-            note_xmls.push(build_note_xml(note, note_id, tie_starts(note.string)));
+            note_xmls.push(build_note_xml(
+                note,
+                note_id,
+                tie_starts(note.string),
+                &beat.effect.slap_effect,
+            ));
         }
     }
 

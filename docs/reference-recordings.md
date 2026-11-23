@@ -151,8 +151,7 @@ the same interface, so they stay sample-aligned.
   bass tone, amp only and amp with cab, on `01` (medium notes), `03` and `06`.
 - **A 5-string bass:** the same tabs; play the low B as well on a second pass of `01`
   (its open, fret 5 and fret 12) and write it down.
-- `slap` and `pop` are written as text above the notes (the .gp writer cannot keep their
-  marks yet). Leave those bars out if you do not slap.
+- Leave the slap and pop bars of `04` out if you do not slap.
 
 ## Files and notes
 

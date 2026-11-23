@@ -6915,5 +6915,10 @@ preview-fitted/ I and tone files "Refit X" outside the repo (see `docs/guitar-mo
 beat 1 of every other bar, damped on beat 3 of the next): single notes with the fingers
 (p, mf, ff), pick and palm mute, lines (8ths, 16ths, a scale, dead notes; fingers and
 pick), techniques (slides, hammer-on and pull-off, vibrato, natural harmonics, slap and
-pop as text: the .gp writer cannot keep their marks yet) and coupling; plus a riff of
-the owner's. `docs/reference-recordings.md` says how to record them (DI only).
+pop) and coupling; plus a riff of the owner's. `docs/reference-recordings.md` says how to record them (DI only).
+
+2026-11-23: tapping, slap and pop in GP7 files. The GP7 reader ignored them and the
+writer never wrote them, so a song with them could not be saved as .gp without losing
+them (the save asked first, the CLI refused). Guitar Pro marks them on each note of the
+beat (`Tapped`, `Slapped`, `Popped`); they are read into the beat's mark and written on
+every note of a marked beat.

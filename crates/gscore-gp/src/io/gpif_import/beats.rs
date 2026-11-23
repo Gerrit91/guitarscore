@@ -292,6 +292,10 @@ pub(super) fn convert_beat(
                 if let Some(g_note) = notes_map.get(&nid) {
                     let mut s_note =
                         convert_note(g_note, *current_velocity, is_grace_beat, grace_on_beat);
+                    let slap = slap_of(g_note);
+                    if slap != SlapEffect::None {
+                        s_beat.effect.slap_effect = slap;
+                    }
                     if let Some(value) = tremolo_picking {
                         s_note.effect.tremolo_picking = Some(TremoloPickingEffect {
                             duration: Duration {

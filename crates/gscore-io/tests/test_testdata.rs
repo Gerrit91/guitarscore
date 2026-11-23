@@ -385,3 +385,40 @@ fn staff_features_round_trip_through_gp7() {
         Some(SimileMark::Simple)
     );
 }
+
+/// Tapping, slap and pop survive a GP7 save: Guitar Pro marks them on each note of the
+/// beat (`Tapped`, `Slapped`, `Popped`), the model keeps them on the beat.
+#[test]
+fn slap_pop_and_tapping_round_trip_through_gp7() {
+    use gscore_model::{
+        BeatEffect, BeatIndex, BeatPosition, MeasureIndex, SlapKind, StaffIndex, VoiceIndex,
+    };
+    let path = testdata("basic/note_lengths.gp");
+    let mut song = import_guitar_pro_from_bytes(&std::fs::read(path).unwrap())
+        .unwrap()
+        .song;
+    // The first beat of the first four bars.
+    let at = |measure: usize| BeatPosition {
+        track: TrackIndex::new(0),
+        staff: StaffIndex::new(0),
+        measure: MeasureIndex::new(measure),
+        voice: VoiceIndex::new(0),
+        beat: BeatIndex::new(0),
+    };
+    let kinds = [SlapKind::Tapping, SlapKind::Slapping, SlapKind::Popping];
+    for (beat, kind) in kinds.into_iter().enumerate() {
+        let _ = song
+            .set_beat_effect(at(beat), BeatEffect::Slap(Some(kind)))
+            .unwrap();
+    }
+    let bytes = export_to_bytes(&song, FileFormat::Gp).unwrap();
+    let reread = import_guitar_pro_from_bytes(&bytes).unwrap().song;
+    for (beat, kind) in kinds.into_iter().enumerate() {
+        assert_eq!(
+            reread.beat(at(beat)).unwrap().slap(),
+            Some(kind),
+            "bar {beat}"
+        );
+    }
+    assert_eq!(reread.beat(at(3)).unwrap().slap(), None);
+}
