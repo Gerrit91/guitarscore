@@ -6909,3 +6909,17 @@ Strings editor), so the chugs are unchanged; older sounds use their own bridge f
 Two tests now say what they measure (the palm's damping through one mix, the click above
 1 kHz); two new ones guard the palm mix and the fitted chugs. Listening set
 preview-fitted/ I and tone files "Refit X" outside the repo (see `docs/guitar-modelling.md`).
+
+2026-11-23: bass reference tabs. `docs/reference-recordings/bass/` holds five tabs for a
+4-string bass in E standard on the electric's grid (60 BPM, two silent bars, a note on
+beat 1 of every other bar, damped on beat 3 of the next): single notes with the fingers
+(p, mf, ff), pick and palm mute, lines (8ths, 16ths, a scale, dead notes; fingers and
+pick), techniques (slides, hammer-on and pull-off, vibrato, natural harmonics, slap and
+pop) and coupling; plus a riff of the owner's. `docs/reference-recordings.md` says how to record them (DI only).
+
+2026-11-23: tapping, slap and pop in GP7 files. The GP7 reader ignored them and the
+writer never wrote them, so a song with them could not be saved as .gp without losing
+them (the save asked first, the CLI refused), and opening a .gp file lost them without
+a word. Guitar Pro marks them as beat properties (`Tapped`, `Slapped`, `Popped`); they
+are read and written there (a first version put them on the notes, where Guitar Pro does
+not look: found by comparing the owner's files before and after a save).

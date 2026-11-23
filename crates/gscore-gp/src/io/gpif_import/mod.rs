@@ -116,8 +116,8 @@ pub(crate) use helpers::{
     CHORUS_PROPERTY, REVERB_PROPERTY, SLASH_PROPERTY, SYMBOL_PROPERTY, build_note_bend,
     build_whammy_effect, extract_symbol,
 };
-use notes::convert_note;
 pub(crate) use notes::finger_name;
+use notes::{convert_note, slap_of};
 
 // ---------------------------------------------------------------------------
 // Main conversion

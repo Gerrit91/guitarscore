@@ -31,6 +31,20 @@ pub(crate) fn finger_name(finger: &Fingering) -> Option<&'static str> {
     })
 }
 
+/// The beat's tapping, slap or pop if a file marks it on a note (`Tapped`, `Slapped`,
+/// `Popped`; Guitar Pro marks them on the beat, which is read too). GuitarScore addition.
+pub(super) fn slap_of(g_note: &Note) -> SlapEffect {
+    for prop in &g_note.properties.properties {
+        match prop.name.as_str() {
+            "Tapped" => return SlapEffect::Tapping,
+            "Slapped" => return SlapEffect::Slapping,
+            "Popped" => return SlapEffect::Popping,
+            _ => {}
+        }
+    }
+    SlapEffect::None
+}
+
 pub(super) fn convert_note(
     g_note: &Note,
     velocity: i16,

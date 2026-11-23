@@ -45,6 +45,15 @@ Every recording has a tab in `docs/reference-recordings/` that you play along to
 | `07-body-taps` | five taps on the bridge with the strings damped, one a bar | 0:32 |
 | `08-riff` | your own riff, see below | |
 
+| Bass (`bass/`, 4 strings, E standard) | Content | Length |
+|---|---|---|
+| `01-single-notes` | every string open, fret 5 and fret 12, each soft, medium and hard (p, mf, ff), with the fingers | 5:00 |
+| `02-pick-and-mute` | each string open and fret 5 with a pick; each string open palm-muted with the pick, E and A palm-muted with the thumb | 2:04 |
+| `03-lines` | 8ths on open E and A, root-fifth-octave, 16ths on open E, an E major scale in quarters: with the fingers, then with a pick; dead notes | 2:12 |
+| `04-techniques` | slides up and down, hammer-on and pull-off, vibrato, natural harmonics (12th fret on every string, 7th and 5th on E and A), slap and pop if you play them | 2:28 |
+| `05-coupling` | open A three times with the other strings free, three times with them damped | 1:00 |
+| `06-riff` | your own bass line, see below | |
+
 How the tabs are laid out:
 
 - **60 BPM in 4/4** (one bar is 4 s), except the strumming at 90.
@@ -57,7 +66,8 @@ How the tabs are laid out:
   play ("fret 5, soft", "strum up", "slow arpeggio, low to high").
 - Section markers name each group, so you can find your place.
 
-**The riff:** play two to four bars of your own, a few times, clean and with gain on the
+**The riff:** play two to four bars of your own (on the bass a line of yours, or the bass
+part of a song the guitar riff belongs to), a few times, clean and with gain on the
 electric. Write the same riff as tab in GuitarScore at the tempo you play it, and save
 it next to the WAV file (`07-riff.gp`, `08-riff.gp` on the acoustic). GuitarScore can
 then play the same notes for a note-for-note comparison.
@@ -127,6 +137,22 @@ the same interface, so they stay sample-aligned.
   body's impulse response itself.
 - **A nylon-string guitar,** if you have one: the same files, with the fingers only.
 
+## Bass
+
+- **The DI only**, into the Hi-Z / instrument input or a good DI box, like the electric.
+  An active bass: a fresh battery, its EQ flat (every boost and cut in the middle).
+- **The pickups as you usually play** (both pickups, or the blend in the middle), volume
+  and tone fully up, and the same all session. Write down which.
+- **With the fingers** unless the tab says pick or thumb: two fingers alternating, the
+  usual plucking spot (measure it from the bridge saddle as with the pick). The pick
+  files: the same pick throughout.
+- **Gain:** the hardest note (ff open E, a slap) peaks between -10 and -6 dBFS.
+- **Through an amp modeller** (optional, as for the electric): one clean and one driven
+  bass tone, amp only and amp with cab, on `01` (medium notes), `03` and `06`.
+- **A 5-string bass:** the same tabs; play the low B as well on a second pass of `01`
+  (its open, fret 5 and fret 12) and write it down.
+- Leave the slap and pop bars of `04` out if you do not slap.
+
 ## Files and notes
 
 One folder per guitar, outside the repository, for example
@@ -143,7 +169,8 @@ Name each WAV file after its tab, with the signal added:
 
 And a `notes.txt` in each folder:
 
-- the guitar, its pickups, string gauge, how old the strings are;
+- the guitar or bass, its pickups (active or passive), string gauge, how old the strings
+  are;
 - the pick (type, thickness) and the picking spot in cm from the saddle;
 - the interface, its input and gain setting;
 - for the acoustic: the pickup type, each microphone (model, pattern, distance, where it
@@ -156,6 +183,7 @@ About an hour per guitar, setup included.
 ## Making the tabs again
 
 The tabs were written with `gscore-cli edit` scripts (one command per line: bars, frets,
-ties, effects, dynamics, texts) applied to an empty one-bar song. They can be changed
+ties, effects, dynamics, texts) applied to an empty one-bar song; the bass tabs to the
+bass track of `testdata/basic/multi_staff.gp`, cut down to one empty bar and four strings. They can be changed
 in GuitarScore like any song; if one is changed, keep the grid (two bars per note, 60
 BPM) so recordings made before and after still compare.
