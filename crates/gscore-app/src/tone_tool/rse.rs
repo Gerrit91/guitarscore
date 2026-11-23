@@ -224,10 +224,15 @@ pub(super) fn found_lines(file: &ToneLibraryFile, found: &Found) -> Vec<String> 
     for ((sound, kind), count) in rows {
         let kind_text = kind.unwrap_or("-");
         let tone = match file.rse.get(sound) {
-            None => {
-                unmapped = unmapped.saturating_add(1);
-                "(none)".to_owned()
-            }
+            None => match crate::tone_library::rse_program(sound)
+                .and_then(|program| file.programs.get(&program))
+            {
+                Some(name) => format!("{name}  (by its instrument)"),
+                None => {
+                    unmapped = unmapped.saturating_add(1);
+                    "(none)".to_owned()
+                }
+            },
             Some(name) => {
                 let tone_kind = file
                     .tones

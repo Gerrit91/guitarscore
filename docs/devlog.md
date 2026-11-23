@@ -6923,3 +6923,14 @@ them (the save asked first, the CLI refused), and opening a .gp file lost them w
 a word. Guitar Pro marks them as beat properties (`Tapped`, `Slapped`, `Popped`); they
 are read and written there (a first version put them on the notes, where Guitar Pro does
 not look: found by comparing the owner's files before and after a save).
+
+2026-11-23: a Guitar Pro sound picks its tone by its instrument. Owner report: in a song
+from Guitar Pro (the owner's "The Shelter") every guitar started on the same tone. The
+file keeps program 27 (clean electric) on all seven guitars, whatever sound each was
+given (Distortion, Lead, Fuzz, Clean Strat, Steel Guitar...), and the tone library maps
+no Guitar Pro sound yet, so each fell back to program 27's tone. Now a sound the library
+does not map starts on the tone of the program its instrument stands for (Distortion
+Guitar 30, its Lead sounds 31, Overdrive 29, Clean 27, Steel 25, Clean Bass 33, a pick
+bass 34, Crunch Bass 38, Slap Bass 36, ...); a mapping still wins, `tones rse` shows
+which. Still open: the kind of string follows the program, so a Steel Guitar sound on
+program 27 plays electric strings.
