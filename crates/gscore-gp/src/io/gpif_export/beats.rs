@@ -23,7 +23,9 @@ pub(super) fn build_beat_xml(
     chord_id: Option<i32>,
     next_note_id: &mut i32,
     prev_velocity: &mut i16,
-    tie_starts: impl Fn(i8) -> bool,
+    // For a string: whether a tie starts from its note, and whether a hammer-on or
+    // pull-off lands on it.
+    links: impl Fn(i8) -> (bool, bool),
 ) -> GpResult<BeatExport> {
     let mut note_xmls: Vec<String> = Vec::new();
     let mut note_ids: Vec<i32> = Vec::new();
@@ -35,7 +37,8 @@ pub(super) fn build_beat_xml(
         for note in &beat.notes {
             let note_id = next_id(next_note_id)?;
             note_ids.push(note_id);
-            note_xmls.push(build_note_xml(note, note_id, tie_starts(note.string)));
+            let (tie_origin, hopo_destination) = links(note.string);
+            note_xmls.push(build_note_xml(note, note_id, tie_origin, hopo_destination));
         }
     }
 
@@ -69,14 +72,13 @@ pub(super) fn build_beat_xml(
         bxml.push_str(&format!("<Notes>{}</Notes>", ids_str.join(" ")));
     }
 
-    // Dynamic (only when velocity changes)
-    if beat_velocity != *prev_velocity {
-        bxml.push_str(&format!(
-            "<Dynamic>{}</Dynamic>",
-            velocity_to_dynamic(beat_velocity)
-        ));
-        *prev_velocity = beat_velocity;
-    }
+    // GuitarScore fix: the dynamic on every beat, as Guitar Pro writes it (it was written
+    // only where it changed, and what Guitar Pro makes of a beat without one is unknown).
+    bxml.push_str(&format!(
+        "<Dynamic>{}</Dynamic>",
+        velocity_to_dynamic(beat_velocity)
+    ));
+    *prev_velocity = beat_velocity;
 
     // Free text
     if !beat.text.is_empty() {

@@ -294,39 +294,21 @@ const VERDICTS: &[(&str, Verdict)] = &[
         Verdict::Rebuilt("Guitar Pro's voice view when the file was saved"),
     ),
     (
-        "Note Property Muted",
-        Verdict::Known("dead notes: Guitar Pro writes Muted, GuitarScore writes Dead"),
-    ),
-    (
         "Note Property Tapped",
         Verdict::Known("tapping: Guitar Pro marks it on the note"),
     ),
     (
-        "Note Property HopoDestination",
-        Verdict::Known("the note a hammer-on or pull-off goes to"),
-    ),
-    (
-        "Note Property Harmonic",
-        Verdict::Known("the flag Guitar Pro sets on a harmonic note"),
-    ),
-    (
         "Note Property Bended",
-        Verdict::Known("the flag Guitar Pro sets on a bent note"),
+        Verdict::Known("a bend the writer leaves out (one file, not traced yet)"),
     ),
     (
         "Note <Enable>",
-        Verdict::Known("the flags of note properties (Muted, Bended, Harmonic, HopoDestination)"),
-    ),
-    (
-        "Beat <Dynamic>",
-        Verdict::Known(
-            "dynamics: Guitar Pro writes one on every beat, GuitarScore only where it changes",
-        ),
+        Verdict::Known("the flags of note properties not written yet (tapping)"),
     ),
     (
         "Beat dynamic *",
         Verdict::Known(
-            "dynamics: Guitar Pro writes one on every beat, GuitarScore only where it changes",
+            "the dynamic of some beats (a few hundred in a third of the files, not traced yet)",
         ),
     ),
     (

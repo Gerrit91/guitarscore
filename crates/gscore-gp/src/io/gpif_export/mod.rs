@@ -395,6 +395,10 @@ impl WriteGpifInGpifStringOrder for Song {
                 // Velocity persists across all measures/voices of a staff
                 let mut prev_velocity: i16 = FORTE;
                 let origins = TieOrigins::of(measures);
+                // By voice and string: whether the last note there starts a hammer-on or
+                // pull-off (the next note on that string is where it goes).
+                let mut hopo_from: std::collections::BTreeMap<(usize, i8), bool> =
+                    std::collections::BTreeMap::new();
 
                 for m_idx in 0..num_measures {
                     let bar_id = bar_id(first.saturating_add(s_idx), num_measures, m_idx)?;
@@ -438,6 +442,20 @@ impl WriteGpifInGpifStringOrder for Song {
                                 })
                                 .and_then(|index| i32::try_from(index).ok());
 
+                            let destinations: Vec<i8> = beat
+                                .notes
+                                .iter()
+                                .map(|note| note.string)
+                                .filter(|string| {
+                                    hopo_from.get(&(v_idx, *string)).copied().unwrap_or(false)
+                                })
+                                .collect();
+                            if beat.status == BeatStatus::Rest {
+                                hopo_from.retain(|(voice, _), _| *voice != v_idx);
+                            }
+                            for note in &beat.notes {
+                                hopo_from.insert((v_idx, note.string), note.effect.hammer);
+                            }
                             let export = build_beat_xml(
                                 beat,
                                 beat_id,
@@ -445,7 +463,12 @@ impl WriteGpifInGpifStringOrder for Song {
                                 chord_id,
                                 &mut next_note_id,
                                 &mut prev_velocity,
-                                |string| origins.starts(m_idx, v_idx, b_idx, string),
+                                |string| {
+                                    (
+                                        origins.starts(m_idx, v_idx, b_idx, string),
+                                        destinations.contains(&string),
+                                    )
+                                },
                             )?;
                             beats_xml.push(export.beat_xml);
                             rhythms_xml.push(export.rhythm_xml);

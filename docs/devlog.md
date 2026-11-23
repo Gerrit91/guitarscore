@@ -7014,3 +7014,10 @@ files: 85 known losses, among them dead notes (written as `Dead`, Guitar Pro rea
 note a hammer-on goes to, dynamics (Guitar Pro writes one on every beat), hairpins, wah,
 section letters, some lyrics and tempo changes, a track's sound changes, chord diagram
 libraries, fret counts and Guitar Pro's own playback settings.
+
+2026-11-23: the first losses the audit found, fixed in the GP7 writer: a dead note is
+written as `Muted` (as Guitar Pro writes and reads it; it was `Dead`), the note a
+hammer-on or pull-off goes to is marked (`HopoDestination`), bends and harmonics carry
+the flags Guitar Pro sets (`Bended`, `Harmonic`), and every beat has its dynamic (it was
+written only where it changed). Their verdicts are gone, so the test over the test files
+(which hold all four) fails if one comes back.
