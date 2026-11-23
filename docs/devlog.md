@@ -7021,3 +7021,12 @@ hammer-on or pull-off goes to is marked (`HopoDestination`), bends and harmonics
 the flags Guitar Pro sets (`Bended`, `Harmonic`), and every beat has its dynamic (it was
 written only where it changed). Their verdicts are gone, so the test over the test files
 (which hold all four) fails if one comes back.
+
+2026-11-24: more losses the save audit found, fixed in the GP7 reader and writer: tapping
+on the notes (as Guitar Pro writes it), a section's letter, hairpins, wah, wah variations, a
+held or flat whammy and a rasgueado's pattern (kept on the beat as written, `GpifBeatKept`),
+tempo changes inside a bar (on the beat that starts there, as GP3-5 keep them; playback
+already plays them; one at a bar's very end becomes the next bar's tempo), a rest's dynamic,
+and the typed lyrics of every track, not only the lyric track's. Over the owner's 69 files 64
+kinds of loss are left; `docs/save-audit-handover.md` lists them with an approach for each,
+for whoever continues.
