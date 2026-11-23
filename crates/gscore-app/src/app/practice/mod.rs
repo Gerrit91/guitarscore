@@ -278,6 +278,12 @@ impl GuitarScoreApp {
         let max = room.clamp(super::grid::MIXER_MIN_HEIGHT, super::grid::MIXER_MAX_HEIGHT);
         let kept = self.view.grid_mixer;
         self.view.grid_mixer = true;
+        // On a small screen the strips are compact: no meter scale, the sends behind a
+        // button.
+        let compact = ctx.content_rect().width() < drawer::FLOATING;
+        if let Some(tab) = self.tabs.get_mut(self.active) {
+            tab.mixer.compact = compact;
+        }
         let panel = egui::Panel::bottom("practice_mixer")
             .resizable(true)
             .min_size(super::grid::MIXER_MIN_HEIGHT)
@@ -290,6 +296,9 @@ impl GuitarScoreApp {
                     .show(ui, |ui| self.track_grid(ui));
             });
         self.view.grid_mixer = kept;
+        if let Some(tab) = self.tabs.get_mut(self.active) {
+            tab.mixer.compact = false;
+        }
         panel.response.rect.top()
     }
 
