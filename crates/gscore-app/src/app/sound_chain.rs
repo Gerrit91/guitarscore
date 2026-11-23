@@ -208,6 +208,8 @@ struct ChosenPreset {
     chain: ChainSetting,
     /// What plays the strings, when the tone names it (older ones do not).
     engine: Option<TrackEngine>,
+    /// The row it was chosen from, marked while the track plays it.
+    choice: super::tone_picker::PickerChoice,
 }
 
 impl ChosenPreset {
@@ -223,6 +225,10 @@ impl ChosenPreset {
             sound: preset.sound,
             chain: preset.chain.clone(),
             engine: Some(engine_from_id(&preset.engine).unwrap_or(TrackEngine::Modelled(target))),
+            choice: super::tone_picker::PickerChoice::Saved {
+                kind: preset.kind.clone(),
+                name: preset.name.clone(),
+            },
         }
     }
 }
@@ -473,6 +479,8 @@ struct ShownPreset {
     comparing: bool,
     /// The built-in or saved tone the track's tone was dialed in from, if known.
     basis: Option<String>,
+    /// The built-in or saved tone last chosen from a list for the track, if any.
+    chosen: Option<super::tone_picker::PickerChoice>,
 }
 
 /// The tone's buttons beside its dropdown: save (active once the tone changed; it saves
@@ -733,7 +741,8 @@ fn preset_row(
     actions: &mut Actions,
 ) {
     let (program, kind, clip) = (shown.program, shown.kind, shown.clip);
-    let current = super::tone_picker::current_tone_choice(tone, default_tone, presets);
+    let current =
+        super::tone_picker::current_tone_choice(tone, shown.chosen.as_ref(), default_tone, presets);
     // The saved tone being worked on, if one was chosen or saved for this preset.
     let working = window
         .preset
@@ -858,6 +867,7 @@ fn preset_row(
                         sound: built.tone.sound,
                         chain: built.tone.chain.clone(),
                         engine: Some(TrackEngine::Modelled(built.tone.kind)),
+                        choice: PickerChoice::BuiltIn(name.clone()),
                     });
                 }
             }
@@ -2789,6 +2799,11 @@ impl GuitarScoreApp {
                                                 .get(self.active)
                                                 .and_then(|tab| tab.tone_basis.get(&window.track))
                                                 .cloned(),
+                                            chosen: self
+                                                .tabs
+                                                .get(self.active)
+                                                .and_then(|tab| tab.tone_choice.get(&window.track))
+                                                .cloned(),
                                         },
                                         default_tone.as_deref(),
                                         &tone,
@@ -3215,6 +3230,7 @@ impl GuitarScoreApp {
         }
         // A saved tone: it carries both a string sound and a chain (and what plays them).
         if let Some(preset) = actions.preset {
+            self.remember_tone_choice(track, preset.choice);
             self.set_track_tone(
                 track,
                 Tone {

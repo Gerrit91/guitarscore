@@ -6829,6 +6829,12 @@ harmonics, its fundamental rings 3.5 s, and the palm-muted strike is darker. Thr
 amp the chugs' shape is closer to the DI's but 2-3 dB lighter in the bass; the owner found
 it better by ear (see `docs/guitar-modelling.md`).
 
+2026-11-22: the palm-muted hit's thud. The single-note chugs lacked "oomph" (owner): the
+DI's hit is a low-mid thud, some 8 dB over the note's body at 100-600 Hz for about 15 ms,
+the model's was thin and bright. A palm-muted pick on an electric now adds a 1.7 ms push
+to what the pickup hears and strikes darker; through the high-gain amp the chugs come
+closer to the DI's (bars 27-28 2.6 dB rms against 3.2, the bass -1.9 dB against -2.5).
+
 ## 2026-11-22: a track's pan after solo and unsolo
 
 Owner report: a guitar panned right came back hard left after it was soloed and unsoloed.
@@ -6876,3 +6882,30 @@ row's width now counts every column and the gaps inside spans, so the columns li
 again. Added a printer tile to the last row: it asks for a file and writes the PDF
 (printed score), as File › Export › PDF does. Checked at a phone's width with a temporary
 snapshot (not committed); `cargo xtask ci` and `cargo xtask web --smoke` pass.
+
+2026-11-22: the clicked tone is the marked one. Owner report: a saved tone clicked in the
+track panel often was not highlighted. Two causes: a saved tone from before the newer string
+knobs (inharmonicity, fretted sustain, treble corner) plays with its kind's values for them,
+but the picker compared the file's empty ones, so it matched nothing ("Unsaved tone"); and
+many built-in tones were imported from saved ones, so a saved tone lit up its built-in twin.
+The picker now compares a saved tone as it plays, and remembers per track the row last
+clicked (track panel or Sound chain window) while the track still plays it.
+
+2026-11-22: old saved tones get the newer knobs. A saved tone without inharmonicity,
+fretted sustain, treble corner or a pickup gets its kind's values when the settings load
+(what it already played with), and the settings file holds them from the next save, so
+the tone keeps its sound when the kind's defaults are fitted again. (`cargo xtask tones
+programs` already showed every imported tone's saved tone as changed before this.)
+
+2026-11-22: the chords refit. With H the chugs convinced the owner, the chords had "too
+many highs". H's chords are G's, its ring matches the DI through the same chain; its
+strike did not: thin (6-9 dB short in the bass in the first 50 ms) and fizzy (2-9 dB
+bright above 500 Hz, 15-30 through the clean amp), and its ring died too soon. Only the
+bridge mix moved that (pick, click, shape, losses and tone at most 2 dB each). Fitted
+through the clean, high-gain and lead chains: bridge 0.3, brilliance 4 s, level 0.23
+(error 12.7 to 5.1). Palm-muted and dead notes on a pickup keep their mix through a new
+knob, `palm_bridge` (0.93, levelled to the ringing mix at 500 Hz, "Palm bridge" in the
+Strings editor), so the chugs are unchanged; older sounds use their own bridge for it.
+Two tests now say what they measure (the palm's damping through one mix, the click above
+1 kHz); two new ones guard the palm mix and the fitted chugs. Listening set
+preview-fitted/ I and tone files "Refit X" outside the repo (see `docs/guitar-modelling.md`).

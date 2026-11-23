@@ -418,6 +418,7 @@ impl Writer {
             resonance,
             level,
             bridge,
+            palm_bridge,
             low_cut,
             second,
             detune,
@@ -457,6 +458,7 @@ impl Writer {
             inharmonicity,
             fretted_sustain,
             treble_corner,
+            palm_bridge,
         ] {
             self.f32(value);
         }
@@ -705,6 +707,7 @@ impl<'a> Reader<'a> {
             inharmonicity,
             fretted_sustain,
             treble_corner,
+            palm_bridge,
         ] = self.floats()?;
         Ok(StringModel {
             sustain,
@@ -719,6 +722,7 @@ impl<'a> Reader<'a> {
             resonance,
             level,
             bridge,
+            palm_bridge,
             low_cut,
             second,
             detune,

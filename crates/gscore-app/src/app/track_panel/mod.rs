@@ -253,8 +253,8 @@ impl GuitarScoreApp {
         if let Some(route) = sound_actions.midi_out {
             self.set_midi_out(index, route);
         }
-        if let Some(tone) = sound_actions.tone {
-            self.choose_track_tone(index, tone);
+        if let Some((choice, tone)) = sound_actions.tone {
+            self.choose_track_tone(index, choice, tone);
         }
         // The blocks of the chain, as the Sound section's rows edit them: the same tone
         // the Sound chain window edits, so an undo takes each change back.
@@ -622,8 +622,8 @@ fn instrument(
 struct SoundActions {
     engine: Option<gscore_play::TrackEngine>,
     midi_out: Option<crate::playback::MidiOutRoute>,
-    /// A tone chosen in the library, for this track alone.
-    tone: Option<Tone>,
+    /// A tone chosen in the library (the row and its tone), for this track alone.
+    tone: Option<(super::tone_picker::PickerChoice, Tone)>,
     /// A block row's mute: flip that block's bypass (its place).
     bypass: Option<usize>,
     /// A block row's trash can: empty that block's place.
@@ -858,9 +858,9 @@ fn tone_presets_section(
             );
             if let Some(choice) =
                 super::tone_picker::picker(ui, "track_tone_picker", "tone presets", &rows, picker)
-                && let Some(tone) = tone_of_choice(choice, &panel.saved)
+                && let Some(tone) = tone_of_choice(&choice, &panel.saved)
             {
-                actions.tone = Some(tone);
+                actions.tone = Some((choice, tone));
             }
         }
         gscore_play::TrackEngine::SoundFont | gscore_play::TrackEngine::MidiOut => {
@@ -892,24 +892,18 @@ fn choice_program(choice: &super::tone_picker::PickerChoice) -> Option<u8> {
 
 /// The tone a picker row chooses, from the built-in library or the user's saved tones.
 fn tone_of_choice(
-    choice: super::tone_picker::PickerChoice,
+    choice: &super::tone_picker::PickerChoice,
     saved: &[crate::settings::ChainPreset],
 ) -> Option<Tone> {
     use super::tone_picker::PickerChoice;
     match choice {
         PickerChoice::BuiltIn(name) => {
-            crate::tone_library::find(&name).map(|tone| tone.tone.clone())
+            crate::tone_library::find(name).map(|tone| tone.tone.clone())
         }
-        PickerChoice::Saved { kind, name } => {
-            let preset = saved
-                .iter()
-                .find(|preset| preset.kind == kind && preset.name == name)?;
-            Some(Tone {
-                kind: crate::settings::kind_from_id(&preset.kind)?,
-                sound: preset.sound,
-                chain: preset.chain.clone(),
-            })
-        }
+        PickerChoice::Saved { kind, name } => saved
+            .iter()
+            .find(|preset| preset.kind == *kind && preset.name == *name)
+            .and_then(super::tone_picker::saved_tone),
         PickerChoice::Program(_) | PickerChoice::DrumKit(_) => None,
     }
 }

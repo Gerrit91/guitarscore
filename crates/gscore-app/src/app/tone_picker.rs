@@ -388,9 +388,6 @@ const DRUM_KITS: [(u8, &str); 9] = [
     (56, "Sound effects"),
 ];
 
-/// The built-in or saved tone that exactly matches `tone`, if one does. Several built-in
-/// tones can have the same settings (every program has a tone of its own); then the one
-/// named `prefer` (the track's default) is the one, else the first.
 /// The name a track's tone shows under: the built-in or saved tone it is, else the one it
 /// was dialed in from with "(changed)", else "Unsaved tone".
 pub(super) fn tone_display_name(current: Option<&PickerChoice>, basis: Option<&str>) -> String {
@@ -401,21 +398,53 @@ pub(super) fn tone_display_name(current: Option<&PickerChoice>, basis: Option<&s
     }
 }
 
+/// The built-in or saved tone that exactly matches `tone`, if one does. Several tones can
+/// have the same settings (every program has a tone of its own, and many built-in tones
+/// were imported from saved ones); then `chosen` (the row last clicked for the track) is
+/// the one while it still matches, else the built-in tone named `prefer` (the track's
+/// default), else the first built-in, else the first saved one.
 pub(super) fn current_tone_choice(
     tone: &crate::chain_settings::Tone,
+    chosen: Option<&PickerChoice>,
     prefer: Option<&str>,
     saved: &[ChainPreset],
 ) -> Option<PickerChoice> {
-    current_tone_choice_of(tone, prefer, saved, tone_library::all())
+    current_tone_choice_of(tone, chosen, prefer, saved, tone_library::all())
+}
+
+/// The tone a saved one plays: a knob it was saved without (an older settings file) is its
+/// kind's, as playback fills it in.
+pub(super) fn saved_tone(preset: &ChainPreset) -> Option<crate::chain_settings::Tone> {
+    let kind = crate::settings::kind_from_id(&preset.kind)?;
+    Some(crate::chain_settings::Tone {
+        kind,
+        sound: preset.sound.for_kind(kind),
+        chain: preset.chain.clone(),
+    })
 }
 
 /// [`current_tone_choice`] with `built_in` as the built-in library.
 fn current_tone_choice_of(
     tone: &crate::chain_settings::Tone,
+    chosen: Option<&PickerChoice>,
     prefer: Option<&str>,
     saved: &[ChainPreset],
     built_in: &[tone_library::BuiltInTone],
 ) -> Option<PickerChoice> {
+    let is_saved = |preset: &&ChainPreset| saved_tone(preset).as_ref() == Some(tone);
+    let still_chosen = match chosen {
+        Some(PickerChoice::BuiltIn(name)) => built_in
+            .iter()
+            .any(|built| built.name == *name && built.tone == *tone),
+        Some(PickerChoice::Saved { kind, name }) => saved
+            .iter()
+            .filter(|preset| preset.kind == *kind && preset.name == *name)
+            .any(|preset| is_saved(&preset)),
+        _ => false,
+    };
+    if still_chosen {
+        return chosen.cloned();
+    }
     let mut matching = built_in.iter().filter(|built| built.tone == *tone);
     let first = matching.clone().next();
     if let Some(built_in) = matching
@@ -426,11 +455,7 @@ fn current_tone_choice_of(
     }
     saved
         .iter()
-        .find(|preset| {
-            preset.kind == crate::settings::kind_id(tone.kind)
-                && preset.sound == tone.sound
-                && preset.chain == tone.chain
-        })
+        .find(is_saved)
         .map(|preset| PickerChoice::Saved {
             kind: preset.kind.clone(),
             name: preset.name.clone(),
@@ -660,7 +685,7 @@ mod tests {
         let library = library();
         let tone = &library[1].tone;
         // Every tone of the test library has the same settings.
-        let named = |prefer| current_tone_choice_of(tone, prefer, &[], &library);
+        let named = |prefer| current_tone_choice_of(tone, None, prefer, &[], &library);
         assert_eq!(
             named(Some("Modern Metal Rhythm")),
             Some(PickerChoice::BuiltIn("Modern Metal Rhythm".to_owned()))
@@ -669,6 +694,87 @@ mod tests {
         assert_eq!(
             named(Some("Not in the library")),
             Some(PickerChoice::BuiltIn("Thump".to_owned()))
+        );
+    }
+
+    /// A saved electric tone with the electric's default sound, as an older settings file
+    /// keeps it: without the knobs added since.
+    fn old_saved(name: &str) -> ChainPreset {
+        let sound = StringSound {
+            inharmonicity: None,
+            fretted_sustain: None,
+            treble_corner: None,
+            ..StringSound::default()
+        };
+        ChainPreset {
+            name: name.to_owned(),
+            kind: "electric".to_owned(),
+            sound,
+            chain: crate::chain_settings::ChainSetting::default(),
+            engine: String::new(),
+        }
+    }
+
+    #[test]
+    fn a_saved_tone_without_the_newer_knobs_is_current_when_the_track_plays_it() {
+        let saved = old_saved("Old Lead");
+        // What the track plays once the saved tone is chosen: the knobs filled in.
+        let tone = saved_tone(&saved).expect("an electric tone");
+        assert_ne!(tone.sound, saved.sound, "the test needs knobs to fill in");
+        let saved_choice = PickerChoice::Saved {
+            kind: "electric".to_owned(),
+            name: "Old Lead".to_owned(),
+        };
+        assert_eq!(
+            current_tone_choice_of(&tone, None, None, std::slice::from_ref(&saved), &[]),
+            Some(saved_choice.clone())
+        );
+        assert_eq!(
+            current_tone_choice_of(
+                &tone,
+                Some(&saved_choice),
+                None,
+                std::slice::from_ref(&saved),
+                &[]
+            ),
+            Some(saved_choice)
+        );
+    }
+
+    #[test]
+    fn of_a_saved_and_a_built_in_tone_with_the_same_settings_the_clicked_one_is_current() {
+        let library = library();
+        let saved = vec![old_saved("Metal Guitar 1"), old_saved("Metal Guitar 2")];
+        // Every tone of the test library and both saved ones sound the same.
+        let tone = saved_tone(&saved[1]).expect("an electric tone");
+        assert_eq!(library[2].tone, tone);
+        let second = PickerChoice::Saved {
+            kind: "electric".to_owned(),
+            name: "Metal Guitar 2".to_owned(),
+        };
+        let current = |chosen: Option<&PickerChoice>| {
+            current_tone_choice_of(&tone, chosen, None, &saved, &library)
+        };
+        assert_eq!(current(Some(&second)), Some(second.clone()));
+        let built_in = PickerChoice::BuiltIn("Modern Metal Rhythm".to_owned());
+        assert_eq!(current(Some(&built_in)), Some(built_in));
+        // Nothing clicked: the built-in tone, as before.
+        assert_eq!(
+            current(None),
+            Some(PickerChoice::BuiltIn("Thump".to_owned()))
+        );
+        // The clicked tone no longer matches (the track's tone was changed since): the one
+        // that matches is current.
+        let mut changed = tone.clone();
+        changed.chain.output_db = 3.0;
+        let mut changed_saved = saved.clone();
+        changed_saved[0].chain.output_db = 3.0;
+        assert_eq!(
+            current_tone_choice_of(&changed, Some(&second), None, &changed_saved, &library),
+            Some(PickerChoice::Saved {
+                kind: "electric".to_owned(),
+                name: "Metal Guitar 1".to_owned(),
+            })
         );
     }
 

@@ -399,6 +399,59 @@ knob's middle darker than its heavy end. The palm mute needs a steeper loss filt
   these bars (110 Hz 37 dB down: the note above about it was wrong). A high E's palm-muted
   highs now come out about -53 dB against the open note's (measured: -46 at most).
 
+### The palm-muted hit's thud (2026-11-22)
+
+- **The owner:** the palm-muted power chords sound good now, the single-note hits "lack a
+  bit of the oomph".
+- **The DI's chug hit** (03 bar 27, first 15 ms, against the body's fundamental): +3 to
+  +9 dB at 95-1200 Hz and -18 at 2.4-4.8 kHz, gone to the body's balance within about
+  40 ms. The model's: -5 to 0 at 95-450 Hz and +9 at 1.2-2.4 kHz, a thin, bright hit; a
+  strike goes into the loop, so it cannot fade faster than the note.
+- **A thud:** a palm-muted pick on a magnetic pickup's string adds one push (a sine
+  period, like the click: `PickNoise::thud`) of 1.7 ms and 0.46 of the strike's
+  amplitude, most of it at 100-600 Hz, into what the pickup hears; the strike is 0.1 as
+  bright (the fit is flat below 0.2). Fitted to the first 80 ms by band: error 86 to 29;
+  the first 15 ms within 1-2 dB of the DI's up to 2.4 kHz. An acoustic's palm mute keeps
+  its strike (its attack would fall below the test's 0.6 of the open note's).
+- **Through the high-gain chain**, against the DI through the same chain: bars 27-28 rms
+  3.2 to 2.6 dB, 63-127 Hz -2.5 to -1.9, 1-4.5 kHz +1.9 to +1.1; both chug passages 2.8
+  to 2.5, the palm-muted chords 3.6 to 3.4.
+- **Known gap:** a palm-muted high E's highs come out about -57 dB against the open
+  note's (measured -46 at most): the palm is fitted on the low E only, not per pitch.
+
+### The chords refit: the bridge mix (2026-11-22)
+
+- **The owner:** with H the chugs are convincing, but the chords have too many highs;
+  the first chord does not sound good. B (the DI through the owner's own tone) is the
+  reference for a chord.
+- **Not the cab, not the palm:** H's chords are H's G (the palm refit does not touch a
+  ringing note). B is darker than C, H and the app's matched cab above 4.5 kHz (about
+  7 dB): the owner's own cab. Against C (the DI, same chain) H's ring is right; its strike
+  is not.
+- **The strike:** against the DI through the same chain, H's first 50 ms were 6-9 dB
+  short at 80-500 Hz and 2-9 dB too bright above 500 Hz (15-30 dB through the clean amp,
+  which does not compress), and the ring died too soon (dry: 80-200 Hz 6 dB short, single
+  notes 10 dB too far down by 2-4 s). Pick hardness, click, excitation shape, brilliance
+  and pickup tone each moved the dry strike by at most 2 dB; the bridge mix did it. The
+  owner's own tones (bridge 0.18) were dialed in there by ear.
+- **The fit:** to five strums (E, G, A5 down; E, G up) by band over 0-50 ms, 50-300 ms and
+  the ring (0.6-3 s), through the clean, high-gain and lead chains with the onsets taken
+  from the dry signals, and to the dry ring's absolute band levels: bridge 0.3 (was
+  0.93), brilliance 4 s (2.7), level 0.23 (0.35; 0.578 in the tones compared with the DI).
+  Error 12.7 to 5.1; the strike through the three amps 80-500 Hz -6.9 to -3.2 dB, 2-5 kHz
+  +7.8 to +2.3, 5-12 kHz +9.4 to +4.1; the dry ring within +3/-1 dB by band. Single notes:
+  how far down at 2-4 s, error 10.2 to 4.8 dB.
+- **The chugs keep theirs:** with the ringing mix they gained up to 3.5 dB at 40-80 Hz
+  through the high-gain amp and lost the hit's thud (-9.4 dB against the body, the DI's
+  +3 to +9). So a palm-muted or dead note on a string with a pickup is heard through its
+  own mix, `palm_bridge` (0.93 on the electric), levelled to the ringing mix's loudness at
+  500 Hz: the chugs through the high-gain chain differ from before by -53 dB. A sound
+  saved before the knob uses its own `bridge` for it, so it plays as it did.
+- **Known gaps:** the strike's first 50 ms still 3 dB short in the bass and 2-4 dB bright
+  above 2 kHz; dry, a palm-muted low E's fundamental is now about 10 dB under an open
+  one's (the DI: about the same), hidden through the amps; the clean amp's strike stays
+  the furthest off.
+
 ## The effect chain (2026-11-06)
 
 - **The board** (owner's design): per kind of string, six boxes in a fixed row joined by

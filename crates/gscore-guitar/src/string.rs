@@ -26,7 +26,7 @@ use std::f32::consts::{PI, TAU};
 use crate::filters::{Biquad, DcBlocker, Noise};
 use crate::model::StringModel;
 use crate::pick::{PickNoise, Tension};
-use crate::pickup::PickupComb;
+use crate::pickup::{Pickup, PickupComb};
 use crate::string_loop::{Loop, MAX_STIFFNESS_STAGES, Tuning, dispersion};
 
 /// A hammer-on or pull-off reaches its new pitch within this long, in seconds.
@@ -46,6 +46,8 @@ const SECOND_DECAY: f32 = 0.45;
 const SECOND_HIGH_DECAY: f32 = 0.6;
 /// The bridge force is scaled to the swing's level at this frequency, Hz.
 const BRIDGE_AT: f32 = 1_000.0;
+/// A palm-muted note's bridge mix is levelled to the ringing one's at this frequency, Hz.
+const PALM_BRIDGE_LEVEL_AT: f32 = 500.0;
 /// Quality of the low cut (Butterworth).
 const LOW_CUT_Q: f32 = 0.707;
 /// A palm-muted string's 60 dB decay times and how far up it keeps the harmonics, at the
@@ -70,10 +72,17 @@ const PALM_KEEPS: (f32, f32) = (6.4, 4.4);
 /// long as the fundamental, then nothing): a hand at the bridge damps each harmonic a
 /// little more than the one below (see `docs/guitar-modelling.md`).
 const PALM_SECTIONS: usize = 1;
-/// A palm-muted pick: its strike this much as bright and its click this much as loud (the
-/// hand on the strings takes the edge off the hit at once).
-const PALM_HARDNESS: f32 = 0.71;
+/// A palm-muted pick on a string a magnetic pickup hears (the owner's electric; an
+/// acoustic's palm mute keeps its strike): its strike this much as bright and its click
+/// this much as loud (the hand on the strings takes the edge off the hit at once).
+const PALM_HARDNESS: f32 = 0.1;
 const PALM_CLICK: f32 = 0.19;
+/// And its thud, the pick shoving the damped string at the pickup: one push of this level
+/// (against the strike's amplitude) and width (seconds), most of it at 100-600 Hz. Fitted
+/// with the strike's brightness to the first 80 ms of the owner's chugs (2026-11-22): a
+/// chug's hit is a low-mid thud (some 8 dB over the note's body at 100-600 Hz within
+/// 15 ms), gone within about 40 ms.
+const PALM_THUD: (f32, f32) = (0.46, 0.0017);
 /// A chug is played hard, and the hand takes energy out of the string from the start:
 /// the strike of a palm-muted note is this much stronger, so its low end is as full as an
 /// open note's.
@@ -159,6 +168,10 @@ pub struct StringVoice {
     /// The bridge's last input, for its force (the swing's change), and the force's scale.
     last: f32,
     bridge_scale: f32,
+    /// The bridge mix the note is heard through and its gain (set at each pick: a
+    /// palm-muted or dead note's own, levelled, on a string with a pickup).
+    mix: f32,
+    mix_gain: f32,
     /// Where a magnetic pickup hears the string.
     pickup: PickupComb,
     /// The body's or pickup's low cut and tone on the output.
@@ -212,6 +225,8 @@ impl StringVoice {
             dc: DcBlocker::new(sample_rate),
             last: 0.0,
             bridge_scale: 1.0 / (2.0 * (PI * BRIDGE_AT / sample_rate).sin()).max(1e-6),
+            mix: model.bridge,
+            mix_gain: 1.0,
             pickup: PickupComb::new(samples),
             low_cut: Biquad::highpass(sample_rate, model.low_cut, LOW_CUT_Q),
             tone: Biquad::lowpass(sample_rate, model.tone, model.resonance),
@@ -274,6 +289,7 @@ impl StringVoice {
     /// Changes the string model (the vibration goes on).
     pub fn set_model(&mut self, model: StringModel) {
         self.model = model.sanitized();
+        self.choose_mix();
         self.tone = self.tone.retuned(Biquad::lowpass(
             self.sample_rate,
             self.model.tone,
@@ -329,6 +345,7 @@ impl StringVoice {
         self.frequency = frequency;
         self.design_dispersion();
         self.set_damping(damping, true);
+        self.choose_mix();
         self.level = self.level_target;
         self.tension = Tension::default();
         let (amplitude, hardness, noise) = match pluck.attack {
@@ -350,7 +367,7 @@ impl StringVoice {
             (hardness * 0.3, click)
         } else if pluck.dead {
             (hardness * 0.5, click)
-        } else if pluck.palm_mute {
+        } else if pluck.palm_mute && self.model.pickup != Pickup::None {
             (hardness * PALM_HARDNESS, click * PALM_CLICK)
         } else {
             (hardness, click)
@@ -361,6 +378,9 @@ impl StringVoice {
         let amplitude = amplitude * velocity.powf(VELOCITY_LEVEL_EXPONENT);
         self.pick
             .start(amplitude * click * self.model.pick_noise, hardness);
+        if pluck.palm_mute && !pluck.dead && self.model.pickup != Pickup::None {
+            self.pick.thud(amplitude * PALM_THUD.0, PALM_THUD.1);
+        }
         if !pluck.dead && !pluck.harmonic {
             self.tension.strike(amplitude, self.model.attack_pitch);
         }
@@ -420,7 +440,7 @@ impl StringVoice {
         let pickup = self.model.pickup;
         let level_step = (self.level_target - self.level) / out.len() as f32;
         let second = self.model.second > 0.0;
-        let bridge = self.model.bridge;
+        let (bridge, mix_gain) = (self.mix, self.mix_gain);
         let picking = self.pick.is_active();
         let mut peak = 0.0_f32;
         for sample in out.iter_mut() {
@@ -448,7 +468,8 @@ impl StringVoice {
                 .tone
                 .process(self.low_cut.process(self.dc.process(heard)))
                 * self.level
-                * self.model.level;
+                * self.model.level
+                * mix_gain;
             peak = peak.max(out_sample.abs());
             *sample += out_sample;
         }
@@ -478,6 +499,32 @@ impl StringVoice {
     /// The pitch's offset from the note, in cents: the bend and the sharp start of a pluck.
     fn cents(&self) -> f32 {
         self.bend + self.tension.cents()
+    }
+
+    /// Chooses the bridge mix for the damping now: a palm-muted or dead note on a string
+    /// with a pickup is heard through the palm's, levelled to sound as loud as the ringing
+    /// mix around [`PALM_BRIDGE_LEVEL_AT`].
+    fn choose_mix(&mut self) {
+        let muted = matches!(
+            self.damping,
+            Damping::PalmMuted | Damping::PalmReleased | Damping::Dead
+        );
+        let (ringing, palm) = (self.model.bridge, self.model.palm_bridge);
+        (self.mix, self.mix_gain) = if muted && self.model.pickup != Pickup::None && palm != ringing
+        {
+            let level = |bridge: f32| self.mix_level(bridge);
+            (palm, level(ringing) / level(palm).max(1e-6))
+        } else {
+            (ringing, 1.0)
+        };
+    }
+
+    /// How loud the mix `bridge` is at [`PALM_BRIDGE_LEVEL_AT`]: the swing's share and the
+    /// force's (a quarter period later, scaled to the swing at [`BRIDGE_AT`]) added.
+    fn mix_level(&self, bridge: f32) -> f32 {
+        let force = (PI * PALM_BRIDGE_LEVEL_AT / self.sample_rate).sin()
+            / (PI * BRIDGE_AT / self.sample_rate).sin().max(1e-6);
+        (1.0 - bridge).hypot(bridge * force)
     }
 
     fn glide_samples(&self) -> usize {

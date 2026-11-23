@@ -1171,6 +1171,22 @@ fn the_track_panel_names_the_tone_and_marks_a_change() {
 }
 
 #[test]
+fn a_saved_tone_clicked_in_the_track_panel_is_the_current_one() {
+    // The saved tone leaves out most knobs, as one saved by an older version does.
+    let mut harness = app_with_saved_tone(testdata("basic/note_lengths.gp"));
+    pick_in_track_panel(&mut harness, SAVED_TONE, SAVED_TONE);
+    let tone_name = harness
+        .query_all_by_role(egui::accesskit::Role::Label)
+        .find(|node| node.accesskit_node().label().as_deref() == Some("Track tone"))
+        .and_then(|node| node.accesskit_node().value())
+        .expect("the track panel's tone row")
+        .to_string();
+    assert_eq!(tone_name, SAVED_TONE);
+    open_sound_chain(&mut harness);
+    assert_eq!(preset_shown(&harness), SAVED_TONE);
+}
+
+#[test]
 fn the_board_takes_the_arrows_delete_and_m_after_a_click() {
     use gscore_app::chain_settings::BlockChoice;
     use gscore_play::StringKind;
@@ -1436,16 +1452,21 @@ fn the_tone_table_folds_its_groups() {
     // The filter field lies over the first header: close it.
     harness.key_press(egui::Key::Escape);
     harness.run();
-    assert!(harness.query_by_label(SAVED_TONE).is_some());
+    // The tone's name above the table is the saved tone's too: count the row beside it.
+    let shown =
+        |harness: &Harness<'static, GuitarScoreApp>| harness.query_all_by_label(SAVED_TONE).count();
+    let open = shown(&harness);
+    assert!(open >= 1);
     harness.get_by_label("Group: Saved").click();
     harness.run();
-    assert!(
-        harness.query_by_label(SAVED_TONE).is_none(),
+    assert_eq!(
+        shown(&harness),
+        open - 1,
         "the group's rows are folded away"
     );
     harness.get_by_label("Group: Saved").click();
     harness.run();
-    assert!(harness.query_by_label(SAVED_TONE).is_some());
+    assert_eq!(shown(&harness), open);
 }
 
 #[test]

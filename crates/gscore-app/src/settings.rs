@@ -227,6 +227,10 @@ pub struct StringSound {
     /// the knob.
     #[serde(default)]
     pub treble_corner: Option<f32>,
+    /// The bridge mix of a palm-muted or dead note; a sound saved before the knob keeps
+    /// its own `bridge` for them, as it played then.
+    #[serde(default)]
+    pub palm_bridge: Option<f32>,
 }
 
 impl Default for StringSound {
@@ -263,6 +267,7 @@ impl From<gscore_guitar::StringModel> for StringSound {
             inharmonicity: Some(model.inharmonicity),
             fretted_sustain: Some(model.fretted_sustain),
             treble_corner: Some(model.treble_corner),
+            palm_bridge: Some(model.palm_bridge),
         }
     }
 }
@@ -294,6 +299,7 @@ impl StringSound {
             inharmonicity: self.inharmonicity.unwrap_or(0.0),
             fretted_sustain: self.fretted_sustain.unwrap_or(1.0),
             treble_corner: self.treble_corner.unwrap_or(0.0),
+            palm_bridge: self.palm_bridge.unwrap_or(self.bridge),
         }
         .sanitized()
     }
@@ -315,6 +321,10 @@ impl StringSound {
         }
         if self.treble_corner.is_none() {
             self.treble_corner = Some(preset.treble_corner);
+        }
+        // Not the kind's: a sound from before the knob plays its palm mutes as it did.
+        if self.palm_bridge.is_none() {
+            self.palm_bridge = Some(self.bridge);
         }
         self
     }
@@ -1219,6 +1229,12 @@ impl Settings {
         }
         for preset in &mut self.string_presets {
             preset.chain.sanitize();
+            // A tone saved before a string knob existed gets the value it plays with (its
+            // kind's), written into the file at the next save: it sounds the same, and it
+            // keeps sounding so when the kind's defaults are fitted again.
+            if let Some(kind) = kind_from_id(&preset.kind) {
+                preset.sound = preset.sound.for_kind(kind);
+            }
         }
         for part in &mut self.drum_parts {
             part.chain.sanitize();
@@ -1277,6 +1293,24 @@ mod tests {
         assert_eq!(sound.model().palm_mute, 0.9);
         sound.palm_mute = 7.0;
         assert_eq!(sound.model().palm_mute, 1.0);
+    }
+
+    #[test]
+    fn a_sound_saved_before_the_palm_bridge_plays_its_palm_mutes_as_it_did() {
+        use gscore_play::StringKind;
+        let sound = StringSound {
+            bridge: 0.18,
+            palm_bridge: None,
+            ..StringSound::default()
+        };
+        // Its own bridge mix for them, for any kind (not the electric preset's 0.93).
+        assert_eq!(sound.model().palm_bridge, 0.18);
+        let filled = sound.for_kind(StringKind::Electric);
+        assert_eq!(filled.palm_bridge, Some(0.18));
+        // The electric preset's own, as the settings keep it.
+        let electric = StringSound::from(gscore_audio::default_string_model(StringKind::Electric));
+        assert_eq!(electric.palm_bridge, Some(0.93));
+        assert_eq!(electric.model().palm_bridge, 0.93);
     }
 
     #[test]
@@ -1419,6 +1453,41 @@ mod tests {
                 .count(),
             1
         );
+    }
+
+    #[test]
+    fn a_saved_tone_from_before_the_newer_string_knobs_gets_its_kinds_values() {
+        use gscore_play::StringKind;
+        let mut settings: Settings = serde_json::from_value(serde_json::json!({
+            "string_presets": [
+                { "name": "Old Lead", "kind": "electric", "sound": { "level": 0.3 } },
+                {
+                    "name": "Own Corner",
+                    "kind": "electric",
+                    "sound": { "level": 0.3, "treble_corner": 800.0 },
+                },
+            ],
+        }))
+        .expect("the settings");
+        let old = settings.string_presets[0].sound;
+        assert_eq!(old.treble_corner, None);
+        settings.sanitize();
+        let electric = gscore_audio::default_string_model(StringKind::Electric);
+        let filled = settings.string_presets[0].sound;
+        assert_eq!(
+            filled,
+            old.for_kind(StringKind::Electric),
+            "it plays the same"
+        );
+        assert_eq!(filled.treble_corner, Some(electric.treble_corner));
+        assert_eq!(filled.inharmonicity, Some(electric.inharmonicity));
+        assert_eq!(filled.fretted_sustain, Some(electric.fretted_sustain));
+        assert_ne!(filled.pickup, PickupSetting::Unset);
+        // A knob the tone was saved with stays its own; the file holds the values now.
+        assert_eq!(settings.string_presets[1].sound.treble_corner, Some(800.0));
+        let text = serde_json::to_string(&settings).expect("the settings as JSON");
+        let back: Settings = serde_json::from_str(&text).expect("read back");
+        assert_eq!(back.string_presets[0].sound, filled);
     }
 
     #[test]
