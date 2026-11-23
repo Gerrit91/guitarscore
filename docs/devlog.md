@@ -6909,3 +6909,7 @@ Strings editor), so the chugs are unchanged; older sounds use their own bridge f
 Two tests now say what they measure (the palm's damping through one mix, the click above
 1 kHz); two new ones guard the palm mix and the fitted chugs. Listening set
 preview-fitted/ I and tone files "Refit X" outside the repo (see `docs/guitar-modelling.md`).
+
+2026-11-23: a dark score tile in the practice view's drawer (owner's wish): a crescent
+moon, lit while the score page is dark; a tap switches the page between light and dark,
+as the View menu does. It sits in the last row, beside the browser's own tiles.

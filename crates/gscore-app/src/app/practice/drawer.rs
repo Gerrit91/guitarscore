@@ -53,6 +53,7 @@ pub(super) enum Item {
     ScreenOn,
     FullInterface,
     ByWidth,
+    DarkScore,
 }
 
 /// The rows of tiles, each with how many columns it spans; a row is only as wide as the
@@ -80,7 +81,11 @@ const LAYOUT: &[&[(Item, usize)]] = &[
         (Item::Print, 1),
         (Item::FullInterface, 1),
     ],
-    &[(Item::ScreenOn, 1), (Item::ByWidth, 1)],
+    &[
+        (Item::DarkScore, 1),
+        (Item::ScreenOn, 1),
+        (Item::ByWidth, 1),
+    ],
 ];
 
 impl GuitarScoreApp {
@@ -161,7 +166,8 @@ impl GuitarScoreApp {
             | Item::Save
             | Item::Open
             | Item::Print
-            | Item::FullInterface => true,
+            | Item::FullInterface
+            | Item::DarkScore => true,
         }
     }
 
@@ -330,6 +336,17 @@ impl GuitarScoreApp {
                 }
             }
             Item::ScreenOn => self.practice_screen_on(ui, rect),
+            Item::DarkScore => {
+                let dark = self.view.theme == crate::state::ThemeChoice::Dark;
+                let look = Tile::switch(ui, dark);
+                if tile_button(ui, rect, Icon::Moon, "Dark score", &look).clicked() {
+                    self.view.theme = if dark {
+                        crate::state::ThemeChoice::Light
+                    } else {
+                        crate::state::ThemeChoice::Dark
+                    };
+                }
+            }
             Item::ByWidth => {
                 if tile_button(
                     ui,

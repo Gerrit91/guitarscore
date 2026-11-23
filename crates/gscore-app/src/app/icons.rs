@@ -95,6 +95,8 @@ pub(crate) enum Icon {
     Rename,
     /// What the score shows (an eye).
     Eye,
+    /// A dark score page (a crescent moon).
+    Moon,
     /// The transposition (a tuning fork).
     TuningFork,
     /// A tuner (a sound wave).
@@ -922,6 +924,28 @@ pub(crate) fn paint(painter: &Painter, rect: Rect, color: Color32, icon: Icon) {
                 ));
             }
             painter.circle_filled(center, size * 0.17, color);
+        }
+        Icon::Moon => {
+            // A crescent: the outline of a disc with a second, equal disc bitten out of
+            // its upper right.
+            let r = size * 0.42;
+            let towards = -std::f32::consts::FRAC_PI_4;
+            let bite = 0.9 * r;
+            let opening = (bite / (2.0 * r)).acos();
+            let inner = center + vec2(towards.cos(), towards.sin()) * bite;
+            let at = |c: Pos2, angle: f32| c + vec2(angle.cos(), angle.sin()) * r;
+            let steps = 24;
+            let mut points = Vec::with_capacity(2 * steps + 2);
+            let (from, to) = (towards + opening, towards + std::f32::consts::TAU - opening);
+            for i in 0..=steps {
+                points.push(at(center, from + (to - from) * i as f32 / steps as f32));
+            }
+            let back = towards + std::f32::consts::PI;
+            let (from, to) = (back + opening, back - opening);
+            for i in 1..steps {
+                points.push(at(inner, from + (to - from) * i as f32 / steps as f32));
+            }
+            painter.add(Shape::closed_line(points, stroke));
         }
         Icon::Filter => {
             // A magnifying glass, the clearest small sign for narrowing a list: drawn from
