@@ -283,6 +283,13 @@ pub(super) fn convert_beat(
     s_beat.kept.wah.clone_from(&g_beat.wah);
     s_beat.kept.variation.clone_from(&g_beat.variation);
     s_beat.kept.whammy_extend = g_beat.whammy_extend.is_some();
+    if g_beat
+        .notes
+        .as_deref()
+        .is_none_or(|ids| ids.trim().is_empty())
+    {
+        s_beat.kept.rest_dynamic.clone_from(&g_beat.dynamic);
+    }
     if s_beat.effect.tremolo_bar.is_none()
         && let (Some(origin), Some(destination)) = (whammy_origin, whammy_destination)
     {

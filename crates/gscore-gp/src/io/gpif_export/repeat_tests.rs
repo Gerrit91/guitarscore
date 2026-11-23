@@ -182,6 +182,7 @@ fn kept_beat_elements_and_section_letters_round_trip_through_gpif() {
         whammy_extend: true,
         flat_whammy: true,
         rasgueado: Some("amii_1".to_owned()),
+        rest_dynamic: None,
     };
     first_beat(&mut song).kept = kept.clone();
     first_beat(&mut song).effect.has_rasgueado = true;

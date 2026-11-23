@@ -234,6 +234,8 @@ pub struct GpifBeatKept {
     pub flat_whammy: bool,
     /// The pattern of a `Rasgueado` property (`amii_1`).
     pub rasgueado: Option<String>,
+    /// A rest's `<Dynamic>` (a rest has no notes to carry one).
+    pub rest_dynamic: Option<String>,
 }
 
 impl Default for Beat {

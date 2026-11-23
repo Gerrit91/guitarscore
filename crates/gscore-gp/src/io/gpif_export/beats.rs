@@ -80,10 +80,19 @@ pub(super) fn build_beat_xml(
 
     // GuitarScore fix: the dynamic on every beat, as Guitar Pro writes it (it was written
     // only where it changed, and what Guitar Pro makes of a beat without one is unknown).
-    bxml.push_str(&format!(
-        "<Dynamic>{}</Dynamic>",
-        velocity_to_dynamic(beat_velocity)
-    ));
+    // A rest keeps the dynamic it was read with (it has no notes to carry one).
+    match beat
+        .kept
+        .rest_dynamic
+        .as_deref()
+        .filter(|_| beat.notes.is_empty())
+    {
+        Some(dynamic) => bxml.push_str(&format!("<Dynamic>{}</Dynamic>", escape_xml(dynamic))),
+        None => bxml.push_str(&format!(
+            "<Dynamic>{}</Dynamic>",
+            velocity_to_dynamic(beat_velocity)
+        )),
+    }
     *prev_velocity = beat_velocity;
     // GuitarScore addition: what nothing here uses yet, as Guitar Pro wrote it.
     let kept = &beat.kept;

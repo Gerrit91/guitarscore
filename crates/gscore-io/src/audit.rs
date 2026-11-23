@@ -301,12 +301,6 @@ const VERDICTS: &[(&str, Verdict)] = &[
         "Note Property Bended",
         Verdict::Known("a bend the writer leaves out (one file, not traced yet)"),
     ),
-    (
-        "Beat dynamic *",
-        Verdict::Known(
-            "the dynamic of some beats (a few hundred in a third of the files, not traced yet)",
-        ),
-    ),
     ("MasterBar <Length>", Verdict::Known("a bar's own length")),
     (
         "Lyrics text",
