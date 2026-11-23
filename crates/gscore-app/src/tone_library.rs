@@ -343,15 +343,50 @@ pub(crate) fn for_program(program: u8, kind: StringKind) -> Option<&'static Buil
 }
 
 /// The built-in tone a track with Guitar Pro's RSE sound `key` (see
-/// [`crate::rse_sound::key`]) starts on, if the library maps that sound to one.
+/// [`crate::rse_sound::key`]) starts on: the one the library maps that sound to, else the
+/// tone of the program the sound's instrument stands for (see [`rse_program`]).
 pub(crate) fn for_rse(key: &str) -> Option<&'static BuiltInTone> {
     LIBRARY.for_rse(key)
 }
 
+/// The General MIDI program Guitar Pro's RSE sound `key` (`Distortion Guitar/Lead`) stands
+/// for, by its instrument and a hint in the sound's name, if it is a guitar or bass sound
+/// GuitarScore knows. Guitar Pro 7 files often keep one program (27, a clean electric) on
+/// every guitar whatever sound it was given, so the sound tells more than the program.
+pub(crate) fn rse_program(key: &str) -> Option<u8> {
+    let (instrument, sound) = key.split_once('/').unwrap_or((key, ""));
+    let sound = sound.to_lowercase();
+    let has = |word: &str| sound.contains(word);
+    Some(match instrument.trim().to_lowercase().as_str() {
+        "nylon guitar" | "classical guitar" => 24,
+        "steel guitar" | "acoustic guitar" | "12-string guitar" => 25,
+        "jazz guitar" => 26,
+        "clean guitar" if has("jazz") => 26,
+        "clean guitar" => 27,
+        "muted guitar" => 28,
+        "overdrive guitar" | "crunch guitar" => 29,
+        "distortion guitar" if has("lead") || has("harmonic") => 31,
+        "distortion guitar" => 30,
+        "acoustic bass" | "upright bass" => 32,
+        "clean bass" if has("pick") => 34,
+        "clean bass" => 33,
+        "fretless bass" => 35,
+        "slap bass" => 36,
+        "crunch bass" | "distortion bass" | "overdrive bass" | "synth bass" => 38,
+        _ => return None,
+    })
+}
+
 impl Library {
     fn for_rse(&self, key: &str) -> Option<&BuiltInTone> {
-        let name = self.rse.get(key)?;
-        self.tones.iter().find(|tone| &tone.name == name)
+        let mapped = self
+            .rse
+            .get(key)
+            .and_then(|name| self.tones.iter().find(|tone| &tone.name == name));
+        mapped.or_else(|| {
+            let name = self.programs.get(&rse_program(key)?)?;
+            self.tones.iter().find(|tone| &tone.name == name)
+        })
     }
 
     fn for_program(&self, program: u8, kind: StringKind) -> Option<&BuiltInTone> {
@@ -463,6 +498,7 @@ fn compressor(
 
 #[cfg(test)]
 mod tests {
+
     #![allow(clippy::unwrap_used)]
 
     use super::*;
@@ -616,10 +652,40 @@ mod tests {
         assert_eq!(name(27, StringKind::Electric), None);
         assert_eq!(name(34, StringKind::Bass), None);
         // A Guitar Pro sound the library maps names its tone; an unmapped one, or one
-        // mapped to a tone that is gone, has none.
+        // mapped to a tone that is gone, the tone of its instrument's program; a sound of
+        // an instrument GuitarScore does not know, none.
         let rse = |key| library.for_rse(key).map(|tone| tone.name.as_str());
         assert_eq!(rse("Distortion Guitar/Lead"), Some("Lead"));
-        assert_eq!(rse("Distortion Guitar/Fuzz"), None);
-        assert_eq!(rse("Clean Bass/Rock"), None);
+        assert_eq!(rse("Distortion Guitar/Fuzz"), Some("Lead"));
+        assert_eq!(rse("Clean Bass/Rock"), Some("Finger"));
+        assert_eq!(rse("Clean Guitar/Chorus"), None);
+        assert_eq!(rse("Singer/Singer"), None);
+    }
+
+    #[test]
+    fn a_guitar_pro_sound_stands_for_its_instruments_program() {
+        use super::rse_program;
+        // The sounds of the owner's files (2026-11-23): one program, 27, on every guitar.
+        for (key, program) in [
+            ("Distortion Guitar/Distortion", Some(30)),
+            ("Distortion Guitar/Rhythm", Some(30)),
+            ("Distortion Guitar/Fuzz", Some(30)),
+            ("Distortion Guitar/Lead", Some(31)),
+            ("Distortion Guitar/Lead Gary", Some(31)),
+            ("Distortion Guitar/Guitar Harmonics", Some(31)),
+            ("Overdrive Guitar/Delay", Some(29)),
+            ("Clean Guitar/Clean Strat", Some(27)),
+            ("Clean Guitar/Jazz", Some(26)),
+            ("Steel Guitar/Fingers", Some(25)),
+            ("Nylon Guitar/Flamenco", Some(24)),
+            ("Clean Bass/Rock", Some(33)),
+            ("Clean Bass/Electric Bass (pick)", Some(34)),
+            ("Crunch Bass/Stoner", Some(38)),
+            ("Slap Bass/Chorus", Some(36)),
+            ("Singer/Singer", None),
+            ("Drumkit", None),
+        ] {
+            assert_eq!(rse_program(key), program, "{key}");
+        }
     }
 }

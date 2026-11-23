@@ -6909,3 +6909,14 @@ Strings editor), so the chugs are unchanged; older sounds use their own bridge f
 Two tests now say what they measure (the palm's damping through one mix, the click above
 1 kHz); two new ones guard the palm mix and the fitted chugs. Listening set
 preview-fitted/ I and tone files "Refit X" outside the repo (see `docs/guitar-modelling.md`).
+
+2026-11-23: a Guitar Pro sound picks its tone by its instrument. Owner report: in a song
+from Guitar Pro (the owner's "The Shelter") every guitar started on the same tone. The
+file keeps program 27 (clean electric) on all seven guitars, whatever sound each was
+given (Distortion, Lead, Fuzz, Clean Strat, Steel Guitar...), and the tone library maps
+no Guitar Pro sound yet, so each fell back to program 27's tone. Now a sound the library
+does not map starts on the tone of the program its instrument stands for (Distortion
+Guitar 30, its Lead sounds 31, Overdrive 29, Clean 27, Steel 25, Clean Bass 33, a pick
+bass 34, Crunch Bass 38, Slap Bass 36, ...); a mapping still wins, `tones rse` shows
+which. Still open: the kind of string follows the program, so a Steel Guitar sound on
+program 27 plays electric strings.
