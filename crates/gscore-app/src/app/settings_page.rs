@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use egui::{RichText, Sense, Ui};
 use gscore_edit::Command;
-use gscore_layout::{Fonts, Layout, LayoutCache, LayoutOptions, Theme};
+use gscore_layout::{Fonts, Layout, LayoutCache, LayoutOptions, MusicFontChoice, Theme};
 use gscore_model::{
     MAX_MARGIN_MM, PAGE_SIZE_MM, PageSetup, PaperSize, SCALE_RANGE, Song, TrackIndex,
 };
@@ -135,7 +135,7 @@ fn fields(ui: &mut Ui, setup: &mut PageSetup) {
 const PREVIEW_WIDTH: f32 = 230.0;
 
 /// The first page as the draft would print it, scaled to fit the preview's width.
-fn preview_panel(ui: &mut Ui, layout: Option<&Layout>, valid: bool) {
+fn preview_panel(ui: &mut Ui, layout: Option<&Layout>, valid: bool, music: MusicFontChoice) {
     ui.label(RichText::new("Preview").weak());
     let page = layout.and_then(|layout| layout.pages.first().map(|page| (layout, *page)));
     let Some((layout, page)) = page.filter(|_| valid) else {
@@ -174,6 +174,7 @@ fn preview_panel(ui: &mut Ui, layout: Option<&Layout>, valid: bool) {
         zoom,
         rect,
         canvas::Surface::Pages,
+        music,
     );
     ui.label(
         RichText::new(format!("Page 1 of {}", layout.pages.len()))
@@ -187,11 +188,12 @@ fn preview_panel(ui: &mut Ui, layout: Option<&Layout>, valid: bool) {
 #[derive(Debug, Default)]
 pub(super) struct PagePreview {
     cache: LayoutCache,
-    shown: Option<(PageSetup, usize, u64, Arc<Layout>)>,
+    shown: Option<(PageSetup, usize, u64, MusicFontChoice, Arc<Layout>)>,
 }
 
 impl PagePreview {
     /// The pages of `track` (editor `revision`) laid out with `setup` on top of `base`.
+    #[allow(clippy::too_many_arguments)]
     pub(super) fn layout(
         &mut self,
         song: &Song,
@@ -200,10 +202,14 @@ impl PagePreview {
         setup: PageSetup,
         base: &LayoutOptions,
         fonts: &Fonts,
+        music: MusicFontChoice,
     ) -> Option<Arc<Layout>> {
-        let fresh = self.shown.as_ref().is_some_and(|(shown, at, done, _)| {
-            *shown == setup && *at == track && *done == revision
-        });
+        let fresh = self
+            .shown
+            .as_ref()
+            .is_some_and(|(shown, at, done, font, _)| {
+                *shown == setup && *at == track && *done == revision && *font == music
+            });
         if !fresh {
             let options = base.clone().with_page_setup(&setup).on_pages();
             let cache = &mut self.cache;
@@ -216,11 +222,11 @@ impl PagePreview {
                 self.shown = None;
                 return None;
             };
-            self.shown = Some((setup, track, revision, Arc::new(layout)));
+            self.shown = Some((setup, track, revision, music, Arc::new(layout)));
         }
         self.shown
             .as_ref()
-            .map(|(_, _, _, layout)| Arc::clone(layout))
+            .map(|(_, _, _, _, layout)| Arc::clone(layout))
     }
 }
 
@@ -230,6 +236,7 @@ pub(super) fn page_tab(
     page: &mut PageDraft,
     preview: Option<&Layout>,
     has_song: bool,
+    music: MusicFontChoice,
     apply: &mut bool,
     close: &mut bool,
 ) {
@@ -240,7 +247,7 @@ pub(super) fn page_tab(
     ui.horizontal_top(|ui| {
         ui.vertical(|ui| fields(ui, setup));
         ui.add_space(16.0);
-        ui.vertical(|ui| preview_panel(ui, preview, setup.check().is_ok()));
+        ui.vertical(|ui| preview_panel(ui, preview, setup.check().is_ok(), music));
     });
     let problem = setup.check().err();
     if let Some(problem) = &problem {
@@ -277,26 +284,33 @@ mod tests {
         let base = LayoutOptions::default();
         let mut preview = PagePreview::default();
         let a4 = PageSetup::default();
-        let first = preview.layout(&song, 1, 0, a4, &base, &fonts).unwrap();
-        let again = preview.layout(&song, 1, 0, a4, &base, &fonts).unwrap();
+        let bravura = MusicFontChoice::Bravura;
+        let first = preview
+            .layout(&song, 1, 0, a4, &base, &fonts, bravura)
+            .unwrap();
+        let again = preview
+            .layout(&song, 1, 0, a4, &base, &fonts, bravura)
+            .unwrap();
         assert!(
             Arc::ptr_eq(&first, &again),
             "nothing changed: the same layout"
         );
         let landscape = preview
-            .layout(&song, 1, 0, a4.turned(), &base, &fonts)
+            .layout(&song, 1, 0, a4.turned(), &base, &fonts, bravura)
             .unwrap();
         assert!(landscape.pages[0].width > landscape.pages[0].height);
         assert!(landscape.pages.len() >= first.pages.len());
         let edited = preview
-            .layout(&song, 2, 0, a4.turned(), &base, &fonts)
+            .layout(&song, 2, 0, a4.turned(), &base, &fonts, bravura)
             .unwrap();
         assert!(
             !Arc::ptr_eq(&landscape, &edited),
             "an edit lays it out again"
         );
         assert!(
-            preview.layout(&song, 2, 7, a4, &base, &fonts).is_none(),
+            preview
+                .layout(&song, 2, 7, a4, &base, &fonts, bravura)
+                .is_none(),
             "no track 8"
         );
     }

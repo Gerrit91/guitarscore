@@ -13,6 +13,8 @@
 
 mod common;
 
+#[cfg(feature = "extra-music-fonts")]
+use gscore_layout::MusicFontChoice;
 use gscore_layout::{Fonts, Layout, LayoutOptions, PdfFonts, Theme, layout_track, to_pdf};
 use gscore_model::TrackIndex;
 use gscore_model::testing::{self, GUITAR_6};
@@ -76,6 +78,39 @@ fn every_page_becomes_an_a4_pdf_page_with_embedded_fonts() {
         // Subsets: far smaller than the 2.4 MB of font files.
         assert!(pdf.len() < 400_000, "{what}: {} bytes", pdf.len());
     }
+}
+
+/// A font that lacks a glyph the score uses gets Bravura embedded beside it, just for that
+/// glyph (Leland has no white diamond harmonic head).
+#[cfg(feature = "extra-music-fonts")]
+#[test]
+fn a_font_missing_glyphs_embeds_bravura_for_them() {
+    let song = common::open("basic/ornaments.gp");
+    let music = MusicFontChoice::Leland;
+    let options = LayoutOptions::default()
+        .with_page_setup(&song.page_setup())
+        .on_pages();
+    let layout = layout_track(
+        &song,
+        TrackIndex::new(0),
+        &options,
+        &Fonts::with_music(music).unwrap(),
+    )
+    .unwrap();
+    let pdf = to_pdf(
+        &layout,
+        &Theme::LIGHT,
+        options.staff_space_mm,
+        &PdfFonts::with_music(music),
+        song.title(),
+    )
+    .unwrap();
+    assert!(count(&pdf, b"GSCORE+Leland") > 0, "the chosen font");
+    assert!(
+        count(&pdf, b"GSCORE+Bravura") > 0,
+        "the glyphs Leland lacks"
+    );
+    assert_eq!(count(&pdf, b"/FontFile3"), 2, "two music subsets");
 }
 
 #[test]

@@ -30,6 +30,7 @@ mod header;
 mod marks;
 mod measure;
 mod metrics;
+mod music_font;
 mod notation;
 mod options;
 mod ornaments;
@@ -59,11 +60,12 @@ pub use glyph::{Digit, Flag, Glyph};
 use gscore_model::VoiceIndex;
 pub use header::HeaderText;
 pub use metrics::{EngravingDefaults, GlyphBox, MusicFont, TextMetrics};
+pub use music_font::MusicFontChoice;
 pub use options::{EmptyStaves, LayoutOptions, Spacing};
 pub use pdf::{PdfFonts, to_pdf};
 pub use place::{BeatPlace, Hit, MeasurePlace, Places, SystemPlace};
 pub use score_mark::{ScoreMark, ScoreMarkKind};
-pub use svg::to_svg;
+pub use svg::{to_svg, to_svg_with_music};
 pub use theme::{Rgb, Theme};
 
 use measure::MeasureLayout;
@@ -92,8 +94,13 @@ pub struct Fonts {
 impl Fonts {
     /// The bundled fonts: Bravura and Noto Sans.
     pub fn bundled() -> Result<Self, LayoutError> {
+        Self::with_music(MusicFontChoice::Bravura)
+    }
+
+    /// The bundled fonts with the music font `music`.
+    pub fn with_music(music: MusicFontChoice) -> Result<Self, LayoutError> {
         Ok(Fonts {
-            music: MusicFont::bravura()?,
+            music: music.metrics()?,
             text: TextMetrics::NOTO_SANS,
         })
     }

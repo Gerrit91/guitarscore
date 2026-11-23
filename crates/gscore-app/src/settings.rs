@@ -757,6 +757,9 @@ pub enum FileSelection {
 pub struct Settings {
     /// Light or dark.
     pub theme: crate::state::ThemeChoice,
+    /// The music font's id (`bravura`, `petaluma` or `leland`); `bravura` if this build does
+    /// not bundle it.
+    pub music_font: String,
     /// Zoom factor; 1 is normal.
     pub zoom: f32,
     /// Size of the whole interface (menus, panels, icons); 1 is normal.
@@ -917,6 +920,7 @@ impl Default for Settings {
     fn default() -> Self {
         Settings {
             theme: crate::state::ThemeChoice::Light,
+            music_font: gscore_layout::MusicFontChoice::Bravura.id().to_owned(),
             zoom: 1.0,
             interface_zoom: 1.0,
             show_track_grid: true,
@@ -1000,6 +1004,7 @@ impl Settings {
     /// Takes the view state's theme, zoom and panel visibility.
     pub fn update_from_view(&mut self, view: &ViewState) {
         self.theme = view.theme;
+        self.music_font = view.music_font.id().to_owned();
         self.zoom = view.zoom();
         self.interface_zoom = view.interface_zoom();
         self.show_track_grid = view.show_track_grid;
@@ -1017,6 +1022,7 @@ impl Settings {
     /// Applies the stored theme, zoom and panel visibility to `view`.
     pub fn apply_to_view(&self, view: &mut ViewState) {
         view.theme = self.theme;
+        view.music_font = gscore_layout::MusicFontChoice::from_id(&self.music_font);
         view.set_zoom(self.zoom);
         view.set_interface_zoom(self.interface_zoom);
         view.show_track_grid = self.show_track_grid;
@@ -1116,6 +1122,11 @@ impl Settings {
     /// Makes the loaded values safe: finite zoom and sizes, a sane autosave interval, and
     /// no nonsense window rectangles.
     pub fn sanitize(&mut self) {
+        // An id this build does not know, or a font it does not bundle (the browser's build
+        // has Bravura only), falls back to Bravura.
+        self.music_font = gscore_layout::MusicFontChoice::from_id(&self.music_font)
+            .id()
+            .to_owned();
         if self
             .sample_rate
             .is_some_and(|rate| !crate::playback::SAMPLE_RATES.contains(&rate))

@@ -1,6 +1,7 @@
 //! The view state: plain data that says how the document is shown (theme, zoom, track).
 //! Kept separate from the widgets so it can be saved, restored and tested.
 
+use gscore_layout::MusicFontChoice;
 use serde::{Deserialize, Serialize};
 
 /// Which color theme the app uses.
@@ -188,6 +189,8 @@ pub(crate) const GRID_TRACK_COLUMN_RANGE: (f32, f32) = (300.0, 900.0);
 pub struct ViewState {
     /// Color theme.
     pub theme: ThemeChoice,
+    /// The music font the score is drawn with.
+    pub music_font: MusicFontChoice,
     /// Zoom factor; 1.0 is the normal size.
     zoom: f32,
     /// The size of the whole interface (menus, panels, icons); 1.0 is the normal size.
@@ -223,6 +226,7 @@ impl Default for ViewState {
     fn default() -> Self {
         ViewState {
             theme: ThemeChoice::Light,
+            music_font: MusicFontChoice::Bravura,
             zoom: 1.0,
             interface_zoom: 1.0,
             show_track_grid: true,

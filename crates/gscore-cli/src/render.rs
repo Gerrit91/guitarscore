@@ -5,7 +5,8 @@ use std::path::Path;
 
 use clap::ValueEnum;
 use gscore_layout::{
-    EmptyStaves, Fonts, LayoutOptions, PdfFonts, Theme, layout_tracks, to_pdf, to_svg,
+    EmptyStaves, Fonts, LayoutOptions, MusicFontChoice, PdfFonts, Theme, layout_tracks, to_pdf,
+    to_svg_with_music,
 };
 use gscore_model::TrackIndex;
 
@@ -29,6 +30,27 @@ impl ThemeArg {
     }
 }
 
+/// The music font, as given on the command line.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub(crate) enum MusicFontArg {
+    /// Steinberg's engraved reference font
+    Bravura,
+    /// Steinberg's handwritten jazz font
+    Petaluma,
+    /// MuseScore's engraved font
+    Leland,
+}
+
+impl MusicFontArg {
+    fn choice(self) -> MusicFontChoice {
+        match self {
+            MusicFontArg::Bravura => MusicFontChoice::Bravura,
+            MusicFontArg::Petaluma => MusicFontChoice::Petaluma,
+            MusicFontArg::Leland => MusicFontChoice::Leland,
+        }
+    }
+}
+
 /// How the score's staves are written.
 #[derive(Debug, Clone, Copy, Default)]
 pub(crate) struct Staves {
@@ -47,6 +69,7 @@ pub(crate) fn run(
     all: bool,
     staves: Staves,
     theme: ThemeArg,
+    music: MusicFontArg,
 ) -> Result<String, CliError> {
     // Only ever write an .svg or a .pdf, so a typo cannot overwrite the song itself.
     let extension = output
@@ -83,7 +106,8 @@ pub(crate) fn run(
     let first = *indices
         .first()
         .ok_or_else(|| CliError::Failed(format!("{}: the song has no tracks", input.display())))?;
-    let fonts = Fonts::bundled().map_err(|e| CliError::Failed(e.to_string()))?;
+    let music = music.choice();
+    let fonts = Fonts::with_music(music).map_err(|e| CliError::Failed(e.to_string()))?;
     let options = if pdf {
         LayoutOptions::default()
             .with_page_setup(&imported.song.page_setup())
@@ -107,12 +131,12 @@ pub(crate) fn run(
             &layout,
             theme.theme(),
             options.staff_space_mm,
-            &PdfFonts::bundled(),
+            &PdfFonts::with_music(music),
             imported.song.title(),
         )
         .map_err(|e| CliError::Failed(format!("{}: {e}", input.display())))?
     } else {
-        to_svg(&layout, theme.theme(), options.staff_space_mm).into_bytes()
+        to_svg_with_music(&layout, theme.theme(), options.staff_space_mm, music).into_bytes()
     };
     std::fs::write(output, bytes)
         .map_err(|e| CliError::Failed(format!("cannot write {}: {e}", output.display())))?;

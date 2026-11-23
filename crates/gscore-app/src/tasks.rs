@@ -336,7 +336,12 @@ impl Tasks {
     /// empty workspace's preview. The empty workspace asks once per chosen song; a result
     /// for a row that is no longer chosen is dropped there.
     #[cfg(not(target_arch = "wasm32"))]
-    pub(crate) fn preview(&mut self, path: PathBuf, ctx: &egui::Context) -> Result<(), String> {
+    pub(crate) fn preview(
+        &mut self,
+        path: PathBuf,
+        music: gscore_layout::MusicFontChoice,
+        ctx: &egui::Context,
+    ) -> Result<(), String> {
         self.spawn("preview", ctx, move || {
             // A panic still reports as this preview's failure, so the row stops waiting.
             let result = catch_unwind(AssertUnwindSafe(
@@ -344,8 +349,8 @@ impl Tasks {
                     let imported =
                         gscore_session::open(&path).map_err(|error| error.to_string())?;
                     let song = imported.song;
-                    let fonts =
-                        gscore_layout::Fonts::bundled().map_err(|error| error.to_string())?;
+                    let fonts = gscore_layout::Fonts::with_music(music)
+                        .map_err(|error| error.to_string())?;
                     let options = gscore_layout::LayoutOptions::default()
                         .with_page_setup(&song.page_setup())
                         .on_pages();
@@ -362,7 +367,12 @@ impl Tasks {
 
     /// The browser build cannot read a recent file's path: there is nothing to preview.
     #[cfg(target_arch = "wasm32")]
-    pub(crate) fn preview(&mut self, _path: PathBuf, _ctx: &egui::Context) -> Result<(), String> {
+    pub(crate) fn preview(
+        &mut self,
+        _path: PathBuf,
+        _music: gscore_layout::MusicFontChoice,
+        _ctx: &egui::Context,
+    ) -> Result<(), String> {
         Err("a preview needs a file on disk, which the browser build cannot read".to_owned())
     }
 
@@ -804,11 +814,12 @@ impl Tasks {
         song: Song,
         tracks: Vec<usize>,
         options: gscore_layout::LayoutOptions,
+        music: gscore_layout::MusicFontChoice,
         path: PathBuf,
         ctx: &egui::Context,
     ) -> Result<(), String> {
         self.spawn("PDF export", ctx, move || {
-            Event::Exported(export_pdf(&song, &tracks, &options, &path))
+            Event::Exported(export_pdf(&song, &tracks, &options, music, &path))
         })
     }
 
@@ -1135,9 +1146,10 @@ fn export_pdf(
     song: &Song,
     tracks: &[usize],
     options: &gscore_layout::LayoutOptions,
+    music: gscore_layout::MusicFontChoice,
     path: &std::path::Path,
 ) -> Result<String, String> {
-    let fonts = gscore_layout::Fonts::bundled().map_err(|e| e.to_string())?;
+    let fonts = gscore_layout::Fonts::with_music(music).map_err(|e| e.to_string())?;
     let indices: Vec<gscore_model::TrackIndex> = tracks
         .iter()
         .copied()
@@ -1152,7 +1164,7 @@ fn export_pdf(
         &layout,
         &gscore_layout::Theme::LIGHT,
         options.staff_space_mm,
-        &gscore_layout::PdfFonts::bundled(),
+        &gscore_layout::PdfFonts::with_music(music),
         song.title(),
     )
     .map_err(|e| e.to_string())?;
@@ -1504,15 +1516,16 @@ mod tests {
             .with_page_setup(&song.page_setup())
             .on_pages();
         let path = dir.join("song.pdf");
-        let message = export_pdf(&song, &[0], &options, &path).unwrap();
+        let music = gscore_layout::MusicFontChoice::Bravura;
+        let message = export_pdf(&song, &[0], &options, music, &path).unwrap();
         assert!(message.contains("pages"), "{message}");
         assert!(std::fs::read(&path).unwrap().starts_with(b"%PDF-"));
 
         let missing = dir.join("no such folder").join("song.pdf");
-        assert!(export_pdf(&song, &[0], &options, &missing).is_err());
-        assert!(export_pdf(&song, &[], &options, &dir.join("none.pdf")).is_err());
+        assert!(export_pdf(&song, &[0], &options, music, &missing).is_err());
+        assert!(export_pdf(&song, &[], &options, music, &dir.join("none.pdf")).is_err());
         assert!(
-            export_pdf(&song, &[9], &options, &dir.join("other.pdf")).is_err(),
+            export_pdf(&song, &[9], &options, music, &dir.join("other.pdf")).is_err(),
             "no track 10"
         );
         let left: Vec<_> = std::fs::read_dir(&dir).unwrap().collect();

@@ -52,6 +52,8 @@ web-time = "1.1"
 
 # Native file dialogs (XDG desktop portal on Linux, no GTK).
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+# The extra music fonts on the desktop only (the browser download stays small).
+gscore-layout = { path = "../gscore-layout", features = ["extra-music-fonts"] }
 rfd = "0.17"
 # The update check: one HTTPS request to GitHub's latest release (owner decision
 # 2026-11-13). Blocking, run on a thread of its own; rustls (with ring) and Mozilla's root

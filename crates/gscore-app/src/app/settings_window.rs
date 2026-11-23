@@ -208,6 +208,7 @@ impl GuitarScoreApp {
                     window.page.draft,
                     &self.options,
                     fonts,
+                    self.view.music_font,
                 )
             }
             _ => None,
@@ -262,6 +263,7 @@ impl GuitarScoreApp {
                         &mut window.page,
                         preview.as_deref(),
                         has_song,
+                        self.view.music_font,
                         &mut apply_page,
                         &mut close,
                     );
@@ -800,6 +802,25 @@ impl GuitarScoreApp {
             ui.radio_value(&mut self.view.theme, ThemeChoice::Light, "Light page");
             ui.radio_value(&mut self.view.theme, ThemeChoice::Dark, "Dark page");
         });
+        ui.add_space(8.0);
+        ui.label(RichText::new("Music font").strong());
+        if gscore_layout::MusicFontChoice::available().len() > 1 {
+            let mut music = self.view.music_font;
+            if super::music_font_picker::picker(ui, &mut music) {
+                self.set_music_font(music);
+            }
+            ui.label(
+                RichText::new(
+                    "How the score's notation and tablature look on screen and in PDFs. \
+                     The older parts of a score always keep their layout; the chosen font \
+                     is saved with the app settings.",
+                )
+                .weak(),
+            );
+        } else {
+            ui.label(RichText::new("Only Bravura is bundled in this build.").weak());
+        }
+        ui.add_space(6.0);
         ui.add(style::switch(
             &mut self.settings.audition_notes,
             "Play notes as they are entered",

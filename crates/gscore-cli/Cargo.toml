@@ -16,7 +16,7 @@ gscore-model = { path = "../gscore-model" }
 gscore-io = { path = "../gscore-io" }
 gscore-edit = { path = "../gscore-edit" }
 gscore-session = { path = "../gscore-session" }
-gscore-layout = { path = "../gscore-layout" }
+gscore-layout = { path = "../gscore-layout", features = ["extra-music-fonts"] }
 gscore-play = { path = "../gscore-play" }
 gscore-guitar = { path = "../gscore-guitar" }
 gscore-audio = { path = "../gscore-audio" }

@@ -6944,3 +6944,16 @@ Below the width where the drawer floats, the strips are 96 points wide instead o
 the fader has no meter scale, and the top row holds only the pan knob and a Sends button
 whose popup shows the whole row (pan, reverb, chorus, comp, a kit's room). The full
 interface's mixer is unchanged.
+
+2026-11-24: Petaluma and Leland as music fonts, chosen in Settings › Editor with a card
+per font and a strip of its own glyphs. Bravura stays the UI's font; the score, the page
+preview, the recent-file preview and PDF export follow the choice, and layout and the
+measure cache are dropped when it changes. Leland lacks seven marks (its text-sized notes,
+the white diamond harmonic head, `fermataVeryShortAbove`); those are measured from Bravura
+and drawn with it, in the app and in SVG and PDF (the PDF embeds a Bravura subset only when
+one is used). Petaluma and Leland ship with the desktop builds only (`extra-music-fonts`),
+so the browser download stays small and the browser offers Bravura. `gscore-cli render
+--music-font petaluma|leland`. Tests: fallbacks match what each font actually lacks, SVG
+names the right family, a Leland PDF embeds both subsets, the settings choice is kept.
+Still open: a font's glyphs in the palette tiles stay Bravura; no per-document font (it is
+an app setting).
