@@ -238,6 +238,10 @@ pub(super) fn convert_beat(
                 "Rasgueado" => {
                     s_beat.effect.has_rasgueado = true;
                 }
+                // Tapping, slap and pop are beat properties in Guitar Pro's files.
+                "Tapped" => s_beat.effect.slap_effect = SlapEffect::Tapping,
+                "Slapped" => s_beat.effect.slap_effect = SlapEffect::Slapping,
+                "Popped" => s_beat.effect.slap_effect = SlapEffect::Popping,
                 "PickStroke" => {
                     if let Some(dir) = &bp.direction {
                         s_beat.effect.pick_stroke = match dir.as_str() {

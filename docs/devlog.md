@@ -6919,6 +6919,7 @@ pop) and coupling; plus a riff of the owner's. `docs/reference-recordings.md` sa
 
 2026-11-23: tapping, slap and pop in GP7 files. The GP7 reader ignored them and the
 writer never wrote them, so a song with them could not be saved as .gp without losing
-them (the save asked first, the CLI refused). Guitar Pro marks them on each note of the
-beat (`Tapped`, `Slapped`, `Popped`); they are read into the beat's mark and written on
-every note of a marked beat.
+them (the save asked first, the CLI refused), and opening a .gp file lost them without
+a word. Guitar Pro marks them as beat properties (`Tapped`, `Slapped`, `Popped`); they
+are read and written there (a first version put them on the notes, where Guitar Pro does
+not look: found by comparing the owner's files before and after a save).

@@ -35,12 +35,7 @@ pub(super) fn build_beat_xml(
         for note in &beat.notes {
             let note_id = next_id(next_note_id)?;
             note_ids.push(note_id);
-            note_xmls.push(build_note_xml(
-                note,
-                note_id,
-                tie_starts(note.string),
-                &beat.effect.slap_effect,
-            ));
+            note_xmls.push(build_note_xml(note, note_id, tie_starts(note.string)));
         }
     }
 
@@ -181,8 +176,22 @@ pub(super) fn build_beat_xml(
     let has_arpeggio = !matches!(beat.effect.arpeggio, BeatStrokeDirection::None);
     // GuitarScore addition: the design mode's offset of this beat's column.
     let spacing = beat.spacing;
+    // Tapping, slap or pop: a beat property in Guitar Pro's files.
+    let slap = match beat.effect.slap_effect {
+        SlapEffect::Tapping => Some("Tapped"),
+        SlapEffect::Slapping => Some("Slapped"),
+        SlapEffect::Popping => Some("Popped"),
+        SlapEffect::None => None,
+    };
 
-    if has_brush || has_pick || has_rasg || has_vibrato || has_arpeggio || spacing.is_some() {
+    if has_brush
+        || has_pick
+        || has_rasg
+        || has_vibrato
+        || has_arpeggio
+        || spacing.is_some()
+        || slap.is_some()
+    {
         bxml.push_str("<Properties>");
         if has_brush {
             let dir = if matches!(beat.effect.stroke.direction, BeatStrokeDirection::Down) {
@@ -240,6 +249,9 @@ pub(super) fn build_beat_xml(
         }
         if has_rasg {
             bxml.push_str("<Property name=\"Rasgueado\"><Enable /></Property>");
+        }
+        if let Some(slap) = slap {
+            bxml.push_str(&format!("<Property name=\"{slap}\"><Enable /></Property>"));
         }
         if has_vibrato {
             let strength = if beat.effect.wide_vibrato {
