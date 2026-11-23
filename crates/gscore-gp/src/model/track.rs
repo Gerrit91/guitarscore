@@ -112,6 +112,10 @@ pub struct Track {
     /// GuitarScore addition: the track's GP7 `<AudioEngineState>` element exactly as the
     /// file had it (`RSE` or `MIDI`), written back unchanged.
     pub gpif_audio_engine: Option<String>,
+    /// GuitarScore addition: a GP6/GP7 track's typed lyric lines when it is not the song's
+    /// lyric track (backing vocals): `(line, start bar from 1, text)`, as
+    /// [`crate::model::Lyrics::lines`]; written back on the track.
+    pub gpif_lyrics: Vec<(u8, u16, String)>,
     /// GuitarScore addition: the track's own sound settings as an opaque JSON payload
     /// (`gscore-app`'s `TrackSound`), which the Guitar Pro format has no field for. It is
     /// never written to a Guitar Pro file; the app saves it in the song's notes block.
@@ -249,6 +253,7 @@ impl Default for Track {
             symbol: None,
             gpif_sounds: None,
             gpif_audio_engine: None,
+            gpif_lyrics: Vec::new(),
             sound_state: None,
             staves: Vec::new(),
         }

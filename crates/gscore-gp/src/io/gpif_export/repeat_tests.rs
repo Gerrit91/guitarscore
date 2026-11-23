@@ -170,11 +170,11 @@ fn first_beat(song: &mut Song) -> &mut crate::model::Beat {
 /// whammy, a rasgueado's pattern) and a section's letter survive a GP7 round trip.
 #[test]
 fn kept_beat_elements_and_section_letters_round_trip_through_gpif() {
-    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../testdata/basic/note_lengths.gp");
     let mut song = Song::default();
-    song.read_gp(&std::fs::read(path).expect("the test file"))
-        .expect("read");
+    song.read_gp(include_bytes!(
+        "../../../../../testdata/basic/note_lengths.gp"
+    ))
+    .expect("read");
     let kept = crate::model::GpifBeatKept {
         hairpin: Some("Crescendo".to_owned()),
         wah: Some("Open".to_owned()),
@@ -211,11 +211,11 @@ fn kept_beat_elements_and_section_letters_round_trip_through_gpif() {
 #[test]
 fn tempo_changes_inside_a_bar_round_trip_through_gpif() {
     use crate::io::gpif_import::tempo::{beat_tempo, mid_bar_tempos};
-    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../testdata/basic/note_lengths.gp");
     let mut song = Song::default();
-    song.read_gp(&std::fs::read(path).expect("the test file"))
-        .expect("read");
+    song.read_gp(include_bytes!(
+        "../../../../../testdata/basic/note_lengths.gp"
+    ))
+    .expect("read");
     // The second bar holds several beats: the second one changes the tempo.
     let beats = &mut song.tracks[0].measures[1].voices[0].beats;
     assert!(beats.len() > 1, "the bar has several beats");
@@ -236,4 +236,25 @@ fn tempo_changes_inside_a_bar_round_trip_through_gpif() {
     assert_eq!(beat_tempo(&beats[1]), Some(93));
     assert_eq!(beat_tempo(&beats[0]), None);
     assert_eq!(mid_bar_tempos(&reread), written);
+}
+
+/// Typed lyrics on a track that is not the song's lyric track (backing vocals) survive a
+/// GP7 round trip on that track.
+#[test]
+fn other_tracks_typed_lyrics_round_trip_through_gpif() {
+    let mut song = Song::default();
+    song.read_gp(include_bytes!(
+        "../../../../../testdata/basic/multi_staff.gp"
+    ))
+    .expect("read");
+    song.lyrics.track_choice = 0;
+    song.lyrics.lines = vec![(0, 1, "la la".to_owned())];
+    song.tracks[1].gpif_lyrics = vec![(0, 3, "oh oh".to_owned()), (1, 5, "yeah".to_owned())];
+
+    let bytes = song.write_gp().expect("written");
+    let mut reread = Song::default();
+    reread.read_gp(&bytes).expect("read back");
+    assert_eq!(reread.lyrics.track_choice, 0);
+    assert_eq!(reread.lyrics.lines, vec![(0, 1, "la la".to_owned())]);
+    assert_eq!(reread.tracks[1].gpif_lyrics, song.tracks[1].gpif_lyrics);
 }

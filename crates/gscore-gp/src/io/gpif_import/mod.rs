@@ -597,10 +597,15 @@ impl SongGpifOps for Song {
                     ))
                 })
                 .collect();
-            if !lines.is_empty() {
+            if lines.is_empty() {
+                continue;
+            }
+            if self.lyrics.lines.is_empty() {
                 self.lyrics.lines = lines;
                 self.lyrics.track_choice = u8::try_from(index).unwrap_or(0);
-                break;
+            } else if let Some(track) = self.tracks.get_mut(index) {
+                // GuitarScore addition: another track's typed lines are kept on it.
+                track.gpif_lyrics = lines;
             }
         }
         // Without typed lines, the syllables on the beats tell the lyric track.

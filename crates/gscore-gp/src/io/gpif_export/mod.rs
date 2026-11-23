@@ -346,12 +346,16 @@ impl WriteGpifInGpifStringOrder for Song {
             }
             // The lyric lines as typed, on the lyric track, as Guitar Pro keeps them (the
             // syllables are written on the beats as well).
-            if usize::from(self.lyrics.track_choice) == t_idx && !self.lyrics.lines.is_empty() {
+            // Another track's typed lines (backing vocals) are written on it too.
+            let lines = if usize::from(self.lyrics.track_choice) == t_idx {
+                &self.lyrics.lines
+            } else {
+                &track.gpif_lyrics
+            };
+            if !lines.is_empty() {
                 xml.push_str("<Lyrics dispatched=\"true\">");
                 for number in 0..5_u8 {
-                    let (start, text) = self
-                        .lyrics
-                        .lines
+                    let (start, text) = lines
                         .iter()
                         .find(|(line, _, _)| *line == number)
                         .map_or((0, ""), |(_, start, text)| {

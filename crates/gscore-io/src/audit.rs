@@ -303,10 +303,6 @@ const VERDICTS: &[(&str, Verdict)] = &[
     ),
     ("MasterBar <Length>", Verdict::Known("a bar's own length")),
     (
-        "Lyrics text",
-        Verdict::Known("lyrics lines beyond what GuitarScore keeps"),
-    ),
-    (
         "Automation type Tempo",
         Verdict::Known(
             "a tempo change at a bar's very end when the next bar starts with its own (the same \
