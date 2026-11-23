@@ -38,7 +38,13 @@ pub(super) fn build_beat_xml(
             let note_id = next_id(next_note_id)?;
             note_ids.push(note_id);
             let (tie_origin, hopo_destination) = links(note.string);
-            note_xmls.push(build_note_xml(note, note_id, tie_origin, hopo_destination));
+            note_xmls.push(build_note_xml(
+                note,
+                note_id,
+                tie_origin,
+                hopo_destination,
+                beat.effect.slap_effect == SlapEffect::Tapping,
+            ));
         }
     }
 
@@ -178,12 +184,11 @@ pub(super) fn build_beat_xml(
     let has_arpeggio = !matches!(beat.effect.arpeggio, BeatStrokeDirection::None);
     // GuitarScore addition: the design mode's offset of this beat's column.
     let spacing = beat.spacing;
-    // Tapping, slap or pop: a beat property in Guitar Pro's files.
+    // Slap or pop: a beat property in Guitar Pro's files (tapping is on the notes).
     let slap = match beat.effect.slap_effect {
-        SlapEffect::Tapping => Some("Tapped"),
         SlapEffect::Slapping => Some("Slapped"),
         SlapEffect::Popping => Some("Popped"),
-        SlapEffect::None => None,
+        SlapEffect::Tapping | SlapEffect::None => None,
     };
 
     if has_brush

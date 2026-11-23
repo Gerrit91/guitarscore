@@ -386,8 +386,8 @@ fn staff_features_round_trip_through_gp7() {
     );
 }
 
-/// Tapping, slap and pop survive a GP7 save, as the beat properties Guitar Pro writes
-/// (`Tapped`, `Slapped`, `Popped`).
+/// Tapping, slap and pop survive a GP7 save, as Guitar Pro writes them (`Tapped` on the
+/// notes, `Slapped` and `Popped` on the beat).
 #[test]
 fn slap_pop_and_tapping_round_trip_through_gp7() {
     use gscore_model::{

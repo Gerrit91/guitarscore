@@ -11,12 +11,13 @@ use super::*;
 
 /// `tie_origin`: a tie starts from this note (the next note on its string is tied to it).
 /// `hopo_destination`: a hammer-on or pull-off from the note before it on its string
-/// lands on this note.
+/// lands on this note. `tapped`: its beat is tapped (Guitar Pro marks that on the notes).
 pub(super) fn build_note_xml(
     note: &Note,
     note_id: i32,
     tie_origin: bool,
     hopo_destination: bool,
+    tapped: bool,
 ) -> String {
     let mut s = format!("<Note id=\"{note_id}\"><Properties>");
 
@@ -99,6 +100,9 @@ pub(super) fn build_note_xml(
     }
     if note.effect.left_hand_tapped {
         s.push_str("<Property name=\"LeftHandTapped\"><Enable /></Property>");
+    }
+    if tapped {
+        s.push_str("<Property name=\"Tapped\"><Enable /></Property>");
     }
     if note.effect.show_string_number {
         s.push_str("<Property name=\"ShowStringNumber\"><Enable /></Property>");

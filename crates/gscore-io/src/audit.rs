@@ -294,16 +294,8 @@ const VERDICTS: &[(&str, Verdict)] = &[
         Verdict::Rebuilt("Guitar Pro's voice view when the file was saved"),
     ),
     (
-        "Note Property Tapped",
-        Verdict::Known("tapping: Guitar Pro marks it on the note"),
-    ),
-    (
         "Note Property Bended",
         Verdict::Known("a bend the writer leaves out (one file, not traced yet)"),
-    ),
-    (
-        "Note <Enable>",
-        Verdict::Known("the flags of note properties not written yet (tapping)"),
     ),
     (
         "Beat dynamic *",
