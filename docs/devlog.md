@@ -6934,3 +6934,7 @@ Guitar 30, its Lead sounds 31, Overdrive 29, Clean 27, Steel 25, Clean Bass 33, 
 bass 34, Crunch Bass 38, Slap Bass 36, ...); a mapping still wins, `tones rse` shows
 which. Still open: the kind of string follows the program, so a Steel Guitar sound on
 program 27 plays electric strings.
+
+2026-11-23: a dark score tile in the practice view's drawer (owner's wish): a crescent
+moon, lit while the score page is dark; a tap switches the page between light and dark,
+as the View menu does. It sits in the last row, beside the browser's own tiles.

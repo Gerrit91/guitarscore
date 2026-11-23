@@ -81,6 +81,21 @@ fn the_full_interface_tile_leaves_the_practice_view() {
 }
 
 #[test]
+fn the_dark_score_tile_switches_the_page_dark_and_back() {
+    use gscore_app::ThemeChoice;
+    for size in [egui::vec2(1180.0, 820.0), egui::vec2(390.0, 760.0)] {
+        let mut harness = practice(size);
+        assert_eq!(harness.state().view().theme, ThemeChoice::Light);
+        harness.get_by_label("Dark score").click();
+        harness.run_steps(4);
+        assert_eq!(harness.state().view().theme, ThemeChoice::Dark, "{size:?}");
+        harness.get_by_label("Dark score").click();
+        harness.run_steps(4);
+        assert_eq!(harness.state().view().theme, ThemeChoice::Light, "{size:?}");
+    }
+}
+
+#[test]
 fn the_count_in_is_switched_on_and_off_in_the_drawer() {
     let mut harness = practice(egui::vec2(1180.0, 820.0));
     let before = harness.state().playback().count_in();
