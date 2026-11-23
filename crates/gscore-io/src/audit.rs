@@ -37,6 +37,10 @@ pub enum Verdict {
 /// that starts with what comes before it.
 const VERDICTS: &[(&str, Verdict)] = &[
     (
+        "Beat <Variation>",
+        Verdict::Known("a variation on a grace-note beat (the reader folds it into the next note)"),
+    ),
+    (
         "Note <Pitch>",
         Verdict::Rebuilt(
             "a note's pitch, worked out from its fret and the tuning (a drum's from its kit piece)",
@@ -303,21 +307,6 @@ const VERDICTS: &[(&str, Verdict)] = &[
             "the dynamic of some beats (a few hundred in a third of the files, not traced yet)",
         ),
     ),
-    (
-        "Beat <Hairpin>",
-        Verdict::Known("crescendo and decrescendo"),
-    ),
-    ("Beat <Wah>", Verdict::Known("the wah pedal (open, closed)")),
-    (
-        "Beat <Variation>",
-        Verdict::Known("a drum note's variation"),
-    ),
-    ("Beat <Whammy>", Verdict::Known("a whammy bar shape")),
-    (
-        "Beat <WhammyExtend>",
-        Verdict::Known("a whammy bar held over the next beats"),
-    ),
-    ("Beat <Rasgueado>", Verdict::Known("a rasgueado's pattern")),
     ("MasterBar <Length>", Verdict::Known("a bar's own length")),
     (
         "Lyrics text",

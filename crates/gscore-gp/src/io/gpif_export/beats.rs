@@ -85,6 +85,20 @@ pub(super) fn build_beat_xml(
         velocity_to_dynamic(beat_velocity)
     ));
     *prev_velocity = beat_velocity;
+    // GuitarScore addition: what nothing here uses yet, as Guitar Pro wrote it.
+    let kept = &beat.kept;
+    if let Some(hairpin) = &kept.hairpin {
+        bxml.push_str(&format!("<Hairpin>{}</Hairpin>", escape_xml(hairpin)));
+    }
+    if let Some(wah) = &kept.wah {
+        bxml.push_str(&format!("<Wah>{}</Wah>", escape_xml(wah)));
+    }
+    if let Some(variation) = &kept.variation {
+        bxml.push_str(&format!("<Variation>{}</Variation>", escape_xml(variation)));
+    }
+    if kept.whammy_extend {
+        bxml.push_str("<WhammyExtend />");
+    }
 
     // Free text
     if !beat.text.is_empty() {
@@ -174,6 +188,14 @@ pub(super) fn build_beat_xml(
             offset(middle),
             offset(last),
         ));
+    } else if beat.kept.flat_whammy {
+        // GuitarScore addition: a whammy that does not move, as Guitar Pro wrote it.
+        bxml.push_str(
+            "<Whammy originValue=\"0.000000\" middleValue=\"0.000000\" \
+             destinationValue=\"0.000000\" originOffset=\"0.000000\" \
+             middleOffset1=\"50.000000\" middleOffset2=\"50.000000\" \
+             destinationOffset=\"100.000000\"/>",
+        );
     }
 
     // Beat properties (Brush, Rasgueado, PickStroke, VibratoWTremBar)
@@ -255,7 +277,13 @@ pub(super) fn build_beat_xml(
             ));
         }
         if has_rasg {
-            bxml.push_str("<Property name=\"Rasgueado\"><Enable /></Property>");
+            match &beat.kept.rasgueado {
+                Some(pattern) => bxml.push_str(&format!(
+                    "<Property name=\"Rasgueado\"><Rasgueado>{}</Rasgueado></Property>",
+                    escape_xml(pattern)
+                )),
+                None => bxml.push_str("<Property name=\"Rasgueado\"><Enable /></Property>"),
+            }
         }
         if let Some(slap) = slap {
             bxml.push_str(&format!("<Property name=\"{slap}\"><Enable /></Property>"));

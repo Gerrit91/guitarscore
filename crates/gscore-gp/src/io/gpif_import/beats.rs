@@ -191,6 +191,8 @@ pub(super) fn convert_beat(
             whammy.middle_offset,
             whammy.destination_offset,
         );
+        // GuitarScore addition: a whammy that does not move is kept as such.
+        s_beat.kept.flat_whammy = s_beat.effect.tremolo_bar.is_none();
     } else if let Some(tremolo_str) = &g_beat.tremolo
         && tremolo_speed(tremolo_str).is_none()
         && let Ok(val) = tremolo_str.parse::<f64>()
@@ -237,6 +239,7 @@ pub(super) fn convert_beat(
                 }
                 "Rasgueado" => {
                     s_beat.effect.has_rasgueado = true;
+                    s_beat.kept.rasgueado.clone_from(&bp.rasgueado);
                 }
                 // Tapping, slap and pop are beat properties in Guitar Pro's files.
                 "Tapped" => s_beat.effect.slap_effect = SlapEffect::Tapping,
@@ -275,6 +278,11 @@ pub(super) fn convert_beat(
     // GuitarScore addition: Guitar Pro's own beat layout properties are kept, so saving
     // does not lose what Guitar Pro 8 wrote there.
     s_beat.x_properties = xproperties(g_beat.x_properties.as_ref());
+    // GuitarScore addition: what nothing here uses yet, kept as written.
+    s_beat.kept.hairpin.clone_from(&g_beat.hairpin);
+    s_beat.kept.wah.clone_from(&g_beat.wah);
+    s_beat.kept.variation.clone_from(&g_beat.variation);
+    s_beat.kept.whammy_extend = g_beat.whammy_extend.is_some();
     if s_beat.effect.tremolo_bar.is_none()
         && let (Some(origin), Some(destination)) = (whammy_origin, whammy_destination)
     {

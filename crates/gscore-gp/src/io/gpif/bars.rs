@@ -239,6 +239,13 @@ pub(crate) struct Beat {
     pub whammy: Option<Whammy>,
     #[serde(rename = "Wah", default)]
     pub wah: Option<String>,
+    /// GuitarScore addition: kept as written (see `GpifBeatKept`).
+    #[serde(rename = "Hairpin", default)]
+    pub hairpin: Option<String>,
+    #[serde(rename = "Variation", default)]
+    pub variation: Option<String>,
+    #[serde(rename = "WhammyExtend", default)]
+    pub whammy_extend: Option<EnableTag>,
     /// GP6/GP7 beat-level legato (GuitarScore addition; it used to be dropped).
     #[serde(rename = "Legato", default)]
     pub legato: Option<LegatoInfo>,
@@ -316,6 +323,9 @@ pub(crate) struct BeatProperty {
     /// Strength of `VibratoWTremBar` ("Slight" or "Wide").
     #[serde(rename = "Strength", default)]
     pub strength: Option<String>,
+    /// GuitarScore addition: a `Rasgueado` property's pattern (`amii_1`).
+    #[serde(rename = "Rasgueado", default)]
+    pub rasgueado: Option<String>,
     /// GuitarScore addition: a stroke's speed (a note-value denominator) in a
     /// `GuitarScoreBrush`/`GuitarScoreArpeggio` property.
     #[serde(rename = "Duration", default)]

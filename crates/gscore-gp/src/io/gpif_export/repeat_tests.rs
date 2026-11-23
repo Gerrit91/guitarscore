@@ -157,3 +157,50 @@ fn several_directions_in_one_measure_round_trip_through_gp5() {
         [D::Segno, D::Fine, D::DaCapoAlFine]
     );
 }
+
+/// The first beat of the first track.
+fn first_beat(song: &mut Song) -> &mut crate::model::Beat {
+    song.tracks[0].measures[0].voices[0]
+        .beats
+        .first_mut()
+        .expect("a beat")
+}
+
+/// What a beat holds that nothing uses yet (hairpin, wah, variation, a held or flat
+/// whammy, a rasgueado's pattern) and a section's letter survive a GP7 round trip.
+#[test]
+fn kept_beat_elements_and_section_letters_round_trip_through_gpif() {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../testdata/basic/note_lengths.gp");
+    let mut song = Song::default();
+    song.read_gp(&std::fs::read(path).expect("the test file"))
+        .expect("read");
+    let kept = crate::model::GpifBeatKept {
+        hairpin: Some("Crescendo".to_owned()),
+        wah: Some("Open".to_owned()),
+        variation: Some("2".to_owned()),
+        whammy_extend: true,
+        flat_whammy: true,
+        rasgueado: Some("amii_1".to_owned()),
+    };
+    first_beat(&mut song).kept = kept.clone();
+    first_beat(&mut song).effect.has_rasgueado = true;
+    song.measure_headers[0].marker = Some(crate::model::Marker {
+        title: "Intro".to_owned(),
+        letter: Some("A".to_owned()),
+        ..Default::default()
+    });
+
+    let bytes = song.write_gp().expect("written");
+    let mut reread = Song::default();
+    reread.read_gp(&bytes).expect("read back");
+    assert_eq!(first_beat(&mut reread).kept, kept);
+    let marker = reread.measure_headers[0]
+        .marker
+        .clone()
+        .expect("the section");
+    assert_eq!(
+        (marker.title.as_str(), marker.letter.as_deref()),
+        ("Intro", Some("A"))
+    );
+}
