@@ -6991,3 +6991,11 @@ Later the same day: a vibrato over a note bent up (or right after one, where the
 label stands) goes 1.4 spaces higher, above the arrow and its label, and the gap between
 notation and tab (or the rows over a tab-only staff) makes room for it. Vibrato strokes are
 bolder (0.22 spaces, as thick as the SMuFL wiggles; other lines stay 0.15).
+
+Tuplets (the owner's Ballad, "Gerrit Solo" bars 78 and 80): a tuplet group ends at a note
+outside it (the notation staff skipped such notes and joined two triplets across a quarter)
+and once it is whole: its written lengths make `enters` of one of its notes
+(`notation::tuplet_groups`, shared by notation and tab), so twelve sixteenth triplets are
+four brackets. A bracket also clears the up-stems under it. The edit palette's length
+tiles follow the cursor's beat (value, dots, tuplet), as in Guitar Pro, so a triplet beat
+lights the triplet tile; an empty placeholder beat keeps the chosen length for entry.

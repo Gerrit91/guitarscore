@@ -582,8 +582,8 @@ impl MeasureLayout {
     }
 
     /// Tuplet brackets under a tab staff that has no notation staff to carry them, in the
-    /// row at `baseline`: one per run of columns with the same tuplet (as the notation
-    /// staff groups them, whatever the beats: quarter triplets cross beats), over the
+    /// row at `baseline`: one per tuplet group (as the notation staff groups them, whatever
+    /// the beats: quarter triplets cross beats; a run ends when its tuplet is whole), over the
     /// columns it spans, the number in a gap in the middle and the hooks pointing up to
     /// the notes.
     pub(super) fn draw_tab_tuplets(
@@ -598,25 +598,30 @@ impl MeasureLayout {
         const SIZE: f32 = 1.25;
         const THICKNESS: f32 = 0.16;
         const HOOK: f32 = 0.45;
-        let mut index = 0;
-        while index < self.columns.len() {
-            let Some(column) = self.columns.get(index) else {
-                break;
-            };
-            let Some((enters, _)) = column.tuplet else {
-                index = index.saturating_add(1);
+        // Each column's written length: its time scaled back by its tuplet's ratio.
+        let items: Vec<(Option<(u8, u8)>, f64)> = self
+            .columns
+            .iter()
+            .enumerate()
+            .map(|(index, column)| {
+                let next = self
+                    .columns
+                    .get(index.saturating_add(1))
+                    .map_or(self.end, |next| next.onset);
+                let time = next
+                    .checked_sub(column.onset)
+                    .map_or(0.0, super::columns::as_f64);
+                let written = column.tuplet.map_or(time, |(enters, times)| {
+                    time * f64::from(enters) / f64::from(times.max(1))
+                });
+                (column.tuplet, written)
+            })
+            .collect();
+        for (indices, (enters, _)) in notation::tuplet_groups(&items) {
+            let (Some(&index), Some(&end)) = (indices.first(), indices.last()) else {
                 continue;
             };
             let start = xs.get(index).copied().unwrap_or(right);
-            // The columns after it that share the tuplet.
-            let mut end = index;
-            while self
-                .columns
-                .get(end.saturating_add(1))
-                .is_some_and(|next| next.tuplet == column.tuplet)
-            {
-                end = end.saturating_add(1);
-            }
             let last = xs.get(end).copied().unwrap_or(start);
             let middle = (start + last) / 2.0;
             let label = enters.to_string();
@@ -646,7 +651,6 @@ impl MeasureLayout {
                 anchor: TextAnchor::Middle,
                 color: ColorToken::Notation,
             });
-            index = end.saturating_add(1);
         }
     }
 

@@ -36,6 +36,7 @@ pub(crate) use draw::{
 pub(crate) use marks::draw_arrow;
 pub(crate) use pitch::{Alter, Clef};
 pub(crate) use rhythm::{draw_tab_rhythm, rhythm_depth};
+pub(crate) use tuplets::tuplet_groups;
 
 use crate::Context;
 use crate::error::LayoutError;
