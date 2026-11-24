@@ -7042,3 +7042,16 @@ the channel strip's bypassed automations and the tempo's name are kept or writte
 Over the owner's 59 band files the audit now reports 36 known losses (from 52) and the
 test files 28 (from 46), with no unexplained loss. `docs/guitarpro.md` change 52 has the
 code; `docs/save-audit-handover.md` marks what is done.
+
+2026-11-24: the save audit reaches zero. The staff block is written for every track (tuning,
+capo and fret count from the model; a partial capo, a tuning's flats, instrument, label
+visibility, name and the whole chord and diagram libraries kept as written), notes keep
+their own Guitar Pro properties and the file's tie origin, a zero `Bended` marker stays a
+zero bend that plays and draws as none, a fermata keeps its length, a tempo automation at a
+bar's very end is kept, and a grace beat carrying a variation is no longer folded into the
+next note. Over the owner's 59 band files and the 6 test files the audit now reports no
+loss at all: 0 unexplained, 0 known (from 64 kinds). `docs/guitarpro.md` change 53 has the
+code. What a save writes that Guitar Pro should be checked against: the staff block for a
+one-staff track, the staff-level chord library beside the track-level collection beats use,
+and the end-of-bar tempo. `docs/save-audit-handover.md` lists the few items still worth a
+look.

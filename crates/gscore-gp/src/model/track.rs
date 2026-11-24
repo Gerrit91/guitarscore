@@ -69,6 +69,9 @@ pub struct Track {
     pub banjo_track: bool,
     pub port: u8,
     pub fret_count: u8,
+    /// GuitarScore addition: the parts of this track's first staff that GuitarScore does
+    /// not model (see [`StaffKept`]), kept so a save writes them back.
+    pub staff_kept: StaffKept,
     pub indicate_tuning: bool,
     pub use_rse: bool,
     pub rse: TrackRse,
@@ -215,6 +218,37 @@ pub struct Staff {
     pub tuning_label: Option<String>,
     /// The capo fret.
     pub offset: i32,
+    /// GuitarScore addition: the number of frets (GP7 `FretCount`).
+    pub fret_count: u8,
+    /// GuitarScore addition: the parts of the staff's properties GuitarScore does not
+    /// model, kept so a save writes them back (see [`StaffKept`]).
+    pub kept: StaffKept,
+}
+
+/// GuitarScore addition: the parts of a GP7 staff's `<Properties>` that GuitarScore does
+/// not model, kept so a save writes them back: a partial capo, a tuning shown with flats,
+/// the tuning's name, instrument and label visibility, and the track's whole chord and
+/// diagram libraries (whole `<Property>` elements, verbatim).
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct StaffKept {
+    /// `PartialCapoFret`'s `<Fret>`, if the file has one.
+    pub partial_capo_fret: Option<i32>,
+    /// `PartialCapoStringFlags`'s `<Bitset>` text.
+    pub partial_capo_flags: Option<String>,
+    /// Whether the staff has a `<TuningFlat><Enable/></TuningFlat>`.
+    pub tuning_flat: bool,
+    /// Whether the tuning has a `<Flat></Flat>` child (a tuning shown with flats).
+    pub tuning_flat_child: bool,
+    /// The tuning's `<Instrument>` ("Guitar", "Bass").
+    pub tuning_instrument: Option<String>,
+    /// The tuning's `<LabelVisible>` text.
+    pub label_visible: Option<String>,
+    /// The staff's `<Name>` (the tuning's name, "Standard").
+    pub name: Option<String>,
+    /// The staff's chord and diagram collections (`ChordCollection`,
+    /// `ChordWorkingSet`, `DiagramCollection`, `DiagramWorkingSet`), each whole
+    /// `<Property>` element exactly as written.
+    pub chord_libraries: Vec<String>,
 }
 
 impl Default for Staff {
@@ -225,6 +259,8 @@ impl Default for Staff {
             has_tuning: false,
             tuning_label: None,
             offset: 0,
+            fret_count: 24,
+            kept: StaffKept::default(),
         }
     }
 }
@@ -247,6 +283,7 @@ impl Default for Track {
             twelve_stringed_guitar_track: false,
             percussion_track: false,
             fret_count: 24,
+            staff_kept: StaffKept::default(),
             color: 0xff0000,
             port: 1,
             indicate_tuning: false,

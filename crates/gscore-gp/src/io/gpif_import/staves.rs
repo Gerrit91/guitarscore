@@ -7,13 +7,54 @@ use std::collections::HashMap;
 
 use super::{convert_beat, extract_capo, extract_tuning, extract_tuning_label, parse_ids};
 use crate::io::gpif::xproperties;
-use crate::io::gpif::{Bar, Beat, Note, Rhythm, Track, Voice};
+use crate::io::gpif::{Bar, Beat, Note, Property, Rhythm, Track, Voice};
 use crate::model::{
-    beat::Voice as SongVoice, chord::ChordDiagram, enums::MeasureClef, headers::MeasureHeader,
-    measure::Measure, track::Staff,
+    beat::Voice as SongVoice,
+    chord::ChordDiagram,
+    enums::MeasureClef,
+    headers::MeasureHeader,
+    measure::Measure,
+    track::{Staff, StaffKept},
 };
 
 use crate::io::FORTE;
+
+/// The parts of a staff's `<Properties>` GuitarScore does not model, kept as written (see
+/// [`StaffKept`]).
+pub(super) fn kept_staff(
+    properties: &[Property],
+    name: Option<&str>,
+    libraries: Vec<String>,
+) -> StaffKept {
+    let find = |property_name: &str| {
+        properties
+            .iter()
+            .find(|property| property.name == property_name)
+    };
+    let tuning = find("Tuning");
+    StaffKept {
+        partial_capo_fret: find("PartialCapoFret").and_then(|property| property.fret),
+        partial_capo_flags: find("PartialCapoStringFlags")
+            .and_then(|property| property.bitset.clone()),
+        tuning_flat: find("TuningFlat")
+            .and_then(|property| property.enable.as_ref())
+            .is_some(),
+        tuning_flat_child: tuning.and_then(|property| property.flat.as_ref()).is_some(),
+        tuning_instrument: tuning.and_then(|property| property.instrument.clone()),
+        label_visible: tuning.and_then(|property| property.label_visible.clone()),
+        name: name.map(str::to_owned),
+        chord_libraries: libraries,
+    }
+}
+
+/// The number of frets in a staff's properties (`FretCount`), or `None`.
+pub(super) fn extract_fret_count(properties: &[Property]) -> Option<u8> {
+    properties
+        .iter()
+        .find(|property| property.name == "FretCount")
+        .and_then(|property| property.number)
+        .and_then(|count| u8::try_from(count.clamp(1, 48)).ok())
+}
 
 /// The file's bars, voices, beats, notes and rhythms by id.
 pub(super) struct Lookup<'a> {
@@ -117,6 +158,7 @@ pub(super) fn further_staves(
     g_track: &Track,
     bar_ids: &[Vec<i32>],
     diagrams: &HashMap<i32, ChordDiagram>,
+    libraries: &[Vec<String>],
 ) -> Vec<Staff> {
     let Some(staves) = &g_track.staves else {
         return Vec::new();
@@ -124,13 +166,15 @@ pub(super) fn further_staves(
     staves
         .staves
         .iter()
+        .enumerate()
         .zip(bar_ids)
         .skip(1)
-        .map(|(g_staff, ids)| {
+        .map(|((index, g_staff), ids)| {
             let mut staff = Staff {
                 measures: measures(lookup, headers, track_index, ids, diagrams),
                 ..Staff::default()
             };
+            let kept = libraries.get(index).cloned().unwrap_or_default();
             if let Some(props) = &g_staff.properties {
                 let strings = extract_tuning(&props.properties);
                 if !strings.is_empty() {
@@ -141,6 +185,12 @@ pub(super) fn further_staves(
                 if let Some(capo) = extract_capo(&props.properties) {
                     staff.offset = capo;
                 }
+                if let Some(count) = extract_fret_count(&props.properties) {
+                    staff.fret_count = count;
+                }
+                staff.kept = kept_staff(&props.properties, props.name.as_deref(), kept);
+            } else {
+                staff.kept = kept_staff(&[], None, kept);
             }
             staff
         })

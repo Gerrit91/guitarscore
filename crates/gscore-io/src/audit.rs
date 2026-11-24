@@ -37,10 +37,6 @@ pub enum Verdict {
 /// that starts with what comes before it.
 const VERDICTS: &[(&str, Verdict)] = &[
     (
-        "Beat <Variation>",
-        Verdict::Known("a variation on a grace-note beat (the reader folds it into the next note)"),
-    ),
-    (
         "Note <Pitch>",
         Verdict::Rebuilt(
             "a note's pitch, worked out from its fret and the tuning (a drum's from its kit piece)",
@@ -270,22 +266,6 @@ const VERDICTS: &[(&str, Verdict)] = &[
         Verdict::Rebuilt("an empty chord or diagram collection"),
     ),
     (
-        "Staff Property ChordCollection",
-        Verdict::Rebuilt("an empty chord collection (a chord in one counts as Staff <Chord>)"),
-    ),
-    (
-        "Staff Property ChordWorkingSet",
-        Verdict::Rebuilt("an empty chord collection (a chord in one counts as Staff <Chord>)"),
-    ),
-    (
-        "Staff Property DiagramCollection",
-        Verdict::Rebuilt("an empty diagram collection (a diagram counts as Staff <Diagram>)"),
-    ),
-    (
-        "Staff Property DiagramWorkingSet",
-        Verdict::Rebuilt("an empty diagram collection (a diagram counts as Staff <Diagram>)"),
-    ),
-    (
         "Score <ScoreZoom>",
         Verdict::Rebuilt("Guitar Pro's zoom when the file was saved"),
     ),
@@ -296,114 +276,6 @@ const VERDICTS: &[(&str, Verdict)] = &[
     (
         "Score <MultiVoice>",
         Verdict::Rebuilt("Guitar Pro's voice view when the file was saved"),
-    ),
-    (
-        "Note Property Bended",
-        Verdict::Known("a bend the writer leaves out (one file, not traced yet)"),
-    ),
-    ("MasterBar <Length>", Verdict::Known("a bar's own length")),
-    (
-        "Automation type Tempo",
-        Verdict::Known(
-            "a tempo change at a bar's very end when the next bar starts with its own (the same \
-             moment, only one of them is heard)",
-        ),
-    ),
-    ("Staff <Number>", Verdict::Known("the number of frets")),
-    (
-        "Staff Property FretCount",
-        Verdict::Known("the number of frets"),
-    ),
-    (
-        "Staff Property PartialCapoFret",
-        Verdict::Known("a partial capo"),
-    ),
-    (
-        "Staff Property PartialCapoStringFlags",
-        Verdict::Known("a partial capo"),
-    ),
-    ("Staff <Bitset>", Verdict::Known("a partial capo")),
-    (
-        "Staff <Fret>",
-        Verdict::Known("a capo or a chord diagram's fret"),
-    ),
-    (
-        "Staff Property TuningFlat",
-        Verdict::Known("a tuning shown with flats"),
-    ),
-    ("Staff <Flat>", Verdict::Known("a tuning shown with flats")),
-    (
-        "Staff <Enable>",
-        Verdict::Known("a tuning shown with flats, or a chord diagram's display flags"),
-    ),
-    ("Staff <Name>", Verdict::Known("the tuning's name")),
-    ("Staff <Label>", Verdict::Known("the tuning's label")),
-    ("Staff <LabelVisible>", Verdict::Known("the tuning's label")),
-    (
-        "Staff <Instrument>",
-        Verdict::Known("the tuning's instrument"),
-    ),
-    (
-        "Staff <Chord>",
-        Verdict::Known("the track's chord diagram library"),
-    ),
-    (
-        "Staff <Diagram>",
-        Verdict::Known("the track's chord diagram library"),
-    ),
-    (
-        "Staff <Item>",
-        Verdict::Known("the track's chord diagram library"),
-    ),
-    (
-        "Staff <KeyNote>",
-        Verdict::Known("the track's chord diagram library"),
-    ),
-    (
-        "Staff <BassNote>",
-        Verdict::Known("the track's chord diagram library"),
-    ),
-    (
-        "Staff <Position>",
-        Verdict::Known("the track's chord diagram library"),
-    ),
-    (
-        "Staff <Degree>",
-        Verdict::Known("the track's chord diagram library"),
-    ),
-    (
-        "Staff <Fingering>",
-        Verdict::Known("the track's chord diagram library"),
-    ),
-    (
-        "Staff Property ShowName",
-        Verdict::Known("the track's chord diagram library"),
-    ),
-    (
-        "Staff Property ShowDiagram",
-        Verdict::Known("the track's chord diagram library"),
-    ),
-    (
-        "Staff Property ShowFingering",
-        Verdict::Known("the track's chord diagram library"),
-    ),
-    (
-        "Note <Tie>",
-        Verdict::Known("a tie in a file where it is not on the note's properties"),
-    ),
-    ("Note <Float>", Verdict::Known("a note property's value")),
-    ("Note <Int>", Verdict::Known("a note property's value")),
-    (
-        "Note <XProperties>",
-        Verdict::Known("Guitar Pro's extra note properties"),
-    ),
-    (
-        "Note XProperty *",
-        Verdict::Known("Guitar Pro's extra note properties"),
-    ),
-    (
-        "Note Property Bend*",
-        Verdict::Known("a bend's shape in one file"),
     ),
 ];
 

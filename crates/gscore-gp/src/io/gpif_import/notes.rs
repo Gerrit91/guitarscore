@@ -63,6 +63,9 @@ pub(super) fn convert_note(
     let mut bend_middle_offset: Option<f64> = None;
     let mut bend_dest_offset: Option<f64> = None;
     let mut harmonic_fret: Option<f64> = None;
+    // GuitarScore addition: a `Bended` note whose shape does not move (every value 0), which
+    // Guitar Pro writes and which has no effect; kept so a save does not lose the marker.
+    let mut bended_flag = false;
 
     // GuitarScore addition: a GP6 drum note (kit element and variation, no fret).
     let property = |name: &str| {
@@ -103,6 +106,7 @@ pub(super) fn convert_note(
             "PalmMuted" if prop.enable.is_some() => {
                 s_note.effect.palm_mute = true;
             }
+            "Bended" if prop.enable.is_some() => bended_flag = true,
             "BendOriginValue" => {
                 bend_origin = prop.float;
             }
@@ -157,6 +161,19 @@ pub(super) fn convert_note(
             bend_dest_offset,
         );
     }
+    // GuitarScore addition: a `Bended` marker with no movement has no shape the model can
+    // play or draw, but the file's marker is kept (a zero bend) so saving writes it back.
+    if s_note.effect.bend.is_none() && bended_flag {
+        s_note.effect.bend = Some(BendEffect {
+            kind: BendType::Bend,
+            points: vec![BendPoint {
+                position: 0,
+                value: 0,
+                vibrato: false,
+            }],
+            ..BendEffect::default()
+        });
+    }
 
     // Guitar Pro's property order puts HarmonicFret before HarmonicType.
     if let Some(hfret) = harmonic_fret
@@ -166,11 +183,17 @@ pub(super) fn convert_note(
     }
 
     // Tie
-    if let Some(tie) = &g_note.tie
-        && tie.destination == "true"
-    {
-        s_note.kind = NoteType::Tie;
+    if let Some(tie) = &g_note.tie {
+        // GuitarScore addition: the file's own origin marker, kept (a tie another voice
+        // ends cannot be paired up from the tied ends alone).
+        s_note.tie_origin = tie.origin == "true";
+        if tie.destination == "true" {
+            s_note.kind = NoteType::Tie;
+        }
     }
+
+    // GuitarScore addition: Guitar Pro's opaque note properties, kept verbatim.
+    s_note.x_properties = xproperties(g_note.x_properties.as_ref());
 
     // Vibrato. GPIF names the kind; keep wide so layout can draw its bigger wiggle.
     if let Some(vibrato) = &g_note.vibrato {

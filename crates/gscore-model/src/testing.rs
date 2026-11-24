@@ -527,7 +527,7 @@ pub fn song_with_fermatas(
             .measure_headers
             .get_mut(measure)
             .ok_or_else(|| ModelError::Invalid(format!("no measure {measure} for a fermata")))?;
-        header.fermatas = vec![(fermata.to_gp().to_owned(), "0/1".to_owned())];
+        header.fermatas = vec![(fermata.to_gp().to_owned(), "0/1".to_owned(), String::new())];
     }
     Song::from_inner(inner)
 }

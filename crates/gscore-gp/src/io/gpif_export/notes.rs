@@ -114,9 +114,14 @@ pub(super) fn build_note_xml(
     }
 
     s.push_str("</Properties>");
+    // GuitarScore addition: Guitar Pro's opaque note properties, written back as read.
+    s.push_str(&xproperties_xml(&note.x_properties));
 
     // As Guitar Pro writes it: both ends of a tie are marked, a note in the middle of a
     // chain of ties is both. A destination without its origin is struck anew in Guitar Pro.
+    // The file's own origin marker is kept, for ties that cannot be paired up from the tied
+    // ends alone (another voice, a grace note).
+    let tie_origin = tie_origin || note.tie_origin;
     let tie_destination = note.kind == NoteType::Tie;
     if tie_origin || tie_destination {
         s.push_str(&format!(

@@ -141,6 +141,23 @@ impl WriteGpifInGpifStringOrder for Song {
                 ));
             }
         }
+        // GuitarScore addition: a tempo change at the bar's very end, as the file had it
+        // (the next bar's tempo is what is heard; when it becomes the next bar's tempo,
+        // that one is already written above).
+        for (i, mh) in self.measure_headers.iter().enumerate() {
+            let next_tempo = self
+                .measure_headers
+                .get(i.saturating_add(1))
+                .map_or(0, |header| header.tempo);
+            for (position, tempo) in &mh.end_tempos {
+                if *position >= 1.0 && i32::from(*tempo) == next_tempo {
+                    continue;
+                }
+                xml.push_str(&format!(
+                    "<Automation><Type>Tempo</Type><Linear>false</Linear><Bar>{i}</Bar><Position>{position}</Position><Visible>true</Visible><Value>{tempo} 2</Value></Automation>"
+                ));
+            }
+        }
         // GuitarScore addition: tempo changes inside a bar, at their position in it.
         for (bar, position, tempo) in gpif_import::tempo::mid_bar_tempos(self) {
             xml.push_str(&format!(
@@ -324,29 +341,34 @@ impl WriteGpifInGpifStringOrder for Song {
             ));
             xml.push_str("</Properties>");
             // GuitarScore addition: a track with several staves (a piano's treble and bass)
-            // lists each with its own capo and tuning; a one-staff track is written as
-            // before, its staff's properties on the track.
-            if !track.staves.is_empty() {
-                xml.push_str("<Staves><Staff><Properties>");
-                xml.push_str(&staff_properties(
-                    &track.strings,
-                    track.has_tuning,
-                    track.tuning_label.as_deref(),
-                    track.offset,
+            // lists each with its own capo and tuning; every track is written this way, as
+            // Guitar Pro 7 writes it, also a one-staff one (whose staff block holds what
+            // the model does not: the fret count, a partial capo, the tuning's name,
+            // instrument and flats, and the chord and diagram libraries). The track-level
+            // properties above stay for Guitar Pro 6.
+            xml.push_str("<Staves><Staff><Properties>");
+            xml.push_str(&staff_block_properties(
+                &track.strings,
+                track.has_tuning,
+                track.tuning_label.as_deref(),
+                track.offset,
+                track.fret_count,
+                &track.staff_kept,
+            ));
+            xml.push_str("</Properties></Staff>");
+            for staff in &track.staves {
+                xml.push_str("<Staff><Properties>");
+                xml.push_str(&staff_block_properties(
+                    &staff.strings,
+                    staff.has_tuning,
+                    staff.tuning_label.as_deref(),
+                    staff.offset,
+                    staff.fret_count,
+                    &staff.kept,
                 ));
                 xml.push_str("</Properties></Staff>");
-                for staff in &track.staves {
-                    xml.push_str("<Staff><Properties>");
-                    xml.push_str(&staff_properties(
-                        &staff.strings,
-                        staff.has_tuning,
-                        staff.tuning_label.as_deref(),
-                        staff.offset,
-                    ));
-                    xml.push_str("</Properties></Staff>");
-                }
-                xml.push_str("</Staves>");
             }
+            xml.push_str("</Staves>");
             // The track's sound: GP7 reads the program from `GeneralMidi` here and the
             // mixer from the RSE channel strip; GP3-5 keep both in the song's channel
             // table, so fall back to the channel (a save from those formats would
@@ -672,9 +694,14 @@ impl WriteGpifInGpifStringOrder for Song {
             }
             if !mh.fermatas.is_empty() {
                 xml.push_str("<Fermatas>");
-                for (ftype, offset) in &mh.fermatas {
+                for (ftype, offset, length) in &mh.fermatas {
+                    let length = if length.is_empty() {
+                        String::new()
+                    } else {
+                        format!("<Length>{}</Length>", escape_xml(length))
+                    };
                     xml.push_str(&format!(
-                        "<Fermata><Type>{ftype}</Type><Offset>{offset}</Offset></Fermata>"
+                        "<Fermata><Type>{ftype}</Type><Offset>{offset}</Offset>{length}</Fermata>"
                     ));
                 }
                 xml.push_str("</Fermatas>");
@@ -946,6 +973,76 @@ fn staff_properties(
             "<Property name=\"Tuning\"><Pitches>{}</Pitches>{label}</Property>",
             pitches.join(" ")
         ));
+    }
+    xml
+}
+
+/// GuitarScore addition: a staff block as Guitar Pro 7 writes it (`<Staff><Properties>`):
+/// the modeled capo, fret count and tuning, then the parts kept from the file (a partial
+/// capo, a tuning shown with flats, its instrument and label visibility, its name, and the
+/// whole chord and diagram libraries).
+fn staff_block_properties(
+    strings: &[(i8, i8)],
+    has_tuning: bool,
+    label: Option<&str>,
+    capo: i32,
+    fret_count: u8,
+    kept: &StaffKept,
+) -> String {
+    let mut xml = format!(
+        "<Property name=\"CapoFret\"><Fret>{}</Fret></Property>\
+         <Property name=\"FretCount\"><Number>{}</Number></Property>",
+        capo.clamp(0, 127),
+        fret_count
+    );
+    if let Some(fret) = kept.partial_capo_fret {
+        xml.push_str(&format!(
+            "<Property name=\"PartialCapoFret\"><Fret>{fret}</Fret></Property>"
+        ));
+    }
+    if let Some(flags) = &kept.partial_capo_flags {
+        xml.push_str(&format!(
+            "<Property name=\"PartialCapoStringFlags\"><Bitset>{}</Bitset></Property>",
+            escape_xml(flags)
+        ));
+    }
+    if has_tuning {
+        // GPIF lists pitches from the lowest string up; `strings` starts at string 1.
+        let pitches: Vec<String> = strings
+            .iter()
+            .rev()
+            .map(|(_, pitch)| pitch.to_string())
+            .collect();
+        let flat = if kept.tuning_flat_child {
+            "<Flat></Flat>"
+        } else {
+            ""
+        };
+        let instrument = kept
+            .tuning_instrument
+            .as_deref()
+            .map(|instrument| format!("<Instrument>{}</Instrument>", escape_xml(instrument)))
+            .unwrap_or_default();
+        // Guitar Pro writes a `<Label>`, empty when the tuning has no name.
+        let label = format!("<Label>{}</Label>", escape_xml(label.unwrap_or_default()));
+        let visible = kept
+            .label_visible
+            .as_deref()
+            .map(|visible| format!("<LabelVisible>{}</LabelVisible>", escape_xml(visible)))
+            .unwrap_or_default();
+        xml.push_str(&format!(
+            "<Property name=\"Tuning\"><Pitches>{}</Pitches>{flat}{instrument}{label}{visible}</Property>",
+            pitches.join(" ")
+        ));
+    }
+    for library in &kept.chord_libraries {
+        xml.push_str(library);
+    }
+    if kept.tuning_flat {
+        xml.push_str("<Property name=\"TuningFlat\"><Enable /></Property>");
+    }
+    if let Some(name) = &kept.name {
+        xml.push_str(&format!("<Name>{}</Name>", cdata(name)));
     }
     xml
 }

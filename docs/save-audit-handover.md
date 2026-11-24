@@ -51,6 +51,7 @@ push or open PRs, check the branch right before each commit).
 | typed lyrics on other tracks (backing vocals) are kept on their track | the typed lyric lines of every track but the song's lyric track |
 | a track's sound changes are kept on their bars | `Automation type Sound` after bar 0 (kept on each bar's measure and written again, bar 0 too) |
 | Guitar Pro's playback settings, mix and templates are kept | the per-track playback settings, the master effect chain (bypass, parameters, bypassed automations, automation points), GP8's audio tracks, the score views, the page header and footer templates, the words-and-music credit, the systems layouts (empty ones too), the channel strip's bypassed automations and the tempo's name |
+| the staff block and the last small losses are kept | `<Staves><Staff>` for every track (tuning, capo and fret count from the model; partial capo, flats, instrument, label visibility, name and the chord and diagram libraries as written), a note's own `<XProperties>` and tie origin, a zero `Bended` marker, a fermata's length, a tempo at a bar's very end, and a grace beat with a `<Variation>` (no longer folded) |
 
 Earlier on `main`: slap and pop as beat properties (`2bfebad`).
 
@@ -79,45 +80,29 @@ audit test guards it too once the verdict is gone.
 owner** (GP7 on Windows; files go through `~/Dropbox`; one file per fresh Guitar Pro start).
 Our reader reading it back proves nothing about Guitar Pro.
 
-## What is left (36 kinds over the 59 GP7 files in `~/svn/wyw/main/tabs`)
+## What is left
 
-Ordered by what matters most. Counts are "lost occurrences in N files" and come from
-`gscore-cli audit ~/svn/wyw/main/tabs`; the test files keep 28 (`gscore-cli audit testdata`).
+`gscore-cli audit` now reports **no loss at all** over the 59 GP7 files in
+`~/svn/wyw/main/tabs` and over `testdata/`: 0 unexplained and 0 known (the 64 kinds in the
+first handover are gone). `cargo xtask corpus` (and the test over `testdata/`) fails again
+as soon as a new file shows a key without a verdict, which is the intended guard.
 
-### 1. The staff block (`Staff ...`, about 20 keys, in every file)
+What is left to do is not a loss but a check in Guitar Pro by the owner, because these
+changes alter the written structure (GP7 on Windows; files through `~/Dropbox`; one file
+per fresh Guitar Pro start):
 
-Our writer writes tuning and capo as track-level properties (Guitar Pro 6 style); Guitar Pro 7
-writes `<Staves><Staff><Properties>` with: `Tuning` (plus `<Flat>`, `<Instrument>`, `<Label>`,
-`<LabelVisible>`), `CapoFret`, `FretCount`, `PartialCapoFret`, `PartialCapoStringFlags`,
-`TuningFlat`, `<Name>` (the tuning's name, e.g. "Standard"), `ChordCollection`,
-`ChordWorkingSet`, `DiagramCollection`, `DiagramWorkingSet` (the track's chord diagram library:
-`<Item>`, `<Chord>`, `<KeyNote>`, `<BassNote>`, `<Diagram>`, `<Position>`, `<Fingering>`,
-`<Degree>`, `ShowName`, `ShowDiagram`, `ShowFingering`; in 3 files).
-
-- The model already reads the fret count (`TrackView::fret_count`, from `Staff Property
-  FretCount`): write it back.
-- Tuning and capo are edited in GuitarScore, so write them from the model; keep the rest
-  (label, flats, instrument, name, partial capo) as written per staff.
-- The chord library: beats refer to chords by id (`<Chord>` on a beat). Our writer writes the
-  diagrams beats use (`track_diagrams` in `gpif_export/mod.rs`); a library entry no beat uses is
-  lost. Check how ids line up before keeping the library.
-- This changes the written structure: **Guitar Pro check needed** (does Guitar Pro 7 read the
-  staff block we write, and still the track-level properties we wrote so far?).
-
-### 2. The small rest (1-2 files each)
-
-- `Note <Tie>` (7 in 2): a tie written as a `<Tie>` element; check how the reader reads ties.
-- `MasterBar <Length>` (2 in 2): a bar's own length.
-- `Note XProperty 688062467` with `<Int>`, `<XProperties>` (2 in 2): Guitar Pro's extra note
-  properties; beats already keep theirs (`Beat::x_properties`), notes do not.
-- `Note <Float>` (7 in 1), and one bend's shape (`Bended`, `Bend*` in 1 file): trace.
-- `Beat <Variation>` (2 in 1): on grace-note beats, which the reader folds into the next note
-  (`fold_grace_beats`), so the beat's kept elements have nowhere to go.
-- `Automation type Tempo` (1 in 1): a tempo change at the very end of a bar (position 1)
-  when the next bar starts with its own: the same moment, only one is heard. Arguably no loss.
-
-Still open from the fixed items: `GPIF <ScoreViews>` is kept verbatim, so its ids can go stale
-when tracks are deleted; mapping it to GuitarScore's own views is the better fix.
+- the `<Staves><Staff>` block is now written for every track, a one-staff guitar included,
+  beside the track-level properties Guitar Pro 6 used (does Guitar Pro 7 read the staff
+  block and ignore the track-level one where both exist?).
+- the staff's chord and diagram libraries are kept as written, while the diagrams beats
+  use are still numbered in the track-level `<DiagramCollection>`; Guitar Pro 7 may resolve
+  a beat's `<Chord>` id in the staff library. If it shows the wrong or no diagram on a
+  chord-heavy file, match the ids (the diagrams are identical values, so a match by value
+  is possible) rather than writing the library twice.
+- a tempo automation at the very end of a bar (position 1) is written back beside the next
+  bar's own tempo. Guitar Pro may show both; the next bar's is the one heard.
+- `GPIF <ScoreViews>` is kept verbatim, so its ids can go stale when tracks are deleted;
+  mapping it to GuitarScore's own views is still the better fix.
 
 ## Useful facts found on the way
 

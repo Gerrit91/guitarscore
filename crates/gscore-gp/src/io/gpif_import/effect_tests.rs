@@ -30,6 +30,7 @@ pub(super) fn note_with(property: &str) -> Note {
                 items: None,
                 element: None,
                 variation: None,
+                ..Default::default()
             }],
         },
         tie: None,
@@ -41,6 +42,7 @@ pub(super) fn note_with(property: &str) -> Note {
         ornament: None,
         left_fingering: None,
         right_fingering: None,
+        ..Default::default()
     }
 }
 
@@ -244,6 +246,7 @@ fn harmonic_fret_is_read_before_the_harmonic_type() {
         items: None,
         element: None,
         variation: None,
+        ..Default::default()
     });
     let song_note = super::convert_note(&note, 80, false, false);
     let harmonic = song_note.effect.harmonic.expect("harmonic imported");

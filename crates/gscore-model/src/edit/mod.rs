@@ -378,7 +378,7 @@ enum ChangeKind {
     /// A measure's fermatas changed; `previous` is the whole list.
     Fermata {
         measure: MeasureIndex,
-        previous: Vec<(String, String)>,
+        previous: Vec<(String, String, String)>,
     },
     /// A measure's free-time (no metronome) switch changed.
     FreeTime {
@@ -561,7 +561,11 @@ impl Change {
             }
             ChangeKind::Fermata { previous, .. } => previous
                 .iter()
-                .map(|(kind, offset)| kind.len().saturating_add(offset.len()))
+                .map(|(kind, offset, length)| {
+                    kind.len()
+                        .saturating_add(offset.len())
+                        .saturating_add(length.len())
+                })
                 .sum(),
             ChangeKind::Batch { changes } => changes
                 .iter()

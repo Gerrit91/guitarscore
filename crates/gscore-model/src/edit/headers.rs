@@ -189,7 +189,9 @@ impl Song {
             let header = header_mut(inner, measure)?;
             let previous = header.fermatas.clone();
             header.fermatas = match fermata {
-                Some(fermata) => vec![(fermata.to_gp().to_owned(), "0/1".to_owned())],
+                Some(fermata) => {
+                    vec![(fermata.to_gp().to_owned(), "0/1".to_owned(), String::new())]
+                }
                 None => Vec::new(),
             };
             Ok(Change {

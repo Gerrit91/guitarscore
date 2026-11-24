@@ -50,6 +50,11 @@ pub(crate) struct Gpif {
     /// has one.
     #[serde(skip)]
     pub score_views_raw: Option<String>,
+    /// GuitarScore addition: each staff's chord and diagram library elements (whole
+    /// `<Property>` elements) exactly as written, by track and then by staff. Kept apart
+    /// from the serde model, which understands only the diagrams themselves.
+    #[serde(skip)]
+    pub staff_libraries: Vec<Vec<Vec<String>>>,
 }
 
 /// The parts of one GPIF track that are kept exactly as the file has them.
@@ -258,6 +263,98 @@ pub(crate) fn capture_gpif_sections(xml: &str) -> (Option<String>, Option<String
         }
     }
     (audio_tracks, score_views)
+}
+
+/// GuitarScore addition: the chord and diagram library properties of every staff, exactly
+/// as written, by track and then by staff (`<GPIF><Tracks><Track><Staves><Staff>
+/// <Properties><Property name="DiagramCollection">`). The serde model understands only the
+/// diagrams, so the whole elements are captured to keep what it does not (a chord's
+/// degrees, a fingering, display flags).
+pub(crate) fn capture_staff_libraries(xml: &str) -> Vec<Vec<Vec<String>>> {
+    use quick_xml::events::Event;
+
+    const LIBRARIES: [&str; 4] = [
+        "ChordCollection",
+        "ChordWorkingSet",
+        "DiagramCollection",
+        "DiagramWorkingSet",
+    ];
+    let mut reader = quick_xml::Reader::from_str(xml);
+    reader.config_mut().trim_text(false);
+    let mut depth: usize = 0;
+    let mut tracks: Vec<Vec<Vec<String>>> = Vec::new();
+    // Where the captured element started, and its depth.
+    let mut capturing: Option<(usize, usize)> = None;
+    let position = |reader: &quick_xml::Reader<&[u8]>| {
+        usize::try_from(reader.buffer_position()).unwrap_or(usize::MAX)
+    };
+
+    loop {
+        let start = position(&reader);
+        let event = match reader.read_event() {
+            Ok(event) => event,
+            Err(_) => break,
+        };
+        match &event {
+            Event::Start(element) => {
+                depth = depth.saturating_add(1);
+                let name = element.name();
+                if name.as_ref() == "Track" && depth == 3 {
+                    tracks.push(Vec::new());
+                } else if name.as_ref() == "Staff" && depth == 5 {
+                    if let Some(staves) = tracks.last_mut() {
+                        staves.push(Vec::new());
+                    }
+                } else if capturing.is_none() && depth == 7 && name.as_ref() == "Property" {
+                    let library = element
+                        .attributes()
+                        .flatten()
+                        .find(|attribute| attribute.key.as_ref() == "name")
+                        .map(|attribute| attribute.value.to_string());
+                    if library
+                        .as_deref()
+                        .is_some_and(|library| LIBRARIES.contains(&library))
+                    {
+                        capturing = Some((start, depth));
+                    }
+                }
+            }
+            Event::Empty(element) => {
+                // A self-closing element is complete at once; its parent is at `depth`.
+                if capturing.is_none() && depth == 6 && element.name().as_ref() == "Property" {
+                    let library = element
+                        .attributes()
+                        .flatten()
+                        .find(|attribute| attribute.key.as_ref() == "name")
+                        .map(|attribute| attribute.value.to_string());
+                    if library
+                        .as_deref()
+                        .is_some_and(|library| LIBRARIES.contains(&library))
+                        && let Some(raw) = xml.get(start..position(&reader))
+                        && let Some(staff) = tracks.last_mut().and_then(|staves| staves.last_mut())
+                    {
+                        staff.push(raw.to_owned());
+                    }
+                }
+            }
+            Event::End(_) => {
+                if let Some((begin, element_depth)) = capturing
+                    && element_depth == depth
+                {
+                    if let Some(raw) = xml.get(begin..position(&reader))
+                        && let Some(staff) = tracks.last_mut().and_then(|staves| staves.last_mut())
+                    {
+                        staff.push(raw.to_owned());
+                    }
+                    capturing = None;
+                }
+                depth = depth.saturating_sub(1);
+            }
+            Event::Eof => break,
+            _ => {}
+        }
+    }
+    tracks
 }
 
 /// Regression tests for the verbatim track elements.
@@ -621,6 +718,9 @@ pub(crate) struct InstrumentSet {
 pub(crate) struct TrackPropertiesWrapper {
     #[serde(rename = "Property", default)]
     pub properties: Vec<Property>,
+    /// GuitarScore addition: a `<Name>` inside the track's properties (GP6's tuning name).
+    #[serde(rename = "Name", default)]
+    pub name: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -639,6 +739,10 @@ pub(crate) struct Staff {
 pub(crate) struct StaffPropertiesWrapper {
     #[serde(rename = "Property", default)]
     pub properties: Vec<Property>,
+    /// GuitarScore addition: the staff's `<Name>` (inside `<Properties>`), the tuning's
+    /// name ("Standard").
+    #[serde(rename = "Name", default)]
+    pub name: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]

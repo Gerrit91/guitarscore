@@ -386,3 +386,23 @@ Code comments mark changed spots with "GuitarScore". Each fix could be offered u
     strip's `<ByPassedAutomations>`, and the bar-0 tempo automation's `<Text>`
     (`Song::gpif_tempo_text`). `capture_gpif_sections` keeps the two whole GPIF sections
     verbatim. Tests in `gpif_export/repeat_tests.rs` and `gpif/mod.rs`.
+53. The save audit's staff block and last small losses (`src/io/gpif/{mod,bars}.rs`,
+    `src/io/gpif_import/{mod,notes,staves}.rs`, `src/io/gpif_export/{mod,notes}.rs`,
+    `src/model/{track,note,headers,grace}.rs`, `src/io/gpx/mod.rs`, 2026-11-24): Guitar Pro
+    7 writes every staff's tuning, capo, fret count, partial capo, tuning name and chord
+    and diagram libraries in `<Staves><Staff><Properties>`, and the writer only wrote one
+    for a multi-staff track, from the model. Every track is written this way now (the
+    track-level properties stay for Guitar Pro 6), the modeled capo, tuning and fret count
+    from the model (`Track::fret_count` and the new `Staff::fret_count`), and what the model
+    does not have in `StaffKept`: a partial capo, a tuning shown with flats, its instrument,
+    label visibility and name, and the whole chord and diagram libraries captured verbatim
+    by `capture_staff_libraries` (the diagrams beats use are still numbered in the
+    track-level collection; the staff-level library's ids are a Guitar Pro check for the
+    owner). A note keeps its own `<XProperties>` (`Note::x_properties`, the trill run) and
+    the file's own tie origin (`Note::tie_origin`, for ties that cannot be paired up from
+    the tied ends alone), a `Bended` marker of zero movement stays a zero bend the model
+    plays and draws as none (`NoteView::bend`), a fermata's `<Length>` is kept (the model's
+    fermata list is now `(type, offset, length)`), a tempo automation at a bar's very end is
+    kept (`MeasureHeader::end_tempos`), and a grace beat carrying kept data is no longer
+    folded into the next note (`fold_grace_beats`), so its `<Variation>` survives. Tests in
+    `gpif_export/repeat_tests.rs`.

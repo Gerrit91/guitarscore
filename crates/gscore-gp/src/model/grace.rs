@@ -10,8 +10,8 @@
 //! ([`Song::with_attached_graces`]; the save check reports what went missing).
 
 use crate::model::{
-    Beat, BeatStatus, Duration, GraceEffect, GraceEffectTransition, Note, NoteEffect, NoteType,
-    SlideType, Song, Track,
+    Beat, BeatStatus, Duration, GpifBeatKept, GraceEffect, GraceEffectTransition, Note, NoteEffect,
+    NoteType, SlideType, Song, Track,
 };
 
 /// The written values a grace note can have (64th, 32nd, 16th), as GP3-5 store them.
@@ -56,7 +56,11 @@ fn can_fold(grace: &Beat, main: &Beat) -> bool {
         && grace.text.is_empty()
         && grace.effect.is_default()
         && grace.effect.chord.is_none()
-        && plain_value(&grace.duration);
+        && plain_value(&grace.duration)
+        // GuitarScore addition: a grace beat carrying something the attached form has no
+        // place for (a variation, a hairpin, layout properties) stays a beat of its own.
+        && grace.kept == GpifBeatKept::default()
+        && grace.x_properties.is_empty();
     let main_ok = !main.grace && main.status == BeatStatus::Normal;
     if !plain_beat || !main_ok {
         return false;

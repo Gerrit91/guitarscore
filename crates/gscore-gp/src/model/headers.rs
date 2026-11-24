@@ -55,7 +55,13 @@ pub struct MeasureHeader {
     pub key_signature: KeySignature,
     pub double_bar: bool,
     /// Fermatas from GPIF (GP6/GP7)
-    pub fermatas: Vec<(String, String)>,
+    /// Fermatas on this bar, as `(type, offset, length)`; each as written (the type
+    /// `Short`..`VeryLong`, the offset such as `0/1`, the length such as `0.5`, empty when
+    /// the file gave none).
+    pub fermatas: Vec<(String, String, String)>,
+    /// GuitarScore addition: tempo automations at the very end of this bar (position 1),
+    /// kept as written so a save does not lose them; the next bar's tempo is the one heard.
+    pub end_tempos: Vec<(f32, i16)>,
     /// Free time (no metronome) from GPIF (GP6/GP7)
     pub free_time: bool,
     /// GuitarScore addition: Guitar Pro's opaque layout properties for the whole song's
@@ -96,6 +102,7 @@ impl Default for MeasureHeader {
                 beams: vec![2, 2, 2, 2],
             },
             fermatas: Vec::new(),
+            end_tempos: Vec::new(),
             free_time: false,
             x_properties: Vec::new(),
         }

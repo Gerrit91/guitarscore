@@ -901,6 +901,11 @@ impl NoteView<'_> {
             .map(|point| i16::from(point.value))
             .max_by_key(|value| value.unsigned_abs())
             .unwrap_or(0);
+        // A `Bended` marker of zero movement is kept for saving but plays and draws as no
+        // bend (a file can carry one).
+        if quarter_tones == 0 {
+            return None;
+        }
         Some(Bend {
             kind,
             quarter_tones,
@@ -928,6 +933,16 @@ impl NoteView<'_> {
             kind,
             points: bend.points.iter().map(model_point).collect(),
         })
+    }
+
+    /// Whether this note carries Guitar Pro's `Bended` marker with no movement, which is
+    /// written back but plays and draws as no bend.
+    pub fn has_flat_bend(&self) -> bool {
+        self.inner
+            .effect
+            .bend
+            .as_ref()
+            .is_some_and(|bend| bend.points.iter().all(|point| i16::from(point.value) == 0))
     }
 
     /// The slides on this note, in the order the file stores them.

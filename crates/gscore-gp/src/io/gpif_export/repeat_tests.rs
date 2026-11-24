@@ -414,3 +414,148 @@ fn empty_systems_layout_and_tempo_text_round_trip_through_gpif() {
     assert_eq!(reread.tracks[0].gpif_systems_default.as_deref(), Some("3"));
     assert_eq!(reread.gpif_tempo_text.as_deref(), Some("Allegro"));
 }
+
+/// A note's own tie origin marker, its Guitar Pro properties, a fermata's length and a
+/// tempo at the very end of a bar survive a GP7 round trip.
+#[test]
+fn note_tie_origin_properties_and_bar_marks_round_trip_through_gpif() {
+    use crate::model::{NoteType, XProperty};
+    let mut song = Song::default();
+    song.read_gp(include_bytes!(
+        "../../../../../testdata/basic/note_lengths.gp"
+    ))
+    .expect("read");
+    let note = &mut song.tracks[0].measures[0].voices[0].beats[0].notes[0];
+    note.kind = NoteType::Normal;
+    note.tie_origin = true;
+    note.x_properties = vec![XProperty {
+        id: "688062467".to_owned(),
+        kind: "Int".to_owned(),
+        value: "129".to_owned(),
+    }];
+    song.measure_headers[0].fermatas =
+        vec![("Medium".to_owned(), "0/1".to_owned(), "0.5".to_owned())];
+    song.measure_headers[0].end_tempos = vec![(1.0, 220)];
+
+    let bytes = song.write_gp().expect("written");
+    let mut reread = Song::default();
+    reread.read_gp(&bytes).expect("read back");
+    let note = &reread.tracks[0].measures[0].voices[0].beats[0].notes[0];
+    assert!(note.tie_origin, "the file's own tie origin is kept");
+    assert_eq!(
+        note.x_properties,
+        song.tracks[0].measures[0].voices[0].beats[0].notes[0].x_properties
+    );
+    assert_eq!(
+        reread.measure_headers[0].fermatas,
+        song.measure_headers[0].fermatas
+    );
+    assert_eq!(
+        reread.measure_headers[1].tempo, 220,
+        "the next bar takes the end tempo"
+    );
+}
+
+/// A `Bended` marker with no movement is written back (a zero bend), while the model
+/// treats it as no bend for playback and drawing.
+#[test]
+fn a_flat_bend_marker_round_trips_through_gpif() {
+    use crate::model::{BendEffect, BendPoint, BendType};
+    let mut song = Song::default();
+    song.read_gp(include_bytes!(
+        "../../../../../testdata/basic/note_lengths.gp"
+    ))
+    .expect("read");
+    let note = &mut song.tracks[0].measures[0].voices[0].beats[0].notes[0];
+    note.effect.bend = Some(BendEffect {
+        kind: BendType::Bend,
+        points: vec![BendPoint {
+            position: 0,
+            value: 0,
+            vibrato: false,
+        }],
+        ..BendEffect::default()
+    });
+
+    let xml = song.write_gpif_xml().expect("written");
+    assert!(xml.contains("<Property name=\"Bended\">"), "{xml}");
+    let bytes = song.write_gp().expect("written");
+    let mut reread = Song::default();
+    reread.read_gp(&bytes).expect("read back");
+    let bend = reread.tracks[0].measures[0].voices[0].beats[0].notes[0]
+        .effect
+        .bend
+        .as_ref()
+        .expect("the zero bend is kept");
+    assert!(bend.points.iter().all(|point| point.value == 0));
+}
+
+/// A staff's block, which GuitarScore does not model, survives: the tuning's name, its
+/// instrument and flats, a partial capo, the fret count and the whole chord library.
+#[test]
+fn the_staff_block_round_trips_through_gpif() {
+    let mut song = Song::default();
+    song.read_gp(include_bytes!("../../../../../testdata/basic/staff.gp"))
+        .expect("read");
+    let kept = song.tracks[0].staff_kept.clone();
+    assert_eq!(kept.name.as_deref(), Some("Standard"));
+    assert_eq!(kept.tuning_instrument.as_deref(), Some("Guitar"));
+    assert!(
+        kept.tuning_flat_child,
+        "the test file's tuning has a Flat child"
+    );
+    assert!(
+        !kept.chord_libraries.is_empty(),
+        "the test file has a chord library"
+    );
+    assert_eq!(song.tracks[0].fret_count, 24);
+
+    let bytes = song.write_gp().expect("written");
+    let mut reread = Song::default();
+    reread.read_gp(&bytes).expect("read back");
+    assert_eq!(reread.tracks[0].staff_kept, kept);
+    assert_eq!(reread.tracks[0].fret_count, 24);
+}
+
+/// A grace beat carrying Guitar Pro's `<Variation>` is not folded into the next note, so
+/// the variation survives.
+#[test]
+fn a_grace_beat_with_a_variation_is_not_folded() {
+    use crate::model::{Duration, GpifBeatKept};
+    let mut song = Song::default();
+    song.read_gp(include_bytes!(
+        "../../../../../testdata/basic/note_lengths.gp"
+    ))
+    .expect("read");
+    let voice = &mut song.tracks[0].measures[0].voices[0];
+    let main = voice.beats[0].clone();
+    let mut grace = crate::model::Beat {
+        grace: true,
+        duration: Duration {
+            value: 32,
+            ..Duration::default()
+        },
+        ..crate::model::Beat::default()
+    };
+    grace.kept = GpifBeatKept {
+        variation: Some("2".to_owned()),
+        ..GpifBeatKept::default()
+    };
+    grace.notes = main
+        .notes
+        .iter()
+        .map(|note| crate::model::Note {
+            kind: crate::model::NoteType::Normal,
+            value: 3,
+            ..note.clone()
+        })
+        .collect();
+    voice.beats.insert(0, grace);
+
+    let bytes = song.write_gp().expect("written");
+    let mut reread = Song::default();
+    reread.read_gp(&bytes).expect("read back");
+    let beats = &reread.tracks[0].measures[0].voices[0].beats;
+    assert!(beats[0].grace, "the grace beat stays a beat");
+    assert_eq!(beats[0].kept.variation.as_deref(), Some("2"));
+}

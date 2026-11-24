@@ -321,14 +321,24 @@ impl SongGpifOps for Song {
                 mh.key_signature.is_minor = key.mode == "Minor";
             }
 
-            // Tempo at this bar (a change later in the bar goes on its beat, see `tempo`)
+            // Tempo at this bar (a change later in the bar goes on its beat, see `tempo`;
+            // one at the very end is kept on the header, as written).
             if let Some(automations) = &gpif.master_track.automations {
                 for auto in &automations.automations {
-                    if auto.automation_type == "Tempo"
-                        && usize::try_from(auto.bar).ok() == Some(mh_idx)
-                        && auto.position <= 0.0
-                        && let Some(tempo_str) = automation_tempo(auto)
+                    if auto.automation_type != "Tempo"
+                        || usize::try_from(auto.bar).ok() != Some(mh_idx)
                     {
+                        continue;
+                    }
+                    let Some(tempo_str) = automation_tempo(auto) else {
+                        continue;
+                    };
+                    if auto.position >= 1.0 {
+                        if let Ok(tempo) = tempo_str.parse::<f64>() {
+                            mh.end_tempos
+                                .push((auto.position, clamp_i16(truncate_f64_to_i32(tempo))));
+                        }
+                    } else if auto.position <= 0.0 {
                         mh.tempo = truncate_f64_to_i32(tempo_str.parse::<f64>().unwrap_or(0.0));
                     }
                 }
@@ -396,7 +406,8 @@ impl SongGpifOps for Song {
                 for f in &fermatas_w.fermatas {
                     let ftype = f.fermata_type.as_deref().unwrap_or("Medium").to_string();
                     let offset = f.offset.as_deref().unwrap_or("").to_string();
-                    mh.fermatas.push((ftype, offset));
+                    let length = f.length.as_deref().unwrap_or("").trim().to_string();
+                    mh.fermatas.push((ftype, offset, length));
                 }
             }
 
@@ -519,7 +530,42 @@ impl SongGpifOps for Song {
                 track.has_tuning = false;
             }
 
-            track.fret_count = 24;
+            // GuitarScore addition: the number of frets and the parts of the first staff's
+            // properties GuitarScore does not model, from the first staff (GP7) or the
+            // track's properties (GP6).
+            let first_properties = g_track
+                .staves
+                .as_ref()
+                .and_then(|staves| staves.staves.first())
+                .and_then(|staff| staff.properties.as_ref())
+                .map(|properties| properties.properties.as_slice())
+                .or_else(|| {
+                    g_track
+                        .properties
+                        .as_ref()
+                        .map(|properties| properties.properties.as_slice())
+                });
+            let first_name = g_track
+                .staves
+                .as_ref()
+                .and_then(|staves| staves.staves.first())
+                .and_then(|staff| staff.properties.as_ref())
+                .and_then(|properties| properties.name.as_deref())
+                .or_else(|| {
+                    g_track
+                        .properties
+                        .as_ref()
+                        .and_then(|properties| properties.name.as_deref())
+                });
+            let libraries = gpif.staff_libraries.get(t_idx).cloned().unwrap_or_default();
+            track.fret_count = first_properties
+                .and_then(staves::extract_fret_count)
+                .unwrap_or(24);
+            track.staff_kept = staves::kept_staff(
+                first_properties.unwrap_or(&[]),
+                first_name,
+                libraries.first().cloned().unwrap_or_default(),
+            );
 
             // MIDI
             if let Some(gm) = &g_track.general_midi {
@@ -604,6 +650,7 @@ impl SongGpifOps for Song {
                 g_track,
                 bar_ids,
                 &diagrams,
+                &libraries,
             );
             track.bars_per_system = g_track.bars_per_system.filter(|bars| *bars > 0);
             // GuitarScore addition: the track's bars-per-line layout as written, and its
