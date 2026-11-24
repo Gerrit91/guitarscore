@@ -7069,3 +7069,21 @@ Looked at and left as is: the file's own tie origins are written back as read, a
 tie is taken off. Guitar Pro itself leaves such dangling origins (two archived band files
 have them), so they are harmless, and dropping them would lose what the file had. Audit over
 the 59 band files and the test files: 0 unexplained, 0 known.
+
+## 2026-11-04 — No sound from the AppImage on Arch: libasound no longer bundled
+
+- The owner's `v0.1.0-rc.0` AppImage printed `Cannot open shared library
+  libasound_module_pcm_pipewire.so (/usr/lib/x86_64-linux-gnu/alsa-lib/...)` at start.
+  The release workflow copied the build runner's (Ubuntu's) `libasound.so.2` into the
+  AppImage, and that library looks for ALSA plugins in Ubuntu's folder. On Arch the
+  PipeWire plugin is in `/usr/lib/alsa-lib/`, so ALSA's default device (routed to
+  PipeWire by the host's `/etc/alsa/conf.d/50-pipewire.conf`) could not be opened.
+  Reproduced with `aplay` and the AppImage's library preloaded: "audio open error";
+  with the host's own library it plays.
+- The workflow no longer bundles it (it is on the AppImage exclude list for this reason;
+  every desktop Linux has `libasound.so.2`), and the build fails if it ends up in the
+  AppImage again. It was the only bundled library.
+- The SoundFont in Settings was `/usr/share/soundfonts/FluidR3_GM.sf2` because the
+  owner's settings name it; the bundled `FluidR3_GM.sf2` is in the AppImage beside the
+  program.
+- Open: a new pre-release to confirm sound from the AppImage on Arch (and Ubuntu, Fedora).
