@@ -36,7 +36,7 @@ pub(crate) use draw::{
 pub(crate) use marks::draw_arrow;
 pub(crate) use pitch::{Alter, Clef};
 pub(crate) use rhythm::{draw_tab_rhythm, rhythm_depth};
-pub(crate) use tuplets::tuplet_groups;
+pub(crate) use tuplets::{BRACKET_FLOOR, BRACKET_REACH, tuplet_groups, written_length};
 
 use crate::Context;
 use crate::error::LayoutError;
@@ -305,6 +305,41 @@ impl Chord {
         } else {
             (head_width, 0.0)
         }
+    }
+
+    /// The staff positions of the chord's augmentation dots, one per space: a note in a
+    /// space has its dot there; a note on a line has its dot in the space above, or below
+    /// when the space above already has one (a second: the upper note's). Two notes never
+    /// share a dot, so a dense chord's dots do not run together.
+    pub(crate) fn dot_positions(&self) -> Vec<i32> {
+        let on_line = |position: i32| position.rem_euclid(2) == 0;
+        let mut dots: Vec<i32> = self
+            .heads
+            .iter()
+            .map(|head| head.position)
+            .filter(|&position| !on_line(position))
+            .collect();
+        // Lines from the top down, so a note's dot goes below only when the note above it
+        // took the space.
+        let mut lines: Vec<i32> = self
+            .heads
+            .iter()
+            .map(|head| head.position)
+            .filter(|&position| on_line(position))
+            .collect();
+        lines.sort_unstable_by(|a, b| b.cmp(a));
+        for line in lines {
+            let above = line.saturating_add(1);
+            let below = line.saturating_sub(1);
+            if !dots.contains(&above) {
+                dots.push(above);
+            } else if !dots.contains(&below) {
+                dots.push(below);
+            }
+        }
+        dots.sort_unstable();
+        dots.dedup();
+        dots
     }
 
     /// Where the accidentals go: for each head, how far left of the chord's left edge (its
@@ -854,6 +889,35 @@ mod tests {
         assert_eq!((c.head_glyph(&h), c.beams()), (Glyph::NoteheadBlack, 2));
         c.heads.push(head(31, Alter::Natural, false));
         assert!(c.shifted(c.stem_up()).contains(&true));
+    }
+
+    /// A dotted chord has one dot per space: a second's line note takes the space below,
+    /// a third's notes each the space above, a note in a space its own.
+    #[test]
+    fn a_dense_chords_dots_take_a_space_each() {
+        let chord = |positions: &[i32]| Chord {
+            heads: positions
+                .iter()
+                .map(|&position| Head {
+                    position,
+                    ..Head::plain()
+                })
+                .collect(),
+            value: 4,
+            dots: 1,
+            tuplet: None,
+            stem_up: None,
+            slash: false,
+            marks: ChordMarks::default(),
+        };
+        // A second: the space note keeps its space, the line note goes below.
+        assert_eq!(chord(&[4, 5]).dot_positions(), vec![3, 5]);
+        // A third on two lines: each takes the space above.
+        assert_eq!(chord(&[4, 6]).dot_positions(), vec![5, 7]);
+        // A cluster of three: line, space, line.
+        assert_eq!(chord(&[4, 5, 6]).dot_positions(), vec![3, 5, 7]);
+        // Below the staff (negative positions) the same.
+        assert_eq!(chord(&[-2, -1]).dot_positions(), vec![-3, -1]);
     }
 
     /// A dense chord's sharps: one a second or third from another stands in a column of

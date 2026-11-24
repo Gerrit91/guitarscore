@@ -8,6 +8,11 @@ use crate::glyph::Glyph;
 
 /// Size of a tuplet label.
 const LABEL_SIZE: f32 = 1.3;
+/// How far a bracketed tuplet's number reaches above the highest note under it (the
+/// bracket's rise, the label's gap and its digits), and the least height above the staff
+/// it takes.
+pub(crate) const BRACKET_REACH: f32 = BRACKET_RISE + LABEL_RISE + LABEL_SIZE * 0.75;
+pub(crate) const BRACKET_FLOOR: f32 = 2.5 + LABEL_RISE + LABEL_SIZE * 0.75;
 /// How far above the notes a bracket runs, and how long its end hooks are.
 const BRACKET_RISE: f32 = 1.0;
 const HOOK: f32 = 0.7;
@@ -41,7 +46,7 @@ fn item_tuplet(item: &NotationItem) -> Option<Tuplet> {
 
 /// The written length of an item (its value and dots, without the tuplet's ratio), as a
 /// share of a whole note.
-fn written_length(item: &NotationItem) -> f64 {
+pub(crate) fn written_length(item: &NotationItem) -> f64 {
     let (value, dots) = match item {
         NotationItem::Chord(chord) => (u32::from(chord.value), chord.dots),
         NotationItem::Rest { glyph, dots, .. } => {

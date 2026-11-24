@@ -699,16 +699,18 @@ fn draw_heads(x: f32, chord: &Chord, up: bool, top: f32, ctx: &Context<'_>, ops:
             });
             finger_x -= ctx.fonts.text.width(finger, super::FINGER_SIZE) + super::FINGER_GAP;
         }
-        // Dots sit in a space: a note on a line gets its dot in the space above.
-        let dot_y = if head.position % 2 == 0 {
-            y_of(top, head.position.saturating_add(1))
-        } else {
-            y
-        };
-        let mut dot_x = x + width / 2.0 + shift.max(0.0) + paren + DOT_GAP;
-        for _ in 0..chord.dots {
-            draw_dot(dot_x, dot_y, ctx, ops);
-            dot_x += font.advance(Glyph::AugmentationDot) + DOT_GAP;
+    }
+    // The dots: one column right of the whole chord (also of a head moved right of an
+    // up-stem), one dot per space (see `Chord::dot_positions`).
+    if chord.dots > 0 {
+        let (_, second_right) = chord.second_reach(head_width, up);
+        let start = x + head_width / 2.0 + second_right + chord_paren + DOT_GAP;
+        for position in chord.dot_positions() {
+            let mut dot_x = start;
+            for _ in 0..chord.dots {
+                draw_dot(dot_x, y_of(top, position), ctx, ops);
+                dot_x += font.advance(Glyph::AugmentationDot) + DOT_GAP;
+            }
         }
     }
 }
