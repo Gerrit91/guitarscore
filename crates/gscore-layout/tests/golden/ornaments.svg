@@ -194,74 +194,74 @@
 <text x="121.42" y="69.64" font-family="Bravura" font-size="4" fill="#101010" data-glyph="noteheadBlack">&#xE0A4;</text>
 <text x="120.18" y="69.64" font-family="Bravura" font-size="4" fill="#101010" data-glyph="accidentalSharp">&#xE262;</text>
 <line x1="121.48" y1="69.81" x2="121.48" y2="73.14" stroke="#101010" stroke-width="0.12"/>
-<path d="M 91.75 79.14 C 91.91 78.96 92.05 78.96 92.21 79.14" fill="none" stroke="#101010" stroke-width="0.15" stroke-linecap="round"/>
-<path d="M 92.21 79.14 C 92.38 79.32 92.52 79.32 92.68 79.14" fill="none" stroke="#101010" stroke-width="0.15" stroke-linecap="round"/>
-<path d="M 92.68 79.14 C 92.84 78.96 92.98 78.96 93.14 79.14" fill="none" stroke="#101010" stroke-width="0.15" stroke-linecap="round"/>
-<path d="M 93.14 79.14 C 93.3 79.32 93.44 79.32 93.61 79.14" fill="none" stroke="#101010" stroke-width="0.15" stroke-linecap="round"/>
-<path d="M 93.61 79.14 C 93.77 78.96 93.91 78.96 94.07 79.14" fill="none" stroke="#101010" stroke-width="0.15" stroke-linecap="round"/>
-<path d="M 94.07 79.14 C 94.23 79.32 94.37 79.32 94.54 79.14" fill="none" stroke="#101010" stroke-width="0.15" stroke-linecap="round"/>
-<path d="M 94.54 79.14 C 94.7 78.96 94.84 78.96 95 79.14" fill="none" stroke="#101010" stroke-width="0.15" stroke-linecap="round"/>
-<path d="M 95 79.14 C 95.16 79.32 95.3 79.32 95.46 79.14" fill="none" stroke="#101010" stroke-width="0.15" stroke-linecap="round"/>
-<path d="M 95.46 79.14 C 95.63 78.96 95.77 78.96 95.93 79.14" fill="none" stroke="#101010" stroke-width="0.15" stroke-linecap="round"/>
-<path d="M 95.93 79.14 C 96.09 79.32 96.23 79.32 96.39 79.14" fill="none" stroke="#101010" stroke-width="0.15" stroke-linecap="round"/>
-<path d="M 96.39 79.14 C 96.56 78.96 96.69 78.96 96.86 79.14" fill="none" stroke="#101010" stroke-width="0.15" stroke-linecap="round"/>
-<path d="M 96.86 79.14 C 97.02 79.32 97.16 79.32 97.32 79.14" fill="none" stroke="#101010" stroke-width="0.15" stroke-linecap="round"/>
-<path d="M 97.32 79.14 C 97.48 78.96 97.62 78.96 97.79 79.14" fill="none" stroke="#101010" stroke-width="0.15" stroke-linecap="round"/>
-<path d="M 97.79 79.14 C 97.95 79.32 98.09 79.32 98.25 79.14" fill="none" stroke="#101010" stroke-width="0.15" stroke-linecap="round"/>
-<path d="M 98.25 79.14 C 98.41 78.96 98.55 78.96 98.71 79.14" fill="none" stroke="#101010" stroke-width="0.15" stroke-linecap="round"/>
-<path d="M 98.71 79.14 C 98.88 79.32 99.02 79.32 99.18 79.14" fill="none" stroke="#101010" stroke-width="0.15" stroke-linecap="round"/>
-<path d="M 99.18 79.14 C 99.34 78.96 99.48 78.96 99.64 79.14" fill="none" stroke="#101010" stroke-width="0.15" stroke-linecap="round"/>
-<path d="M 99.64 79.14 C 99.81 79.32 99.95 79.32 100.11 79.14" fill="none" stroke="#101010" stroke-width="0.15" stroke-linecap="round"/>
-<path d="M 100.11 79.14 C 100.27 78.96 100.41 78.96 100.57 79.14" fill="none" stroke="#101010" stroke-width="0.15" stroke-linecap="round"/>
-<path d="M 100.57 79.14 C 100.73 79.32 100.87 79.32 101.04 79.14" fill="none" stroke="#101010" stroke-width="0.15" stroke-linecap="round"/>
-<line x1="101.74" y1="79.56" x2="102.4" y2="78.72" stroke="#101010" stroke-width="0.15"/>
-<line x1="102.4" y1="78.72" x2="103.06" y2="79.56" stroke="#101010" stroke-width="0.15"/>
-<line x1="103.06" y1="79.56" x2="103.73" y2="78.72" stroke="#101010" stroke-width="0.15"/>
-<line x1="103.73" y1="78.72" x2="104.39" y2="79.56" stroke="#101010" stroke-width="0.15"/>
-<line x1="104.39" y1="79.56" x2="105.05" y2="78.72" stroke="#101010" stroke-width="0.15"/>
-<line x1="105.05" y1="78.72" x2="105.72" y2="79.56" stroke="#101010" stroke-width="0.15"/>
-<line x1="105.72" y1="79.56" x2="106.38" y2="78.72" stroke="#101010" stroke-width="0.15"/>
-<line x1="106.38" y1="78.72" x2="107.04" y2="79.56" stroke="#101010" stroke-width="0.15"/>
-<line x1="107.04" y1="79.56" x2="107.71" y2="78.72" stroke="#101010" stroke-width="0.15"/>
-<line x1="107.71" y1="78.72" x2="108.37" y2="79.56" stroke="#101010" stroke-width="0.15"/>
-<line x1="108.37" y1="79.56" x2="109.03" y2="78.72" stroke="#101010" stroke-width="0.15"/>
-<line x1="109.03" y1="78.72" x2="109.7" y2="79.56" stroke="#101010" stroke-width="0.15"/>
-<line x1="109.7" y1="79.56" x2="110.36" y2="78.72" stroke="#101010" stroke-width="0.15"/>
-<line x1="110.36" y1="78.72" x2="111.02" y2="79.56" stroke="#101010" stroke-width="0.15"/>
-<path d="M 111.72 79.14 C 111.89 78.96 112.03 78.96 112.19 79.14" fill="none" stroke="#101010" stroke-width="0.15" stroke-linecap="round"/>
-<path d="M 112.19 79.14 C 112.35 79.32 112.49 79.32 112.65 79.14" fill="none" stroke="#101010" stroke-width="0.15" stroke-linecap="round"/>
-<path d="M 112.65 79.14 C 112.82 78.96 112.96 78.96 113.12 79.14" fill="none" stroke="#101010" stroke-width="0.15" stroke-linecap="round"/>
-<path d="M 113.12 79.14 C 113.28 79.32 113.42 79.32 113.58 79.14" fill="none" stroke="#101010" stroke-width="0.15" stroke-linecap="round"/>
-<path d="M 113.58 79.14 C 113.74 78.96 113.88 78.96 114.05 79.14" fill="none" stroke="#101010" stroke-width="0.15" stroke-linecap="round"/>
-<path d="M 114.05 79.14 C 114.21 79.32 114.35 79.32 114.51 79.14" fill="none" stroke="#101010" stroke-width="0.15" stroke-linecap="round"/>
-<path d="M 114.51 79.14 C 114.67 78.96 114.81 78.96 114.98 79.14" fill="none" stroke="#101010" stroke-width="0.15" stroke-linecap="round"/>
-<path d="M 114.98 79.14 C 115.14 79.32 115.28 79.32 115.44 79.14" fill="none" stroke="#101010" stroke-width="0.15" stroke-linecap="round"/>
-<path d="M 115.44 79.14 C 115.6 78.96 115.74 78.96 115.9 79.14" fill="none" stroke="#101010" stroke-width="0.15" stroke-linecap="round"/>
-<path d="M 115.9 79.14 C 116.07 79.32 116.21 79.32 116.37 79.14" fill="none" stroke="#101010" stroke-width="0.15" stroke-linecap="round"/>
-<path d="M 116.37 79.14 C 116.53 78.96 116.67 78.96 116.83 79.14" fill="none" stroke="#101010" stroke-width="0.15" stroke-linecap="round"/>
-<path d="M 116.83 79.14 C 117 79.32 117.13 79.32 117.3 79.14" fill="none" stroke="#101010" stroke-width="0.15" stroke-linecap="round"/>
-<path d="M 117.3 79.14 C 117.46 78.96 117.6 78.96 117.76 79.14" fill="none" stroke="#101010" stroke-width="0.15" stroke-linecap="round"/>
-<path d="M 117.76 79.14 C 117.92 79.32 118.06 79.32 118.23 79.14" fill="none" stroke="#101010" stroke-width="0.15" stroke-linecap="round"/>
-<path d="M 118.23 79.14 C 118.39 78.96 118.53 78.96 118.69 79.14" fill="none" stroke="#101010" stroke-width="0.15" stroke-linecap="round"/>
-<path d="M 118.69 79.14 C 118.85 79.32 118.99 79.32 119.15 79.14" fill="none" stroke="#101010" stroke-width="0.15" stroke-linecap="round"/>
-<path d="M 119.15 79.14 C 119.32 78.96 119.46 78.96 119.62 79.14" fill="none" stroke="#101010" stroke-width="0.15" stroke-linecap="round"/>
-<path d="M 119.62 79.14 C 119.78 79.32 119.92 79.32 120.08 79.14" fill="none" stroke="#101010" stroke-width="0.15" stroke-linecap="round"/>
-<path d="M 120.08 79.14 C 120.25 78.96 120.39 78.96 120.55 79.14" fill="none" stroke="#101010" stroke-width="0.15" stroke-linecap="round"/>
-<path d="M 120.55 79.14 C 120.71 79.32 120.85 79.32 121.01 79.14" fill="none" stroke="#101010" stroke-width="0.15" stroke-linecap="round"/>
-<line x1="121.71" y1="79.56" x2="122.38" y2="78.72" stroke="#101010" stroke-width="0.15"/>
-<line x1="122.38" y1="78.72" x2="123.04" y2="79.56" stroke="#101010" stroke-width="0.15"/>
-<line x1="123.04" y1="79.56" x2="123.7" y2="78.72" stroke="#101010" stroke-width="0.15"/>
-<line x1="123.7" y1="78.72" x2="124.37" y2="79.56" stroke="#101010" stroke-width="0.15"/>
-<line x1="124.37" y1="79.56" x2="125.03" y2="78.72" stroke="#101010" stroke-width="0.15"/>
-<line x1="125.03" y1="78.72" x2="125.69" y2="79.56" stroke="#101010" stroke-width="0.15"/>
-<line x1="125.69" y1="79.56" x2="126.36" y2="78.72" stroke="#101010" stroke-width="0.15"/>
-<line x1="126.36" y1="78.72" x2="127.02" y2="79.56" stroke="#101010" stroke-width="0.15"/>
-<line x1="127.02" y1="79.56" x2="127.68" y2="78.72" stroke="#101010" stroke-width="0.15"/>
-<line x1="127.68" y1="78.72" x2="128.35" y2="79.56" stroke="#101010" stroke-width="0.15"/>
-<line x1="128.35" y1="79.56" x2="129.01" y2="78.72" stroke="#101010" stroke-width="0.15"/>
-<line x1="129.01" y1="78.72" x2="129.67" y2="79.56" stroke="#101010" stroke-width="0.15"/>
-<line x1="129.67" y1="79.56" x2="130.34" y2="78.72" stroke="#101010" stroke-width="0.15"/>
-<line x1="130.34" y1="78.72" x2="131" y2="79.56" stroke="#101010" stroke-width="0.15"/>
+<path d="M 91.75 79.14 C 91.91 78.94 92.05 78.94 92.21 79.14" fill="none" stroke="#101010" stroke-width="0.22" stroke-linecap="round"/>
+<path d="M 92.21 79.14 C 92.38 79.34 92.52 79.34 92.68 79.14" fill="none" stroke="#101010" stroke-width="0.22" stroke-linecap="round"/>
+<path d="M 92.68 79.14 C 92.84 78.94 92.98 78.94 93.14 79.14" fill="none" stroke="#101010" stroke-width="0.22" stroke-linecap="round"/>
+<path d="M 93.14 79.14 C 93.3 79.34 93.44 79.34 93.61 79.14" fill="none" stroke="#101010" stroke-width="0.22" stroke-linecap="round"/>
+<path d="M 93.61 79.14 C 93.77 78.94 93.91 78.94 94.07 79.14" fill="none" stroke="#101010" stroke-width="0.22" stroke-linecap="round"/>
+<path d="M 94.07 79.14 C 94.23 79.34 94.37 79.34 94.54 79.14" fill="none" stroke="#101010" stroke-width="0.22" stroke-linecap="round"/>
+<path d="M 94.54 79.14 C 94.7 78.94 94.84 78.94 95 79.14" fill="none" stroke="#101010" stroke-width="0.22" stroke-linecap="round"/>
+<path d="M 95 79.14 C 95.16 79.34 95.3 79.34 95.46 79.14" fill="none" stroke="#101010" stroke-width="0.22" stroke-linecap="round"/>
+<path d="M 95.46 79.14 C 95.63 78.94 95.77 78.94 95.93 79.14" fill="none" stroke="#101010" stroke-width="0.22" stroke-linecap="round"/>
+<path d="M 95.93 79.14 C 96.09 79.34 96.23 79.34 96.39 79.14" fill="none" stroke="#101010" stroke-width="0.22" stroke-linecap="round"/>
+<path d="M 96.39 79.14 C 96.56 78.94 96.69 78.94 96.86 79.14" fill="none" stroke="#101010" stroke-width="0.22" stroke-linecap="round"/>
+<path d="M 96.86 79.14 C 97.02 79.34 97.16 79.34 97.32 79.14" fill="none" stroke="#101010" stroke-width="0.22" stroke-linecap="round"/>
+<path d="M 97.32 79.14 C 97.48 78.94 97.62 78.94 97.79 79.14" fill="none" stroke="#101010" stroke-width="0.22" stroke-linecap="round"/>
+<path d="M 97.79 79.14 C 97.95 79.34 98.09 79.34 98.25 79.14" fill="none" stroke="#101010" stroke-width="0.22" stroke-linecap="round"/>
+<path d="M 98.25 79.14 C 98.41 78.94 98.55 78.94 98.71 79.14" fill="none" stroke="#101010" stroke-width="0.22" stroke-linecap="round"/>
+<path d="M 98.71 79.14 C 98.88 79.34 99.02 79.34 99.18 79.14" fill="none" stroke="#101010" stroke-width="0.22" stroke-linecap="round"/>
+<path d="M 99.18 79.14 C 99.34 78.94 99.48 78.94 99.64 79.14" fill="none" stroke="#101010" stroke-width="0.22" stroke-linecap="round"/>
+<path d="M 99.64 79.14 C 99.81 79.34 99.95 79.34 100.11 79.14" fill="none" stroke="#101010" stroke-width="0.22" stroke-linecap="round"/>
+<path d="M 100.11 79.14 C 100.27 78.94 100.41 78.94 100.57 79.14" fill="none" stroke="#101010" stroke-width="0.22" stroke-linecap="round"/>
+<path d="M 100.57 79.14 C 100.73 79.34 100.87 79.34 101.04 79.14" fill="none" stroke="#101010" stroke-width="0.22" stroke-linecap="round"/>
+<line x1="101.74" y1="79.56" x2="102.4" y2="78.72" stroke="#101010" stroke-width="0.22"/>
+<line x1="102.4" y1="78.72" x2="103.06" y2="79.56" stroke="#101010" stroke-width="0.22"/>
+<line x1="103.06" y1="79.56" x2="103.73" y2="78.72" stroke="#101010" stroke-width="0.22"/>
+<line x1="103.73" y1="78.72" x2="104.39" y2="79.56" stroke="#101010" stroke-width="0.22"/>
+<line x1="104.39" y1="79.56" x2="105.05" y2="78.72" stroke="#101010" stroke-width="0.22"/>
+<line x1="105.05" y1="78.72" x2="105.72" y2="79.56" stroke="#101010" stroke-width="0.22"/>
+<line x1="105.72" y1="79.56" x2="106.38" y2="78.72" stroke="#101010" stroke-width="0.22"/>
+<line x1="106.38" y1="78.72" x2="107.04" y2="79.56" stroke="#101010" stroke-width="0.22"/>
+<line x1="107.04" y1="79.56" x2="107.71" y2="78.72" stroke="#101010" stroke-width="0.22"/>
+<line x1="107.71" y1="78.72" x2="108.37" y2="79.56" stroke="#101010" stroke-width="0.22"/>
+<line x1="108.37" y1="79.56" x2="109.03" y2="78.72" stroke="#101010" stroke-width="0.22"/>
+<line x1="109.03" y1="78.72" x2="109.7" y2="79.56" stroke="#101010" stroke-width="0.22"/>
+<line x1="109.7" y1="79.56" x2="110.36" y2="78.72" stroke="#101010" stroke-width="0.22"/>
+<line x1="110.36" y1="78.72" x2="111.02" y2="79.56" stroke="#101010" stroke-width="0.22"/>
+<path d="M 111.72 79.14 C 111.89 78.94 112.03 78.94 112.19 79.14" fill="none" stroke="#101010" stroke-width="0.22" stroke-linecap="round"/>
+<path d="M 112.19 79.14 C 112.35 79.34 112.49 79.34 112.65 79.14" fill="none" stroke="#101010" stroke-width="0.22" stroke-linecap="round"/>
+<path d="M 112.65 79.14 C 112.82 78.94 112.96 78.94 113.12 79.14" fill="none" stroke="#101010" stroke-width="0.22" stroke-linecap="round"/>
+<path d="M 113.12 79.14 C 113.28 79.34 113.42 79.34 113.58 79.14" fill="none" stroke="#101010" stroke-width="0.22" stroke-linecap="round"/>
+<path d="M 113.58 79.14 C 113.74 78.94 113.88 78.94 114.05 79.14" fill="none" stroke="#101010" stroke-width="0.22" stroke-linecap="round"/>
+<path d="M 114.05 79.14 C 114.21 79.34 114.35 79.34 114.51 79.14" fill="none" stroke="#101010" stroke-width="0.22" stroke-linecap="round"/>
+<path d="M 114.51 79.14 C 114.67 78.94 114.81 78.94 114.98 79.14" fill="none" stroke="#101010" stroke-width="0.22" stroke-linecap="round"/>
+<path d="M 114.98 79.14 C 115.14 79.34 115.28 79.34 115.44 79.14" fill="none" stroke="#101010" stroke-width="0.22" stroke-linecap="round"/>
+<path d="M 115.44 79.14 C 115.6 78.94 115.74 78.94 115.9 79.14" fill="none" stroke="#101010" stroke-width="0.22" stroke-linecap="round"/>
+<path d="M 115.9 79.14 C 116.07 79.34 116.21 79.34 116.37 79.14" fill="none" stroke="#101010" stroke-width="0.22" stroke-linecap="round"/>
+<path d="M 116.37 79.14 C 116.53 78.94 116.67 78.94 116.83 79.14" fill="none" stroke="#101010" stroke-width="0.22" stroke-linecap="round"/>
+<path d="M 116.83 79.14 C 117 79.34 117.13 79.34 117.3 79.14" fill="none" stroke="#101010" stroke-width="0.22" stroke-linecap="round"/>
+<path d="M 117.3 79.14 C 117.46 78.94 117.6 78.94 117.76 79.14" fill="none" stroke="#101010" stroke-width="0.22" stroke-linecap="round"/>
+<path d="M 117.76 79.14 C 117.92 79.34 118.06 79.34 118.23 79.14" fill="none" stroke="#101010" stroke-width="0.22" stroke-linecap="round"/>
+<path d="M 118.23 79.14 C 118.39 78.94 118.53 78.94 118.69 79.14" fill="none" stroke="#101010" stroke-width="0.22" stroke-linecap="round"/>
+<path d="M 118.69 79.14 C 118.85 79.34 118.99 79.34 119.15 79.14" fill="none" stroke="#101010" stroke-width="0.22" stroke-linecap="round"/>
+<path d="M 119.15 79.14 C 119.32 78.94 119.46 78.94 119.62 79.14" fill="none" stroke="#101010" stroke-width="0.22" stroke-linecap="round"/>
+<path d="M 119.62 79.14 C 119.78 79.34 119.92 79.34 120.08 79.14" fill="none" stroke="#101010" stroke-width="0.22" stroke-linecap="round"/>
+<path d="M 120.08 79.14 C 120.25 78.94 120.39 78.94 120.55 79.14" fill="none" stroke="#101010" stroke-width="0.22" stroke-linecap="round"/>
+<path d="M 120.55 79.14 C 120.71 79.34 120.85 79.34 121.01 79.14" fill="none" stroke="#101010" stroke-width="0.22" stroke-linecap="round"/>
+<line x1="121.71" y1="79.56" x2="122.38" y2="78.72" stroke="#101010" stroke-width="0.22"/>
+<line x1="122.38" y1="78.72" x2="123.04" y2="79.56" stroke="#101010" stroke-width="0.22"/>
+<line x1="123.04" y1="79.56" x2="123.7" y2="78.72" stroke="#101010" stroke-width="0.22"/>
+<line x1="123.7" y1="78.72" x2="124.37" y2="79.56" stroke="#101010" stroke-width="0.22"/>
+<line x1="124.37" y1="79.56" x2="125.03" y2="78.72" stroke="#101010" stroke-width="0.22"/>
+<line x1="125.03" y1="78.72" x2="125.69" y2="79.56" stroke="#101010" stroke-width="0.22"/>
+<line x1="125.69" y1="79.56" x2="126.36" y2="78.72" stroke="#101010" stroke-width="0.22"/>
+<line x1="126.36" y1="78.72" x2="127.02" y2="79.56" stroke="#101010" stroke-width="0.22"/>
+<line x1="127.02" y1="79.56" x2="127.68" y2="78.72" stroke="#101010" stroke-width="0.22"/>
+<line x1="127.68" y1="78.72" x2="128.35" y2="79.56" stroke="#101010" stroke-width="0.22"/>
+<line x1="128.35" y1="79.56" x2="129.01" y2="78.72" stroke="#101010" stroke-width="0.22"/>
+<line x1="129.01" y1="78.72" x2="129.67" y2="79.56" stroke="#101010" stroke-width="0.22"/>
+<line x1="129.67" y1="79.56" x2="130.34" y2="78.72" stroke="#101010" stroke-width="0.22"/>
+<line x1="130.34" y1="78.72" x2="131" y2="79.56" stroke="#101010" stroke-width="0.22"/>
 <text x="92.05" y="66.14" font-family="Noto Sans" font-size="1" fill="#404040">Vibratos</text>
 <line x1="131.92" y1="82.14" x2="131.92" y2="89.64" stroke="#303030" stroke-width="0.16"/>
 <line x1="131.92" y1="70.14" x2="131.92" y2="74.14" stroke="#303030" stroke-width="0.16"/>

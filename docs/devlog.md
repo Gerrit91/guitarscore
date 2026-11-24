@@ -6986,3 +6986,8 @@ misleading); they show the name and a glyph sample.
 
 Goldens and app snapshots were regenerated: they move because systems with high notes are
 taller and chords with seconds or accidentals space differently.
+
+Later the same day: a vibrato over a note bent up (or right after one, where the bend's
+label stands) goes 1.4 spaces higher, above the arrow and its label, and the gap between
+notation and tab (or the rows over a tab-only staff) makes room for it. Vibrato strokes are
+bolder (0.22 spaces, as thick as the SMuFL wiggles; other lines stay 0.15).

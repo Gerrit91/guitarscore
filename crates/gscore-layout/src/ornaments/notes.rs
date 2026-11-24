@@ -25,6 +25,13 @@ const WIGGLE_INSET: (f32, f32) = (0.3, 1.0);
 const WIGGLE_MIN: f32 = 1.2;
 /// Length of one slight-vibrato half wave and one wide-vibrato stroke.
 const WIGGLE_STEP: (f32, f32) = (0.45, 0.7);
+/// A vibrato's stroke: bolder than the other lines, as engraved wiggles are (the SMuFL
+/// wiggle glyphs are about a fifth of a space thick).
+const WIGGLE_THICKNESS: f32 = 0.22;
+/// How much higher a vibrato goes over a note bent up: above the bend's arrow and label.
+pub(crate) const VIBRATO_OVER_BEND: f32 = 1.4;
+/// How far above its lane line a vibrato over a bend reaches (its top).
+pub(crate) const BENT_VIBRATO_REACH: f32 = WIGGLE_CENTER + VIBRATO_OVER_BEND + 0.45;
 /// Gap between a bend's arrow and the next note.
 const BEND_END_GAP: f32 = 0.8;
 /// Shortest bend, from the number to the arrow.
@@ -221,11 +228,18 @@ pub(crate) fn draw_vibrato(
     let start = x - WIGGLE_INSET.0;
     let width = (span_end - WIGGLE_INSET.1 - start).max(WIGGLE_MIN);
     let (step_length, amplitude) = match vibrato {
-        Vibrato::Slight => (WIGGLE_STEP.0, 0.18),
+        Vibrato::Slight => (WIGGLE_STEP.0, 0.2),
         Vibrato::Wide => (WIGGLE_STEP.1, 0.42),
     };
     if vibrato == Vibrato::Slight {
-        draw_horizontal_wiggle(start, start + width, center_y, amplitude, step_length, ops);
+        draw_horizontal_wiggle(
+            start,
+            start + width,
+            center_y,
+            (amplitude, step_length),
+            WIGGLE_THICKNESS,
+            ops,
+        );
         return;
     }
     // An even number of segments, so the line ends where it started.
@@ -246,7 +260,7 @@ pub(crate) fn draw_vibrato(
         ops.push(DrawOp::Line {
             from: Point::new(from_x, from_y),
             to: Point::new(to_x, to_y),
-            thickness: LINE_THICKNESS,
+            thickness: WIGGLE_THICKNESS,
             color: ColorToken::Notation,
         });
     }

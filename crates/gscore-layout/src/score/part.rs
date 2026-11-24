@@ -39,6 +39,8 @@ pub(super) struct Part<'a> {
 /// Room between the lowest note of the notation staff and the tab's top line, for what
 /// is written just above the tab (bends, the tab's own marks).
 const NOTES_ABOVE_TAB: f32 = 2.0;
+/// Room between the lowest note of the notation staff and a vibrato over a bend.
+const VIBRATO_CLEARANCE: f32 = 0.5;
 /// Lyrics: the gap between the ink above and the first line's text, the distance between
 /// two lines, and how far below its line's top a syllable's baseline is.
 const LYRIC_GAP: f32 = 0.4;
@@ -196,7 +198,13 @@ impl<'a> Part<'a> {
             .iter()
             .enumerate()
             .map(|(index, layout)| {
-                let notes = layout.notation_reach().1 + NOTES_ABOVE_TAB;
+                // A vibrato over a bend stands higher above the tab than the other marks.
+                let above_tab = if layout.has_vibrato_over_bend() {
+                    crate::ornaments::BENT_VIBRATO_REACH + VIBRATO_CLEARANCE
+                } else {
+                    NOTES_ABOVE_TAB
+                };
+                let notes = layout.notation_reach().1 + above_tab;
                 let dynamics = marks.get(index).map_or(0.0, |marks| {
                     crate::marks::dynamics_depth(layout, marks, &self.ctx)
                         + crate::marks::DYNAMIC_ABOVE_TAB
@@ -422,9 +430,23 @@ impl<'a> Part<'a> {
     /// How far `measures` reach above the top staff (the slash staff's stems, or the
     /// notation's notes) and below the notation staff (0 without notation).
     pub(super) fn reach(&self, measures: std::ops::Range<usize>) -> (f32, f32) {
-        let (above, below) = self.notation_reach(measures);
+        let (above, below) = self.notation_reach(measures.clone());
         if self.show_slash {
             (SLASH_REACH, below)
+        } else if self.ctx.notation.is_none() && self.show_tab {
+            // A tab on top: a vibrato over a bend stands highest above it.
+            let bent = self
+                .measures
+                .get(measures)
+                .unwrap_or_default()
+                .iter()
+                .any(|measure| measure.has_vibrato_over_bend());
+            let lanes = if bent {
+                crate::ornaments::BENT_VIBRATO_REACH
+            } else {
+                0.0
+            };
+            (above.max(lanes), below)
         } else {
             (above, below)
         }
