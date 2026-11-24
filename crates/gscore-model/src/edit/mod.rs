@@ -334,6 +334,9 @@ enum ChangeKind {
         measure: MeasureIndex,
         previous: i32,
         previous_initial: Option<i16>,
+        /// The tempo changes the bar before kept at its very end (the same instant), which
+        /// the new tempo replaces.
+        previous_end_tempos: Vec<(f32, i16)>,
     },
     /// A measure's time signature changed, in the header and every track.
     TimeSignature {
@@ -525,7 +528,12 @@ impl Change {
             }
             ChangeKind::NoteEffect { .. } => size_of::<gscore_gp::NoteEffect>(),
             ChangeKind::BeatEffect { .. } => size_of::<gscore_gp::BeatEffects>(),
-            ChangeKind::MeasureTempo { .. } => 0,
+            ChangeKind::MeasureTempo {
+                previous_end_tempos,
+                ..
+            } => previous_end_tempos
+                .len()
+                .saturating_mul(size_of::<(f32, i16)>()),
             ChangeKind::TimeSignature {
                 previous_measures, ..
             } => previous_measures
@@ -1110,7 +1118,15 @@ impl Song {
                 measure,
                 previous,
                 previous_initial,
+                previous_end_tempos,
             } => self.edit_headers(|inner| {
+                if let Some(before) = measure
+                    .get()
+                    .checked_sub(1)
+                    .and_then(|before| inner.measure_headers.get_mut(before))
+                {
+                    before.end_tempos.clone_from(previous_end_tempos);
+                }
                 let header = inner
                     .measure_headers
                     .get_mut(measure.get())

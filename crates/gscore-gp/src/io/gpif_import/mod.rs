@@ -493,6 +493,12 @@ impl SongGpifOps for Song {
                 }
             }
             let diagrams = extract_diagrams(g_track);
+            let mut numbered: Vec<(i32, ChordDiagram)> = diagrams
+                .iter()
+                .map(|(id, diagram)| (*id, diagram.clone()))
+                .collect();
+            numbered.sort_by_key(|(id, _)| *id);
+            track.gpif_diagram_ids = numbered;
             if let Some(staves) = &g_track.staves
                 && let Some(props) = staves
                     .staves

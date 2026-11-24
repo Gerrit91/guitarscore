@@ -202,8 +202,14 @@ impl WriteGpifInGpifStringOrder for Song {
         xml.push_str("<Tracks>");
         // The chord diagrams of each track, in one collection per track (GPIF references
         // them by id from the beats).
-        let track_diagrams: Vec<Vec<ChordDiagram>> =
-            self.tracks.iter().map(collect_diagrams).collect();
+        // Each track's diagrams with the ids the file gave them, a newly used one after
+        // them; and whether any is new (then the staff's own collection is written anew).
+        let numbered: Vec<(Vec<(i32, ChordDiagram)>, bool)> =
+            self.tracks.iter().map(numbered_diagrams).collect();
+        let track_diagrams: Vec<&[(i32, ChordDiagram)]> = numbered
+            .iter()
+            .map(|(diagrams, _)| diagrams.as_slice())
+            .collect();
         for (t_idx, track) in self.tracks.iter().enumerate() {
             // GuitarScore addition: page breaks, which Guitar Pro does not have.
             let page_breaks: Vec<String> = track
@@ -280,22 +286,7 @@ impl WriteGpifInGpifStringOrder for Song {
             if let Some(diagrams) = track_diagrams.get(t_idx)
                 && !diagrams.is_empty()
             {
-                xml.push_str("<Property name=\"DiagramCollection\"><Items>");
-                for (id, diagram) in diagrams.iter().enumerate() {
-                    xml.push_str(&format!(
-                        "<Item id=\"{id}\" name=\"{}\"><Diagram stringCount=\"{}\" \
-                         fretCount=\"{}\" baseFret=\"{}\">",
-                        escape_xml(&diagram.name),
-                        diagram.string_count,
-                        diagram.fret_count,
-                        diagram.base_fret
-                    ));
-                    for &(string, fret) in &diagram.frets {
-                        xml.push_str(&format!("<Fret string=\"{string}\" fret=\"{fret}\"/>"));
-                    }
-                    xml.push_str("</Diagram></Item>");
-                }
-                xml.push_str("</Items></Property>");
+                xml.push_str(&diagram_collection_xml(diagrams));
             }
             // GuitarScore addition: the channel's reverb and chorus sends. GP7 has no
             // per-track send (its reverb is an RSE effect), so they are written as named
@@ -346,6 +337,25 @@ impl WriteGpifInGpifStringOrder for Song {
             // the model does not: the fret count, a partial capo, the tuning's name,
             // instrument and flats, and the chord and diagram libraries). The track-level
             // properties above stay for Guitar Pro 6.
+            // The file's chord libraries as written, while they hold every diagram the beats
+            // use; with a new one, the staff's diagram collection is written from the
+            // numbering above (the other libraries refer to the same ids).
+            let new_diagrams = numbered.get(t_idx).is_some_and(|(_, new)| *new);
+            let libraries = |kept: &StaffKept, first: bool| -> Vec<String> {
+                if !new_diagrams {
+                    return kept.chord_libraries.clone();
+                }
+                let mut libraries: Vec<String> = kept
+                    .chord_libraries
+                    .iter()
+                    .filter(|library| !library.contains("name=\"DiagramCollection\""))
+                    .cloned()
+                    .collect();
+                if first && let Some(diagrams) = track_diagrams.get(t_idx) {
+                    libraries.insert(0, diagram_collection_xml(diagrams));
+                }
+                libraries
+            };
             xml.push_str("<Staves><Staff><Properties>");
             xml.push_str(&staff_block_properties(
                 &track.strings,
@@ -354,6 +364,7 @@ impl WriteGpifInGpifStringOrder for Song {
                 track.offset,
                 track.fret_count,
                 &track.staff_kept,
+                &libraries(&track.staff_kept, true),
             ));
             xml.push_str("</Properties></Staff>");
             for staff in &track.staves {
@@ -365,6 +376,7 @@ impl WriteGpifInGpifStringOrder for Song {
                     staff.offset,
                     staff.fret_count,
                     &staff.kept,
+                    &libraries(&staff.kept, false),
                 ));
                 xml.push_str("</Properties></Staff>");
             }
@@ -555,16 +567,13 @@ impl WriteGpifInGpifStringOrder for Song {
                             let beat_id = next_id(&mut next_beat_id)?;
                             let rhythm_id = next_id(&mut next_rhythm_id)?;
                             beat_ids.push(beat_id);
-                            let chord_id = beat
-                                .chord_diagram
-                                .as_ref()
-                                .and_then(|chord| {
-                                    track_diagrams
-                                        .get(t_idx)?
-                                        .iter()
-                                        .position(|candidate| candidate == chord)
-                                })
-                                .and_then(|index| i32::try_from(index).ok());
+                            let chord_id = beat.chord_diagram.as_ref().and_then(|chord| {
+                                track_diagrams
+                                    .get(t_idx)?
+                                    .iter()
+                                    .find(|(_, candidate)| candidate == chord)
+                                    .map(|(id, _)| *id)
+                            });
 
                             let destinations: Vec<i8> = beat
                                 .notes
@@ -789,6 +798,48 @@ impl WriteGpifInGpifStringOrder for Song {
 }
 
 /// The chord diagrams of a track's beats, each once, in beat order.
+/// A track's diagrams numbered for writing: the file's, with their ids, then every diagram
+/// a beat uses that the file did not have, with the next free ids. The flag tells whether
+/// there is such a new one.
+fn numbered_diagrams(track: &Track) -> (Vec<(i32, ChordDiagram)>, bool) {
+    let mut numbered = track.gpif_diagram_ids.clone();
+    let mut next = numbered
+        .iter()
+        .map(|(id, _)| *id)
+        .max()
+        .map_or(0, |id| id.saturating_add(1));
+    let mut new = false;
+    for diagram in collect_diagrams(track) {
+        if !numbered.iter().any(|(_, known)| *known == diagram) {
+            numbered.push((next, diagram));
+            next = next.saturating_add(1);
+            new = true;
+        }
+    }
+    (numbered, new)
+}
+
+/// A `DiagramCollection` property holding `diagrams` with their ids.
+fn diagram_collection_xml(diagrams: &[(i32, ChordDiagram)]) -> String {
+    let mut xml = String::from("<Property name=\"DiagramCollection\"><Items>");
+    for (id, diagram) in diagrams {
+        xml.push_str(&format!(
+            "<Item id=\"{id}\" name=\"{}\"><Diagram stringCount=\"{}\" \
+             fretCount=\"{}\" baseFret=\"{}\">",
+            escape_xml(&diagram.name),
+            diagram.string_count,
+            diagram.fret_count,
+            diagram.base_fret
+        ));
+        for &(string, fret) in &diagram.frets {
+            xml.push_str(&format!("<Fret string=\"{string}\" fret=\"{fret}\"/>"));
+        }
+        xml.push_str("</Diagram></Item>");
+    }
+    xml.push_str("</Items></Property>");
+    xml
+}
+
 fn collect_diagrams(track: &Track) -> Vec<ChordDiagram> {
     let mut diagrams: Vec<ChordDiagram> = Vec::new();
     for measure in track.all_measures() {
@@ -988,6 +1039,7 @@ fn staff_block_properties(
     capo: i32,
     fret_count: u8,
     kept: &StaffKept,
+    libraries: &[String],
 ) -> String {
     let mut xml = format!(
         "<Property name=\"CapoFret\"><Fret>{}</Fret></Property>\
@@ -1035,7 +1087,7 @@ fn staff_block_properties(
             pitches.join(" ")
         ));
     }
-    for library in &kept.chord_libraries {
+    for library in libraries {
         xml.push_str(library);
     }
     if kept.tuning_flat {

@@ -559,3 +559,74 @@ fn a_grace_beat_with_a_variation_is_not_folded() {
     assert!(beats[0].grace, "the grace beat stays a beat");
     assert_eq!(beats[0].kept.variation.as_deref(), Some("2"));
 }
+
+/// The beats' chord diagrams are numbered as the file numbered them, so the staff's kept
+/// libraries (which refer to those ids) stay right; a diagram the file did not have gets
+/// the next id, and the staff's diagram collection is then written anew with it.
+#[test]
+fn chord_diagrams_keep_the_files_ids_and_a_new_one_is_added() {
+    use crate::model::ChordDiagram;
+    let diagram = |name: &str, fret: i8| ChordDiagram {
+        name: name.to_owned(),
+        string_count: 6,
+        fret_count: 5,
+        base_fret: 0,
+        frets: vec![(0, fret)],
+    };
+    let (a, b, c) = (diagram("A", 0), diagram("B", 2), diagram("C", 3));
+    let mut song = Song::default();
+    song.read_gp(include_bytes!(
+        "../../../../../testdata/basic/note_lengths.gp"
+    ))
+    .expect("read");
+    let library = String::from(
+        "<Property name=\"DiagramCollection\"><Items>\
+         <Item id=\"5\" name=\"A\"><Diagram stringCount=\"6\" fretCount=\"5\" baseFret=\"0\"><Fret string=\"0\" fret=\"0\"/></Diagram></Item>\
+         <Item id=\"7\" name=\"B\"><Diagram stringCount=\"6\" fretCount=\"5\" baseFret=\"0\"><Fret string=\"0\" fret=\"2\"/></Diagram></Item>\
+         </Items></Property>",
+    );
+    {
+        let track = &mut song.tracks[0];
+        track.gpif_diagram_ids = vec![(5, a.clone()), (7, b.clone())];
+        track.staff_kept.chord_libraries = vec![library.clone()];
+        track.measures[0].voices[0].beats[0].chord_diagram = Some(b.clone());
+    }
+    let chords = |song: &Song| -> Vec<ChordDiagram> {
+        song.tracks[0]
+            .measures
+            .iter()
+            .flat_map(|measure| &measure.voices[0].beats)
+            .filter_map(|beat| beat.chord_diagram.clone())
+            .collect()
+    };
+
+    // Unchanged: the file's ids and its library as written.
+    let bytes = song.write_gp().expect("written");
+    let mut reread = Song::default();
+    reread.read_gp(&bytes).expect("read back");
+    assert_eq!(chords(&reread), vec![b.clone()]);
+    assert_eq!(reread.tracks[0].staff_kept.chord_libraries, vec![library]);
+    assert_eq!(
+        reread.tracks[0].gpif_diagram_ids,
+        vec![(5, a.clone()), (7, b.clone())]
+    );
+
+    // A chord added in GuitarScore: it gets id 8 and both beats read back right.
+    song.tracks[0].measures[1].voices[0].beats[0].chord_diagram = Some(c.clone());
+    // Guitar Pro 7 reads the staff's collection: it must hold the new diagram, and the
+    // beats must name the ids it has.
+    let xml = song.write_gpif_xml().expect("written");
+    let staff = &xml[xml.find("<Staves>").expect("a staff block")..];
+    let staff = &staff[..staff.find("</Staves>").expect("its end")];
+    assert!(staff.contains("<Item id=\"8\" name=\"C\">"), "{staff}");
+    assert!(staff.contains("<Item id=\"7\" name=\"B\">"));
+    assert!(xml.contains("<Chord>7</Chord>") && xml.contains("<Chord>8</Chord>"));
+    let bytes = song.write_gp().expect("written");
+    let mut reread = Song::default();
+    reread.read_gp(&bytes).expect("read back");
+    assert_eq!(chords(&reread), vec![b.clone(), c.clone()]);
+    assert_eq!(
+        reread.tracks[0].gpif_diagram_ids,
+        vec![(5, a), (7, b), (8, c)]
+    );
+}

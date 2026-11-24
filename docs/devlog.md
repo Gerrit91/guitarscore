@@ -7055,3 +7055,17 @@ code. What a save writes that Guitar Pro should be checked against: the staff bl
 one-staff track, the staff-level chord library beside the track-level collection beats use,
 and the end-of-bar tempo. `docs/save-audit-handover.md` lists the few items still worth a
 look.
+
+2026-11-24 (review): two save details that could go wrong after an edit, fixed.
+- Chord diagrams: the beats used to be numbered 0.. by first use while the staff's kept
+  library (which Guitar Pro 7 reads, and our reader prefers) kept the file's ids, so a beat
+  could name another chord, and a chord added in GuitarScore was missing from the staff's
+  collection. The file's ids are now kept (`Track::gpif_diagram_ids`): beats and the
+  track-level collection use them, a new diagram gets the next id, and only then is the
+  staff's `DiagramCollection` written anew (the other kept libraries refer to the same ids).
+- A tempo kept at a bar's very end falls on the next bar's start; setting that bar's tempo
+  now replaces it (undo restores it), so a save does not write both.
+Looked at and left as is: the file's own tie origins are written back as read, also after a
+tie is taken off. Guitar Pro itself leaves such dangling origins (two archived band files
+have them), so they are harmless, and dropping them would lose what the file had. Audit over
+the 59 band files and the test files: 0 unexplained, 0 known.

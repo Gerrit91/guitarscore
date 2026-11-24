@@ -41,6 +41,14 @@ impl Song {
         let tempo = i16::try_from(tempo)
             .map_err(|_| ModelError::Invalid(format!("tempo {tempo} does not fit")))?;
         self.edit_headers(|inner| {
+            // A tempo change kept at the very end of the bar before falls on the same
+            // instant: the tempo set here replaces it (it would contradict it on saving).
+            let previous_end_tempos = measure
+                .get()
+                .checked_sub(1)
+                .and_then(|before| inner.measure_headers.get_mut(before))
+                .map(|before| std::mem::take(&mut before.end_tempos))
+                .unwrap_or_default();
             let header = header_mut(inner, measure)?;
             let previous = header.tempo;
             header.tempo = i32::from(tempo);
@@ -56,6 +64,7 @@ impl Song {
                     measure,
                     previous,
                     previous_initial,
+                    previous_end_tempos,
                 },
             })
         })

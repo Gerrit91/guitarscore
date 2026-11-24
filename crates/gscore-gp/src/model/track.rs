@@ -72,6 +72,10 @@ pub struct Track {
     /// GuitarScore addition: the parts of this track's first staff that GuitarScore does
     /// not model (see [`StaffKept`]), kept so a save writes them back.
     pub staff_kept: StaffKept,
+    /// GuitarScore addition: the file's chord diagrams with their ids (track and staff
+    /// collections, as read), so a save numbers the beats' diagrams as the file did and the
+    /// kept libraries (which refer to these ids) stay right.
+    pub gpif_diagram_ids: Vec<(i32, ChordDiagram)>,
     pub indicate_tuning: bool,
     pub use_rse: bool,
     pub rse: TrackRse,
@@ -284,6 +288,7 @@ impl Default for Track {
             percussion_track: false,
             fret_count: 24,
             staff_kept: StaffKept::default(),
+            gpif_diagram_ids: Vec::new(),
             color: 0xff0000,
             port: 1,
             indicate_tuning: false,
