@@ -6957,3 +6957,9 @@ so the browser download stays small and the browser offers Bravura. `gscore-cli 
 names the right family, a Leland PDF embeds both subsets, the settings choice is kept.
 Still open: a font's glyphs in the palette tiles stay Bravura; no per-document font (it is
 an app setting).
+
+2026-11-24: the music font moved to Settings › Page layout (owner's wish), under the page
+fields and beside the preview, which shows the chosen font at once. It stays the app's
+setting: it applies at once and to every song (Apply and Revert leave it alone), as the tab
+says. The Editor tab's copy and its wrong note ("the older parts of a score always keep their
+layout") are gone.

@@ -230,15 +230,26 @@ impl PagePreview {
     }
 }
 
-/// The tab; sets `apply` when Apply is clicked and `close` for Done.
+/// What the tab asked for.
+#[derive(Debug, Default)]
+pub(super) struct PageTabActions {
+    /// Apply was clicked.
+    pub(super) apply: bool,
+    /// Done was clicked.
+    pub(super) close: bool,
+    /// Another music font was chosen (it applies at once, to every song).
+    pub(super) music: Option<MusicFontChoice>,
+}
+
+/// The tab: the page fields beside the preview, the music font under them, then the
+/// buttons.
 pub(super) fn page_tab(
     ui: &mut Ui,
     page: &mut PageDraft,
     preview: Option<&Layout>,
     has_song: bool,
     music: MusicFontChoice,
-    apply: &mut bool,
-    close: &mut bool,
+    actions: &mut PageTabActions,
 ) {
     if !has_song {
         ui.label(RichText::new("Open a song to set up its pages.").weak());
@@ -253,13 +264,30 @@ pub(super) fn page_tab(
     if let Some(problem) = &problem {
         ui.colored_label(ui.visuals().error_fg_color, problem.to_string());
     }
+    // The music font, where its effect shows in the preview above. It is the app's, not
+    // the song's: it applies at once, to every song (Apply and Revert leave it alone).
+    if MusicFontChoice::available().len() > 1 {
+        ui.add_space(6.0);
+        ui.label(RichText::new("Music font").strong());
+        ui.label(
+            RichText::new(
+                "How notation and tablature look, on screen and in PDFs. Changes at once and \
+                 for every song.",
+            )
+            .weak(),
+        );
+        let mut chosen = music;
+        if super::music_font_picker::picker(ui, &mut chosen) {
+            actions.music = Some(chosen);
+        }
+    }
     ui.separator();
     ui.horizontal(|ui| {
         if ui
             .add_enabled(has_song && problem.is_none(), egui::Button::new("Apply"))
             .clicked()
         {
-            *apply = true;
+            actions.apply = true;
         }
         if ui.button("Revert").clicked() {
             page.draft = page.base;
@@ -268,7 +296,7 @@ pub(super) fn page_tab(
             page.draft = PageSetup::default();
         }
         if ui.button("Done").clicked() {
-            *close = true;
+            actions.close = true;
         }
     });
 }

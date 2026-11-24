@@ -1,4 +1,4 @@
-//! The music font selector in Settings › Editor: one card per font the build bundles, each
+//! The music font selector in Settings › Page layout: one card per font the build bundles, each
 //! with a strip of its own glyphs, so the choice is made by eye.
 
 use egui::{

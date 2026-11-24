@@ -3446,7 +3446,7 @@ fn the_song_grid_stripes_can_be_switched_on_in_the_settings() {
 }
 
 #[test]
-fn the_music_font_can_be_chosen_in_the_settings() {
+fn the_music_font_can_be_chosen_in_the_page_layout_settings() {
     let _gpu = common::lock_gpu();
     let mut harness = app_with(Some(testdata("basic/multi_staff.gp")));
     assert_eq!(harness.state().settings().music_font, "bravura", "default");
@@ -3454,7 +3454,9 @@ fn the_music_font_can_be_chosen_in_the_settings() {
     harness.run();
     harness.get_by_label("Settings… ctrl+,").click();
     harness.run();
-    harness.get_by_label("Editor").click();
+    harness.get_by_label("Page layout").click();
+    harness.run();
+    harness.get_by_label("Petaluma music font").scroll_to_me();
     harness.run();
     harness.get_by_label("Petaluma music font").click();
     harness.run();
@@ -3615,7 +3617,6 @@ fn shortcuts_can_be_changed_and_reverted_from_the_editor() {
     harness.run();
     harness.get_by_label("Editor").click();
     harness.run();
-    // The music font picker makes the tab taller than the window; scroll to the button.
     harness.get_by_label("Edit shortcuts…").scroll_to_me();
     harness.run();
     harness.get_by_label("Edit shortcuts…").click();
