@@ -6963,3 +6963,26 @@ fields and beside the preview, which shows the chosen font at once. It stays the
 setting: it applies at once and to every song (Apply and Revert leave it alone), as the tab
 says. The Editor tab's copy and its wrong note ("the older parts of a score always keep their
 layout") are gone.
+
+## 2026-11-24 — Notation clashes: high notes, ties after a line break, accidentals, section frames
+
+On the music-fonts branch, four layout fixes the owner found in their scores:
+- The rows of marks above a system (section names, endings, tempo, beat text, beat
+  effects) move up when the notes reach higher than the room the rows always kept
+  (`Rows::lifted`): only the excess, with half a space of clearance. A system without rows
+  keeps its height.
+- A tie arriving at the first bar of a line gets 1.5 spaces of room before the bar
+  (`TIE_IN_ROOM`). Its incoming arcs end before the notehead and before the tab's
+  parenthesized fret, instead of crossing them.
+- Accidentals stand left of the whole chord, including the head a down-stem moves to the
+  left of a second. Accidentals closer than a sixth stand in further columns
+  (`Chord::accidental_columns`); spacing (`extent`) reserves that room and counts a
+  second's extra head on the side it is drawn.
+- Section frames are measured with Noto Sans Bold's own advances
+  (`pdf::bold_text_width`) instead of an average letter width, so the frame fits the name.
+
+The music font cards no longer have a description (the owner found "lighter" for Leland
+misleading); they show the name and a glyph sample.
+
+Goldens and app snapshots were regenerated: they move because systems with high notes are
+taller and chords with seconds or accidentals space differently.

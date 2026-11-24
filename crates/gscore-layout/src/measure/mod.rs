@@ -15,7 +15,7 @@ mod graces;
 mod rest_run;
 
 pub(crate) use align::align;
-pub(crate) use draw::draw_barline_ties;
+pub(crate) use draw::{TIE_IN_ROOM, draw_barline_ties};
 
 use gscore_model::{
     BeatIndex, BeatView, Duration, Dynamic, MeasureIndex, MeasureView, TimeSignature, VoiceIndex,
@@ -684,6 +684,25 @@ impl MeasureLayout {
     /// Whether the measure carries a key signature (a change, or the score's first).
     pub(crate) fn has_key_signature(&self) -> bool {
         self.key_signature.is_some()
+    }
+
+    /// Whether a tie arrives at the first column (a note tied over from the measure before):
+    /// at the start of a line its incoming arc needs room before the measure.
+    pub(crate) fn starts_with_tie(&self) -> bool {
+        let Some(first) = self.columns.first() else {
+            return false;
+        };
+        let tied = |items: &[Option<NotationItem>]| {
+            items.iter().flatten().any(|item| {
+                matches!(item, NotationItem::Chord(chord) if chord.heads.iter().any(|head| head.tied))
+            })
+        };
+        tied(&first.notation)
+            || tied(&first.slash)
+            || first
+                .items
+                .iter()
+                .any(|item| matches!(item, Item::Fret(fret) if fret.tie_destination))
     }
 
     /// The beat text of each column that has one, with its column index.

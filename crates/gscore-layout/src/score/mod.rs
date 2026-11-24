@@ -331,6 +331,9 @@ pub(crate) fn layout_with(
                         part.show_tab,
                         index == first_shown(system) && part.staff.get() == 0,
                     )
+                    // Above the notes that reach over the staff (high notes, their ledger
+                    // lines and stems), not through them.
+                    .lifted(part.reach(plan.measures.clone()).0)
                 })
                 .collect()
         })

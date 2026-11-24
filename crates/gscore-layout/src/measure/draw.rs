@@ -16,6 +16,10 @@ use crate::notation::{self, BeamPlan, Chord, Head, NotationItem};
 use crate::ornaments::{self, Fret};
 use crate::place::{BeatPlace, MeasurePlace};
 
+/// Extra room before the first measure of a line when a tie arrives there from the line
+/// before: its incoming arc starts in it, left of the notehead or fret number.
+pub(crate) const TIE_IN_ROOM: f32 = 1.5;
+
 /// Draws the ties that continue a note across a barline, from `origin` to `target` (the next
 /// measure). Within a system the tie runs from notehead to notehead; across a system break,
 /// short fragments point out at the end of the line and in at the start of the next.
@@ -71,7 +75,7 @@ pub(crate) fn draw_barline_ties(
                 } else {
                     let out = (from_x + 1.2).min(origin_right - 0.2);
                     notation::draw_tie_curve(from_x, from_y, out, from_y, up, thickness, ops);
-                    let into = (to_x - 1.2).max(target_x);
+                    let into = (to_x - 1.2).max(target_x - TIE_IN_ROOM);
                     notation::draw_tie_curve(into, to_y, to_x, to_y, up, thickness, ops);
                 }
             }
@@ -107,7 +111,7 @@ pub(crate) fn draw_barline_ties(
             } else {
                 let out = (from_x + 1.2).min(origin_right - 0.2);
                 notation::draw_tie_curve(from_x, from_y, out, from_y, up, thickness, ops);
-                let into = (to_x - 1.2).max(target_x);
+                let into = (to_x - 1.2).max(target_x - TIE_IN_ROOM);
                 notation::draw_tie_curve(into, to_y, to_x, to_y, up, thickness, ops);
             }
         }
@@ -133,9 +137,10 @@ pub(crate) fn draw_barline_ties(
                 let from_x = ox + source.half_width() + 0.05;
                 let y = origin_tops.tab + ctx.staff.line_y(source.line);
                 ornaments::draw_tie_fragment(from_x, from_x + 1.2, y, thickness, ops);
-                let to_x = target_first_x;
+                // Up to the fret number, not through it.
+                let to_x = target_first_x - dest.half_width() - 0.05;
                 let target_y = target_tops.tab + ctx.staff.line_y(dest.line);
-                let into = (to_x - 1.2).max(target_x);
+                let into = (to_x - 1.2).max(target_x - TIE_IN_ROOM);
                 ornaments::draw_tie_fragment(into, to_x, target_y, thickness, ops);
             }
         }

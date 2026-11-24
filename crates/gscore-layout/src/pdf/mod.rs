@@ -46,6 +46,25 @@ static NOTO_SANS: &[u8] = include_bytes!("../../../../assets/fonts/noto-sans/Not
 static NOTO_SANS_BOLD: &[u8] =
     include_bytes!("../../../../assets/fonts/noto-sans/NotoSans-Bold.ttf");
 
+/// The width of `text` set in the bundled Noto Sans Bold at `size`, from the font's own
+/// advances (a character the font lacks counts with the regular estimate).
+pub(crate) fn bold_text_width(text: &str, size: f32) -> f32 {
+    static BOLD: std::sync::OnceLock<Option<FontInfo<'static>>> = std::sync::OnceLock::new();
+    let Some(font) = BOLD
+        .get_or_init(|| FontInfo::parse(NOTO_SANS_BOLD).ok())
+        .as_ref()
+    else {
+        return crate::TextMetrics::NOTO_SANS.width(text, size);
+    };
+    let em = f32::from(font.units_per_em.max(1));
+    text.chars()
+        .map(|c| match font.glyph(c) {
+            Some(glyph) => f32::from(font.advance(glyph)) / em * size,
+            None => crate::TextMetrics::NOTO_SANS.width(c.encode_utf8(&mut [0; 4]), size),
+        })
+        .sum()
+}
+
 impl PdfFonts<'static> {
     /// The bundled fonts: Bravura, Noto Sans and Noto Sans Bold. The app draws with the
     /// same bytes (`gscore-app/src/fonts.rs`), so the files are compiled in once.

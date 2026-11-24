@@ -406,7 +406,17 @@ impl<'a> Part<'a> {
         } else {
             0.0
         };
-        notation_prefix.max(tab_prefix).max(slash_prefix)
+        // A tie arriving from the line before needs room for its incoming arc.
+        let tie_in = if self
+            .measures
+            .get(index)
+            .is_some_and(|measure| measure.starts_with_tie())
+        {
+            crate::measure::TIE_IN_ROOM
+        } else {
+            0.0
+        };
+        notation_prefix.max(tab_prefix).max(slash_prefix) + tie_in
     }
 
     /// How far `measures` reach above the top staff (the slash staff's stems, or the

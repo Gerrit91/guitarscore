@@ -608,24 +608,22 @@ fn draw_heads(x: f32, chord: &Chord, up: bool, top: f32, ctx: &Context<'_>, ops:
     }
     let font = &ctx.fonts.music;
     let engraving = font.engraving();
-    // Which heads move beside the stem: in a second, the upper one with an up-stem, the
-    // lower one with a down-stem.
-    let mut shifted = vec![false; chord.heads.len()];
-    let order: Vec<usize> = if up {
-        (0..chord.heads.len()).collect()
+    let shifted = chord.shifted(up);
+    // Accidentals stand left of the whole chord (also of a head moved left of a
+    // down-stem), in columns when they are close.
+    let head_width = chord
+        .heads
+        .iter()
+        .map(|head| font.advance(chord.head_glyph(head)))
+        .fold(0.0, f32::max);
+    let (second_left, _) = chord.second_reach(head_width, up);
+    let chord_paren = if chord.heads.iter().any(|head| head.ghost) {
+        paren_room(font)
     } else {
-        (0..chord.heads.len()).rev().collect()
+        0.0
     };
-    for pair in order.windows(2) {
-        if let [a, b] = pair
-            && let (Some(ha), Some(hb)) = (chord.heads.get(*a), chord.heads.get(*b))
-            && ha.position.abs_diff(hb.position) == 1
-            && !shifted.get(*a).copied().unwrap_or(false)
-            && let Some(flag) = shifted.get_mut(*b)
-        {
-            *flag = true;
-        }
-    }
+    let chord_left = x - head_width / 2.0 - second_left - chord_paren;
+    let (accidental_offsets, _) = chord.accidental_columns(font);
     for (index, head) in chord.heads.iter().enumerate() {
         let glyph = chord.head_glyph(head);
         let width = font.advance(glyph);
@@ -671,11 +669,14 @@ fn draw_heads(x: f32, chord: &Chord, up: bool, top: f32, ctx: &Context<'_>, ops:
         } else {
             0.0
         };
-        let mut left_edge = (x - width / 2.0).min(left) - paren;
+        let mut left_edge = ((x - width / 2.0).min(left) - paren).min(chord_left);
         if let Some(accidental) = head.accidental {
-            // Left of the head, or of the column when the head moved right.
-            let base = left_edge;
-            let accidental_x = base - ACCIDENTAL_GAP - font.advance(accidental);
+            let right = accidental_offsets
+                .get(index)
+                .copied()
+                .flatten()
+                .unwrap_or(ACCIDENTAL_GAP);
+            let accidental_x = chord_left - right - font.advance(accidental);
             ops.push(DrawOp::Glyph {
                 glyph: accidental,
                 at: Point::new(accidental_x, y),

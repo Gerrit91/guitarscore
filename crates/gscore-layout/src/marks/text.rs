@@ -57,11 +57,10 @@ pub(super) fn draw_section(
     x: f32,
     baseline: f32,
     title: &str,
-    ctx: &Context<'_>,
     ops: &mut Vec<DrawOp>,
 ) -> (f32, f32, f32, f32) {
-    // Bold runs a little wider than the regular face the metrics are for.
-    let width = ctx.fonts.text.width(title, SECTION_SIZE) * 1.08 + 2.0 * SECTION_PAD;
+    // Measured with the bold face's own advances, so the frame hugs the name.
+    let width = crate::pdf::bold_text_width(title, SECTION_SIZE) + 2.0 * SECTION_PAD;
     let frame_top = baseline - SECTION_SIZE * 0.72 - SECTION_PAD;
     let frame_bottom = baseline + SECTION_PAD;
     let right = x + width;

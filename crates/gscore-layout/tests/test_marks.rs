@@ -227,6 +227,76 @@ fn section_names_and_tempo_changes_are_written_above_their_measure() {
     assert!(top > plain.places.systems[0].top);
 }
 
+/// The frame of a section name with the bold face's own widths: narrow letters make a
+/// narrow frame, wide ones a wide frame.
+#[test]
+fn a_section_frame_fits_its_name() {
+    let frame = |title: &str| {
+        let mut song = testing::song(&[testing::GUITAR_6], 1).unwrap();
+        let _ = song
+            .set_section(MeasureIndex::new(0), title, TrackColor::DEFAULT)
+            .unwrap();
+        layout(&song)
+            .ops
+            .iter()
+            .filter_map(|op| match op {
+                DrawOp::Line {
+                    from,
+                    to,
+                    color: ColorToken::Title,
+                    ..
+                } if from.y == to.y => Some(to.x - from.x),
+                _ => None,
+            })
+            .fold(0.0, f32::max)
+    };
+    let narrow = frame("Intro il");
+    let wide = frame("WMWMWMWM");
+    assert!(narrow > 0.0);
+    // Noto Sans Bold: "W" and "M" are about three times as wide as "i" and "l".
+    assert!(wide > narrow * 1.6, "{narrow} vs {wide}");
+}
+
+/// A high note under a section name: the rows of marks move up over the note (its ledger
+/// lines and stem), not through it.
+#[test]
+fn a_section_name_stays_above_a_high_note() {
+    let mut song = testing::song(&[testing::GUITAR_6], 2).unwrap();
+    let _ = song
+        .set_section(MeasureIndex::new(0), "Solo", TrackColor::DEFAULT)
+        .unwrap();
+    let _ = song
+        .set_note(
+            at(0, 0),
+            StringNumber::new(1).unwrap(),
+            Fret::new(24).unwrap(),
+        )
+        .unwrap();
+    let laid = layout(&song);
+    let section = texts(&laid)
+        .into_iter()
+        .find(|t| t.0 == "Solo")
+        .expect("the section name");
+    let highest = laid
+        .ops
+        .iter()
+        .filter_map(|op| match op {
+            DrawOp::Glyph {
+                glyph: Glyph::NoteheadBlack | Glyph::NoteheadHalf | Glyph::NoteheadWhole,
+                at,
+                ..
+            } => Some(at.y),
+            _ => None,
+        })
+        .fold(f32::INFINITY, f32::min);
+    // The frame reaches a little under the baseline; the head half a space over its centre.
+    assert!(
+        section.3 + 0.4 < highest - 0.5,
+        "section at {}, note at {highest}",
+        section.3
+    );
+}
+
 #[test]
 fn an_unchanged_tempo_is_not_written_again() {
     let mut song = testing::song(&[testing::GUITAR_6], 2).unwrap();

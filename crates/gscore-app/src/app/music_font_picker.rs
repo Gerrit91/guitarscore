@@ -7,8 +7,8 @@ use egui::{
 use gscore_layout::{Glyph, MusicFontChoice};
 use gscore_model::{Dynamic, Fermata};
 
-/// Height of a font's card.
-const CARD_HEIGHT: f32 = 118.0;
+/// Height of a font's card: its name over a strip of its glyphs.
+const CARD_HEIGHT: f32 = 84.0;
 /// Room between two cards.
 const CARD_GAP: f32 = 10.0;
 /// The narrowest and widest a card gets.
@@ -49,7 +49,7 @@ pub(super) fn picker(ui: &mut Ui, current: &mut MusicFontChoice) -> bool {
     changed
 }
 
-/// One font's card: its name, what it looks like, and glyphs drawn with it.
+/// One font's card: its name and glyphs drawn with it (they say what it looks like).
 fn card(ui: &mut Ui, choice: MusicFontChoice, selected: bool, width: f32) -> Response {
     let (rect, _) = ui.allocate_exact_size(vec2(width, CARD_HEIGHT), Sense::hover());
     let hovered = ui.rect_contains_pointer(rect);
@@ -85,7 +85,6 @@ fn card(ui: &mut Ui, choice: MusicFontChoice, selected: bool, width: f32) -> Res
             .layout(egui::Layout::top_down(egui::Align::LEFT)),
     );
     text.label(RichText::new(choice.name()).strong());
-    text.label(RichText::new(choice.description()).small().weak());
     let strip = Rect::from_min_max(
         pos2(inner.left(), inner.bottom() - SAMPLE_HEIGHT),
         pos2(inner.right(), inner.bottom()),

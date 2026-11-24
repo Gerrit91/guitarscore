@@ -74,15 +74,6 @@ impl MusicFontChoice {
         }
     }
 
-    /// What it looks like, in a few words.
-    pub fn description(self) -> &'static str {
-        match self {
-            MusicFontChoice::Bravura => "Engraved, the classic look (Steinberg)",
-            MusicFontChoice::Petaluma => "Handwritten, as in a jazz lead sheet (Steinberg)",
-            MusicFontChoice::Leland => "Engraved, rounder and lighter (MuseScore)",
-        }
-    }
-
     /// The font file (OpenType). A font this build does not bundle gives Bravura's.
     pub fn file(self) -> &'static [u8] {
         match self {
