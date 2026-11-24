@@ -8,15 +8,26 @@ use std::fmt::Write as _;
 
 use crate::Layout;
 use crate::draw::{DrawOp, TextAnchor, TextFont};
+use crate::music_font::MusicFontChoice;
 use crate::theme::Theme;
 
-/// Font family of music glyphs.
-const MUSIC_FAMILY: &str = "Bravura";
 /// Font family of text.
 const TEXT_FAMILY: &str = "Noto Sans";
 
-/// The layout as an SVG document. `staff_space_mm` sets the physical size.
+/// The layout as an SVG document, drawn with Bravura. `staff_space_mm` sets the physical
+/// size.
 pub fn to_svg(layout: &Layout, theme: &Theme, staff_space_mm: f32) -> String {
+    to_svg_with_music(layout, theme, staff_space_mm, MusicFontChoice::Bravura)
+}
+
+/// The layout as an SVG document, drawn with `music`. `staff_space_mm` sets the physical
+/// size.
+pub fn to_svg_with_music(
+    layout: &Layout,
+    theme: &Theme,
+    staff_space_mm: f32,
+    music: MusicFontChoice,
+) -> String {
     let mut out = String::new();
     // Writing to a `String` cannot fail; the results are ignored on purpose.
     let _ = writeln!(
@@ -34,13 +45,13 @@ pub fn to_svg(layout: &Layout, theme: &Theme, staff_space_mm: f32) -> String {
         theme.paper
     );
     for op in &layout.ops {
-        write_op(&mut out, op, theme);
+        write_op(&mut out, op, theme, music);
     }
     out.push_str("</svg>\n");
     out
 }
 
-fn write_op(out: &mut String, op: &DrawOp, theme: &Theme) {
+fn write_op(out: &mut String, op: &DrawOp, theme: &Theme, music: MusicFontChoice) {
     let _ = match op {
         DrawOp::Line {
             from,
@@ -105,18 +116,26 @@ fn write_op(out: &mut String, op: &DrawOp, theme: &Theme) {
             at,
             scale,
             color,
-        } => writeln!(
-            out,
-            "<text x=\"{}\" y=\"{}\" font-family=\"{MUSIC_FAMILY}\" font-size=\"{}\" \
-             fill=\"{}\" data-glyph=\"{}\">&#x{:X};</text>",
-            num(at.x),
-            num(at.y),
-            // One em of a SMuFL font is four staff spaces.
-            num(4.0 * scale),
-            theme.color(*color),
-            glyph.name(),
-            u32::from(glyph.codepoint())
-        ),
+        } => {
+            // A glyph the chosen font lacks is written with Bravura's.
+            let family = if music.falls_back(*glyph) {
+                MusicFontChoice::Bravura.name()
+            } else {
+                music.name()
+            };
+            writeln!(
+                out,
+                "<text x=\"{}\" y=\"{}\" font-family=\"{family}\" font-size=\"{}\" \
+                 fill=\"{}\" data-glyph=\"{}\">&#x{:X};</text>",
+                num(at.x),
+                num(at.y),
+                // One em of a SMuFL font is four staff spaces.
+                num(4.0 * scale),
+                theme.color(*color),
+                glyph.name(),
+                u32::from(glyph.codepoint())
+            )
+        }
         DrawOp::Text {
             text,
             at,
@@ -221,5 +240,31 @@ mod tests {
             "&lt;A &amp; B&gt; &quot;x&quot;"
         );
         assert_eq!(escape("Sérénade ♩"), "Sérénade ♩");
+    }
+
+    #[test]
+    fn glyphs_name_the_chosen_font_and_bravura_for_what_it_lacks() {
+        let glyph = |glyph| DrawOp::Glyph {
+            glyph,
+            at: crate::Point::new(0.0, 0.0),
+            scale: 1.0,
+            color: crate::ColorToken::Staff,
+        };
+        let mut out = String::new();
+        write_op(
+            &mut out,
+            &glyph(crate::Glyph::GClef),
+            &Theme::LIGHT,
+            MusicFontChoice::Leland,
+        );
+        assert!(out.contains("font-family=\"Leland\""), "{out}");
+        let mut out = String::new();
+        write_op(
+            &mut out,
+            &glyph(crate::Glyph::Fermata(gscore_model::Fermata::VeryShort)),
+            &Theme::LIGHT,
+            MusicFontChoice::Leland,
+        );
+        assert!(out.contains("font-family=\"Bravura\""), "{out}");
     }
 }

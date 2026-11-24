@@ -23,7 +23,7 @@ pub(crate) use lines::{
     draw_legato_run, draw_link, draw_pick_slide, draw_tie, draw_tie_fragment, draw_under_staff_run,
     draw_whammy, under_staff_baseline,
 };
-pub(crate) use notes::draw_vibrato;
+pub(crate) use notes::{BENT_VIBRATO_REACH, VIBRATO_OVER_BEND, draw_vibrato};
 pub(crate) use symbols::{
     CIRCLE_RADIUS, draw_arrowhead, draw_circled_symbol, draw_slanted_wiggle, draw_vertical_wiggle,
 };

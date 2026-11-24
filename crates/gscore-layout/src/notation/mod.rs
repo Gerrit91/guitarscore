@@ -36,6 +36,7 @@ pub(crate) use draw::{
 pub(crate) use marks::draw_arrow;
 pub(crate) use pitch::{Alter, Clef};
 pub(crate) use rhythm::{draw_tab_rhythm, rhythm_depth};
+pub(crate) use tuplets::tuplet_groups;
 
 use crate::Context;
 use crate::error::LayoutError;
@@ -55,6 +56,9 @@ const FINGER_SIZE: f32 = 0.9;
 const FINGER_GAP: f32 = 0.12;
 /// Space between a notehead and its first dot, and between dots.
 pub(crate) const DOT_GAP: f32 = 0.3;
+/// How many staff positions apart two accidentals must be to stand in one column (a
+/// sixth: a sharp or flat is about three spaces tall).
+const ACCIDENTAL_CLEARANCE: u32 = 6;
 
 /// The notation staff's geometry.
 pub(crate) fn staff() -> Staff {
@@ -268,11 +272,109 @@ impl Chord {
         }
     }
 
-    /// Whether neighbouring heads one step apart need to sit side by side.
-    pub(crate) fn has_second(&self) -> bool {
-        self.heads
-            .windows(2)
-            .any(|pair| matches!(pair, [a, b] if b.position.abs_diff(a.position) == 1))
+    /// Which heads move beside the stem (by one head's width): in a second, the upper one
+    /// with an up-stem (to the right), the lower one with a down-stem (to the left).
+    pub(crate) fn shifted(&self, up: bool) -> Vec<bool> {
+        let mut shifted = vec![false; self.heads.len()];
+        let order: Vec<usize> = if up {
+            (0..self.heads.len()).collect()
+        } else {
+            (0..self.heads.len()).rev().collect()
+        };
+        for pair in order.windows(2) {
+            if let [a, b] = pair
+                && let (Some(ha), Some(hb)) = (self.heads.get(*a), self.heads.get(*b))
+                && ha.position.abs_diff(hb.position) == 1
+                && !shifted.get(*a).copied().unwrap_or(false)
+                && let Some(flag) = shifted.get_mut(*b)
+            {
+                *flag = true;
+            }
+        }
+        shifted
+    }
+
+    /// How far a head moved beside the stem reaches past the column's heads on the left
+    /// (a second with a down-stem) and on the right (with an up-stem); `up` is the stem's
+    /// direction as drawn.
+    pub(crate) fn second_reach(&self, head_width: f32, up: bool) -> (f32, f32) {
+        if !self.shifted(up).contains(&true) {
+            (0.0, 0.0)
+        } else if up {
+            (0.0, head_width)
+        } else {
+            (head_width, 0.0)
+        }
+    }
+
+    /// Where the accidentals go: for each head, how far left of the chord's left edge (its
+    /// leftmost head, with parentheses) its accidental's right side is, and the room all
+    /// of them take. Accidentals closer than a sixth to one above stand in a further
+    /// column, so none runs into another or into a head.
+    pub(crate) fn accidental_columns(
+        &self,
+        font: &crate::metrics::MusicFont,
+    ) -> (Vec<Option<f32>>, f32) {
+        // Top to bottom: each accidental into the first column with room at its height.
+        let mut order: Vec<usize> = (0..self.heads.len())
+            .filter(|&index| {
+                self.heads
+                    .get(index)
+                    .is_some_and(|h| h.accidental.is_some())
+            })
+            .collect();
+        order.sort_by_key(|&index| {
+            std::cmp::Reverse(self.heads.get(index).map_or(0, |h| h.position))
+        });
+        let mut columns: Vec<Vec<usize>> = Vec::new();
+        let mut column_of = vec![None; self.heads.len()];
+        for index in order {
+            let Some(position) = self.heads.get(index).map(|h| h.position) else {
+                continue;
+            };
+            let free = |column: &Vec<usize>| {
+                column.iter().all(|&other| {
+                    self.heads
+                        .get(other)
+                        .is_none_or(|h| h.position.abs_diff(position) >= ACCIDENTAL_CLEARANCE)
+                })
+            };
+            let at = match columns.iter().position(free) {
+                Some(at) => at,
+                None => {
+                    columns.push(Vec::new());
+                    columns.len().saturating_sub(1)
+                }
+            };
+            if let Some(column) = columns.get_mut(at) {
+                column.push(index);
+            }
+            if let Some(slot) = column_of.get_mut(index) {
+                *slot = Some(at);
+            }
+        }
+        let widths: Vec<f32> = columns
+            .iter()
+            .map(|column| {
+                column
+                    .iter()
+                    .filter_map(|&index| self.heads.get(index)?.accidental)
+                    .map(|glyph| font.advance(glyph))
+                    .fold(0.0, f32::max)
+            })
+            .collect();
+        // Column `n`'s right side, measured leftwards from the chord's left edge.
+        let mut rights = Vec::with_capacity(widths.len());
+        let mut reach = 0.0;
+        for width in &widths {
+            rights.push(reach + ACCIDENTAL_GAP);
+            reach += ACCIDENTAL_GAP + width;
+        }
+        let offsets = column_of
+            .iter()
+            .map(|column| column.and_then(|at| rights.get(at).copied()))
+            .collect();
+        (offsets, reach)
     }
 
     /// The stem's direction: the fixed one, or the one the noteheads choose (a chord above
@@ -585,13 +687,9 @@ pub(crate) fn extent(item: &NotationItem, beamed: bool, ctx: &Context<'_>) -> (f
                 .map(|h| font.advance(chord.head_glyph(h)))
                 .fold(0.0, f32::max);
             let half = head_width / 2.0;
-            let accidental = chord
-                .heads
-                .iter()
-                .filter_map(|h| h.accidental)
-                .map(|g| font.advance(g) + ACCIDENTAL_GAP)
-                .fold(0.0, f32::max);
-            let second = if chord.has_second() { head_width } else { 0.0 };
+            let (_, accidental) = chord.accidental_columns(font);
+            let (second_left, second) = // A whole note has no stem: its second's head goes right, as drawn.
+            chord.second_reach(head_width, chord.value < 2 || chord.stem_up());
             let dots = f32::from(chord.dots) * (font.advance(Glyph::AugmentationDot) + DOT_GAP);
             // A flag sticks out to the right of an up-stem.
             let flag = if chord.beams() > 0 && !beamed {
@@ -638,7 +736,11 @@ pub(crate) fn extent(item: &NotationItem, beamed: bool, ctx: &Context<'_>) -> (f
                 .map(|head| finger(head.finger_left) + finger(head.finger_right))
                 .fold(0.0, f32::max);
             (
-                half + paren + accidental + slide_in.max(brush).max(arpeggio) + fingers,
+                half + second_left
+                    + paren
+                    + accidental
+                    + slide_in.max(brush).max(arpeggio)
+                    + fingers,
                 half + second + paren + dots.max(flag) + slide_out,
             )
         }
@@ -751,6 +853,45 @@ mod tests {
         c.value = 16;
         assert_eq!((c.head_glyph(&h), c.beams()), (Glyph::NoteheadBlack, 2));
         c.heads.push(head(31, Alter::Natural, false));
-        assert!(c.has_second());
+        assert!(c.shifted(c.stem_up()).contains(&true));
+    }
+
+    /// A dense chord's sharps: one a second or third from another stands in a column of
+    /// its own, and every one stands left of the whole chord, also of the head a
+    /// down-stem moves to the left.
+    #[test]
+    fn close_accidentals_stand_in_columns_left_of_the_chord() {
+        let font = crate::metrics::MusicFont::bravura().unwrap();
+        let sharp = |position: i32| Head {
+            position,
+            accidental: Some(Glyph::Sharp),
+            ..Head::plain()
+        };
+        let chord = |positions: &[i32]| Chord {
+            heads: positions.iter().map(|&p| sharp(p)).collect(),
+            value: 2,
+            dots: 0,
+            tuplet: None,
+            stem_up: Some(false),
+            slash: false,
+            marks: ChordMarks::default(),
+        };
+        let advance = font.advance(Glyph::Sharp);
+        // A second and a third: three columns, each further left.
+        let dense = chord(&[4, 6, 7]);
+        let (offsets, room) = dense.accidental_columns(&font);
+        let mut rights: Vec<f32> = offsets.iter().map(|o| o.unwrap()).collect();
+        rights.sort_by(f32::total_cmp);
+        rights.dedup();
+        assert_eq!(rights.len(), 3);
+        assert!((room - 3.0 * (advance + ACCIDENTAL_GAP)).abs() < 1e-4);
+        // A sixth apart: one column.
+        let (offsets, room) = chord(&[0, 6]).accidental_columns(&font);
+        assert_eq!(offsets[0], offsets[1]);
+        assert!((room - (advance + ACCIDENTAL_GAP)).abs() < 1e-4);
+        // The down-stem moves the second's lower head left; the room counts it.
+        assert_eq!(dense.second_reach(1.2, false), (1.2, 0.0));
+        assert_eq!(dense.second_reach(1.2, true), (0.0, 1.2));
+        assert_eq!(chord(&[0, 6]).second_reach(1.2, false), (0.0, 0.0));
     }
 }

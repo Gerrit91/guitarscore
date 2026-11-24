@@ -392,7 +392,11 @@ impl GuitarScoreApp {
             ..options
         };
         let tracks = score.tracks;
-        if let Err(error) = self.tasks.export_pdf(song, tracks, options, path, ctx) {
+        let music = self.view.music_font;
+        if let Err(error) = self
+            .tasks
+            .export_pdf(song, tracks, options, music, path, ctx)
+        {
             self.notice = Some(error);
         }
     }

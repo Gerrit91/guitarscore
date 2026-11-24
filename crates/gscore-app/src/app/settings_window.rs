@@ -208,6 +208,7 @@ impl GuitarScoreApp {
                     window.page.draft,
                     &self.options,
                     fonts,
+                    self.view.music_font,
                 )
             }
             _ => None,
@@ -215,6 +216,7 @@ impl GuitarScoreApp {
         let mut close = false;
         let mut apply = false;
         let mut apply_page = false;
+        let mut chosen_music = None;
         // Where its usual size does not fit (a phone), it covers the screen (in the
         // practice view, all but the drawer) and is neither moved nor resized.
         let sheet = self.settings_sheet(ctx);
@@ -257,14 +259,18 @@ impl GuitarScoreApp {
                 let tab = window.tab;
                 if tab == SettingsTab::Page {
                     let has_song = self.document().is_some();
+                    let mut actions = super::settings_page::PageTabActions::default();
                     page_tab(
                         ui,
                         &mut window.page,
                         preview.as_deref(),
                         has_song,
-                        &mut apply_page,
-                        &mut close,
+                        self.view.music_font,
+                        &mut actions,
                     );
+                    apply_page |= actions.apply;
+                    close |= actions.close;
+                    chosen_music = actions.music;
                 } else if tab == SettingsTab::Song {
                     // Its notes take the room left, its buttons stay at the bottom.
                     song_tab(ui, &mut window, &mut apply, &mut close);
@@ -282,6 +288,9 @@ impl GuitarScoreApp {
             });
             close |= escape;
         });
+        if let Some(music) = chosen_music {
+            self.set_music_font(music);
+        }
         if close {
             self.settings_window = None;
             self.save_settings();
@@ -800,6 +809,7 @@ impl GuitarScoreApp {
             ui.radio_value(&mut self.view.theme, ThemeChoice::Light, "Light page");
             ui.radio_value(&mut self.view.theme, ThemeChoice::Dark, "Dark page");
         });
+        ui.add_space(6.0);
         ui.add(style::switch(
             &mut self.settings.audition_notes,
             "Play notes as they are entered",

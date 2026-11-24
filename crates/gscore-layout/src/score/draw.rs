@@ -110,7 +110,7 @@ pub(super) fn draw_part(
         // Beat effects go above the notation staff, below the rows of text marks, or in a
         // lane above the tab when there is no notation.
         beat_bottom: if ctx.notation.is_some() {
-            top - rows.ornament_band() - marks::BEAT_ABOVE
+            top - rows.lift() - rows.ornament_band() - marks::BEAT_ABOVE
         } else {
             tab_top - ornaments::TAB_BEAT_LANE
         },

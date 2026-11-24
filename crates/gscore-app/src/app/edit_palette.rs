@@ -39,6 +39,9 @@ pub(super) struct EditPaletteState {
     tuplet: Option<(u8, u8)>,
     /// The tuplet dialog, while it is open.
     tuplet_dialog: Option<TupletDialog>,
+    /// The cursor's beat and its length when the palette last took the length over (see
+    /// [`EditPaletteState::follow_cursor`]).
+    followed: Option<(BeatPosition, NoteValue)>,
     /// The staff tiles and the dialog one of them opened.
     pub(super) staff: StaffState,
     /// A voice chosen this frame, for the caller to move the cursor.
@@ -54,6 +57,7 @@ impl Default for EditPaletteState {
             dots: 0,
             tuplet: None,
             tuplet_dialog: None,
+            followed: None,
             staff: StaffState::default(),
             pending_voice: None,
             effects: EffectsState::default(),
@@ -64,6 +68,24 @@ impl Default for EditPaletteState {
 impl EditPaletteState {
     fn duration(&self) -> Option<NoteValue> {
         NoteValue::new(self.value, self.dots, self.tuplet).ok()
+    }
+
+    /// Shows the length of the cursor's beat, as Guitar Pro does: when the cursor comes
+    /// to another beat, or its beat's length changes (an undo), the palette's value, dots
+    /// and tuplet become the beat's. An empty placeholder beat keeps the palette's choice,
+    /// so the length chosen for entering notes stays while the cursor steps on.
+    fn follow_cursor(&mut self, snapshot: &PaletteSnapshot) {
+        let Some(current) = snapshot.cursor_value else {
+            return;
+        };
+        if self.followed == Some(current) {
+            return;
+        }
+        let (_, value) = current;
+        self.value = value.value();
+        self.dots = value.dots();
+        self.tuplet = value.tuplet();
+        self.followed = Some(current);
     }
 
     /// The hand whose fingering window is open, if one is.
@@ -90,6 +112,9 @@ pub(super) struct PaletteSnapshot {
     /// Dot and tuplet choices change this value instead of the palette's, so toggling a
     /// tuplet on and off leaves the notes as they were.
     pub(super) beat_values: Vec<Option<NoteValue>>,
+    /// The cursor's beat and its written length, unless it is a placeholder (an empty
+    /// beat, or a rest alone in its bar).
+    pub(super) cursor_value: Option<(BeatPosition, NoteValue)>,
     /// The selected beats without notes (rests and empty beats).
     pub(super) silent_beats: Vec<BeatPosition>,
     /// The target beats that are rests.
@@ -238,10 +263,26 @@ impl PaletteSnapshot {
                     .is_some_and(|beat| beat.kind() == gscore_model::BeatKind::Rest)
             })
             .collect();
+        // A placeholder takes no length over: an empty beat, or the rest filling a bar
+        // alone (a new bar's).
+        let alone = song
+            .measure_at(cursor.position())
+            .and_then(|measure| measure.voice(cursor.voice))
+            .is_some_and(|voice| voice.beats().len() == 1);
+        let cursor_value = beat
+            .as_ref()
+            .filter(|beat| match beat.kind() {
+                gscore_model::BeatKind::Empty => false,
+                gscore_model::BeatKind::Rest => !alone,
+                gscore_model::BeatKind::Normal => true,
+            })
+            .and_then(|beat| beat.note_value().ok())
+            .map(|value| (cursor.position(), value));
         PaletteSnapshot {
             cursor,
             beats,
             beat_values,
+            cursor_value,
             silent_beats,
             rest_beats,
             rest_was_last: false,
@@ -327,6 +368,7 @@ impl GuitarScoreApp {
         snapshot.system_break =
             super::score_view::shown_break(document.song(), cursor.track, cursor.measure, several);
 
+        tab.edit_palette.follow_cursor(&snapshot);
         let step_entry = document.editor().step_entry();
         let mut toggle_step_entry = false;
         let mut commands: Vec<Command> = Vec::new();
@@ -446,6 +488,8 @@ impl GuitarScoreApp {
         let mut snapshot = PaletteSnapshot::of(document.song(), cursor, selection);
         snapshot.rest_was_last = rest_was_last(&snapshot, document.editor().last_command());
         let state = &mut tab.edit_palette;
+        // A key acts on the length the palette shows: the cursor beat's.
+        state.follow_cursor(&snapshot);
         let value = match action {
             ActionId::NoteWhole => Some(1),
             ActionId::NoteHalf => Some(2),

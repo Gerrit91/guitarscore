@@ -79,6 +79,22 @@ impl MusicFont {
     /// Reads a SMuFL font metadata file (`<font>_metadata.json`). Fails if it is not valid
     /// metadata or lacks a glyph or value layout needs.
     pub fn from_metadata_json(json: &str) -> Result<Self, LayoutError> {
+        Self::read(json, None, &[])
+    }
+
+    /// [`Self::from_metadata_json`] with the font file itself (OpenType), for the advance
+    /// widths of a font whose metadata leaves them out (Petaluma's does). Glyphs in
+    /// `fallbacks` are read from Bravura's metadata instead: the font does not have them.
+    pub fn from_metadata_and_font(
+        json: &str,
+        font: &[u8],
+        fallbacks: &[Glyph],
+    ) -> Result<Self, LayoutError> {
+        Self::read(json, Some(font), fallbacks)
+    }
+
+    fn read(json: &str, font: Option<&[u8]>, fallbacks: &[Glyph]) -> Result<Self, LayoutError> {
+        let font = font.map(crate::pdf::FontInfo::parse).transpose()?;
         if json.len() > MAX_METADATA_BYTES {
             return Err(LayoutError::Font(format!(
                 "font metadata is {} bytes; at most {MAX_METADATA_BYTES} are accepted",
@@ -88,14 +104,27 @@ impl MusicFont {
         let raw: RawMetadata = serde_json::from_str(json)
             .map_err(|e| LayoutError::Font(format!("font metadata: {e}")))?;
         let engraving = raw.engraving_defaults.checked()?;
+        // Glyphs a font does not have are taken from Bravura (known-good, bundled).
+        let bravura = if fallbacks.is_empty() {
+            None
+        } else {
+            Some(
+                serde_json::from_str::<RawMetadata>(BRAVURA_METADATA)
+                    .map_err(|e| LayoutError::Font(format!("Bravura metadata: {e}")))?,
+            )
+        };
 
         let mut boxes = HashMap::new();
         let mut advances = HashMap::new();
         for glyph in Glyph::all() {
             let name = glyph.name();
+            let from_bravura = bravura.as_ref().filter(|_| fallbacks.contains(&glyph));
             let missing =
                 |what: &str| LayoutError::Font(format!("{}: no {what} for {name}", raw.font_name));
-            let raw_box = raw.glyph_b_boxes.get(name).ok_or_else(|| missing("box"))?;
+            let raw_box = from_bravura
+                .and_then(|bravura| bravura.glyph_b_boxes.get(name))
+                .or_else(|| raw.glyph_b_boxes.get(name))
+                .ok_or_else(|| missing("box"))?;
             let [x_min, y_min] = raw_box.b_box_sw;
             let [x_max, y_max] = raw_box.b_box_ne;
             let glyph_box = GlyphBox {
@@ -108,17 +137,28 @@ impl MusicFont {
                 return Err(missing("finite box"));
             }
             boxes.insert(glyph, glyph_box);
-            let advance = raw
-                .glyph_advance_widths
-                .get(name)
-                .copied()
+            // From the metadata, else from the font (in SMuFL a staff space is a quarter
+            // of the em). A fallback glyph comes from Bravura's metadata, which has them.
+            let from_font = || {
+                let font = font.as_ref()?;
+                let id = font.glyph(glyph.codepoint())?;
+                Some(f32::from(font.advance(id)) * 4.0 / f32::from(font.units_per_em.max(1)))
+            };
+            let advance = from_bravura
+                .and_then(|bravura| bravura.glyph_advance_widths.get(name).copied())
+                .or_else(|| raw.glyph_advance_widths.get(name).copied())
+                .or_else(from_font)
                 .filter(|a| a.is_finite() && *a >= 0.0)
                 .ok_or_else(|| missing("advance width"))?;
             advances.insert(glyph, advance);
         }
         let mut anchors = HashMap::new();
         for glyph in Glyph::all() {
-            if let Some(points) = raw.glyphs_with_anchors.get(glyph.name()) {
+            let from_bravura = bravura.as_ref().filter(|_| fallbacks.contains(&glyph));
+            let points = from_bravura
+                .and_then(|bravura| bravura.glyphs_with_anchors.get(glyph.name()))
+                .or_else(|| raw.glyphs_with_anchors.get(glyph.name()));
+            if let Some(points) = points {
                 for (anchor, &[x, y]) in points {
                     if x.is_finite() && y.is_finite() {
                         anchors.insert((glyph, anchor.clone()), (x, y));
@@ -170,6 +210,7 @@ struct RawMetadata {
     engraving_defaults: RawEngravingDefaults,
     #[serde(rename = "glyphBBoxes")]
     glyph_b_boxes: HashMap<String, RawBox>,
+    #[serde(default)]
     glyph_advance_widths: HashMap<String, f32>,
     #[serde(default)]
     glyphs_with_anchors: HashMap<String, HashMap<String, [f32; 2]>>,
@@ -181,7 +222,11 @@ struct RawEngravingDefaults {
     staff_line_thickness: f32,
     thin_barline_thickness: f32,
     thick_barline_thickness: f32,
-    thin_thick_barline_separation: f32,
+    /// Optional in SMuFL (Petaluma has only `barlineSeparation`): see [`Self::checked`].
+    #[serde(default)]
+    thin_thick_barline_separation: Option<f32>,
+    #[serde(default)]
+    barline_separation: Option<f32>,
     stem_thickness: f32,
     beam_thickness: f32,
     beam_spacing: f32,
@@ -192,14 +237,17 @@ struct RawEngravingDefaults {
 impl RawEngravingDefaults {
     /// The values, if all are usable (finite, positive and below one staff height).
     fn checked(self) -> Result<EngravingDefaults, LayoutError> {
+        // The gap in a final barline: the font's own, else its gap between two barlines,
+        // else SMuFL's usual 0.4 staff spaces.
+        let thin_thick_barline_separation = self
+            .thin_thick_barline_separation
+            .or(self.barline_separation)
+            .unwrap_or(0.4);
         let values = [
             ("staffLineThickness", self.staff_line_thickness),
             ("thinBarlineThickness", self.thin_barline_thickness),
             ("thickBarlineThickness", self.thick_barline_thickness),
-            (
-                "thinThickBarlineSeparation",
-                self.thin_thick_barline_separation,
-            ),
+            ("thinThickBarlineSeparation", thin_thick_barline_separation),
             ("stemThickness", self.stem_thickness),
             ("beamThickness", self.beam_thickness),
             ("beamSpacing", self.beam_spacing),
@@ -218,7 +266,7 @@ impl RawEngravingDefaults {
             staff_line_thickness: self.staff_line_thickness,
             thin_barline_thickness: self.thin_barline_thickness,
             thick_barline_thickness: self.thick_barline_thickness,
-            thin_thick_barline_separation: self.thin_thick_barline_separation,
+            thin_thick_barline_separation,
             stem_thickness: self.stem_thickness,
             beam_thickness: self.beam_thickness,
             beam_spacing: self.beam_spacing,

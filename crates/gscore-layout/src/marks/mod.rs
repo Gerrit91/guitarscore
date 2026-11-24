@@ -26,6 +26,9 @@ use crate::staff::Staff;
 const FIRST_ROW: f32 = 2.6;
 /// Space between a tempo mark and the feel mark after it.
 const FEEL_GAP: f32 = 1.0;
+/// Room kept between the highest note (its head, ledger lines or stem) and the lowest row
+/// of marks above it.
+const NOTE_CLEARANCE: f32 = 0.5;
 /// Distance between two rows of marks.
 const ROW_HEIGHT: f32 = 2.4;
 /// With notation: the row of beat effects (pick strokes, tapping, fade-ins) nearest the
@@ -254,8 +257,11 @@ fn ending_label(endings: u8) -> String {
 /// Which rows of marks a system has above its top staff, from the staff upwards: on a
 /// notation staff the ornaments a missing tab would carry and the beat effects, then
 /// fermatas, ending brackets, tempo marks, section names.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub(crate) struct Rows {
+    /// How far the system's notes reach above its top staff: every row sits that much
+    /// higher, so a high note (and its ledger lines) never runs into a mark.
+    lift: f32,
     ornaments: bool,
     beat_effects: bool,
     /// Whether the top staff is a tab (no notation), which puts the beat effects higher.
@@ -280,6 +286,7 @@ impl Rows {
     /// (beat effects, beat text, fermatas).
     pub(crate) fn of(marks: &[MeasureMarks], notation: bool, tab: bool, system: bool) -> Rows {
         Rows {
+            lift: 0.0,
             system,
             ornaments: notation && !tab && marks.iter().any(|m| m.lane_ornaments),
             beat_effects: marks.iter().any(|m| m.beat_effects),
@@ -294,11 +301,39 @@ impl Rows {
         }
     }
 
-    /// How much room the rows take above the system.
+    /// These rows above notes that reach `reach` above the top staff line: the rows
+    /// already stand clear of the staff by some room, and move up only by what the notes
+    /// need beyond it.
+    pub(crate) fn lifted(self, reach: f32) -> Rows {
+        let empty = Rows { lift: 0.0, ..self }.height() <= 0.0;
+        // The lowest row's ink: the beat effects' row, else the first row of text (its
+        // letters stand on the baseline; a little room under it).
+        let free = if self.band() > 0.0 {
+            self.ornament_band() + BEAT_ABOVE - NOTE_CLEARANCE
+        } else {
+            FIRST_ROW - NOTE_CLEARANCE
+        };
+        let lift = reach - free;
+        Rows {
+            lift: if empty || !lift.is_finite() {
+                0.0
+            } else {
+                lift.max(0.0)
+            },
+            ..self
+        }
+    }
+
+    /// How far the rows are lifted above the staff (see [`Rows::lifted`]).
+    pub(crate) fn lift(self) -> f32 {
+        self.lift
+    }
+
+    /// How much room the rows take above the system (the notes' reach under them too).
     pub(crate) fn height(self) -> f32 {
         let rows = self.text_rows();
         let chords = if self.chords { chord::ROW } else { 0.0 };
-        rows as f32 * ROW_HEIGHT + self.band() + chords + self.directions_extra()
+        self.lift + rows as f32 * ROW_HEIGHT + self.band() + chords + self.directions_extra()
     }
 
     /// The directions' row is taller than a text row (the coda sign).
@@ -354,7 +389,7 @@ impl Rows {
         } else {
             0.0
         };
-        top - self.band() - FIRST_ROW - n as f32 * ROW_HEIGHT - extra
+        top - self.lift - self.band() - FIRST_ROW - n as f32 * ROW_HEIGHT - extra
     }
 
     /// The beat text sits nearest the staff, above the measure numbers.
@@ -519,7 +554,6 @@ pub(crate) fn draw(
             placed.left,
             rows.baseline(rows.section_row(), top),
             title,
-            ctx,
             ops,
         );
         clickable.push(ScoreMark::new(

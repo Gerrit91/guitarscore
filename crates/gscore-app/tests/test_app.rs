@@ -3446,6 +3446,35 @@ fn the_song_grid_stripes_can_be_switched_on_in_the_settings() {
 }
 
 #[test]
+fn the_music_font_can_be_chosen_in_the_page_layout_settings() {
+    let _gpu = common::lock_gpu();
+    let mut harness = app_with(Some(testdata("basic/multi_staff.gp")));
+    assert_eq!(harness.state().settings().music_font, "bravura", "default");
+    harness.get_by_label("File").click();
+    harness.run();
+    harness.get_by_label("Settings… ctrl+,").click();
+    harness.run();
+    harness.get_by_label("Page layout").click();
+    harness.run();
+    harness.get_by_label("Petaluma music font").scroll_to_me();
+    harness.run();
+    harness.get_by_label("Petaluma music font").click();
+    harness.run();
+    assert_eq!(
+        harness.state().settings().music_font,
+        "petaluma",
+        "chosen and remembered in the settings"
+    );
+    harness.get_by_label("Close Settings").click();
+    harness.run();
+    assert_eq!(
+        harness.state().settings().music_font,
+        "petaluma",
+        "still there after the window closes"
+    );
+}
+
+#[test]
 fn the_metronome_tab_sets_the_click_and_the_count_in() {
     let mut harness = app_with(Some(testdata("basic/note_lengths.gp")));
     harness.get_by_label("File").click();
@@ -3587,6 +3616,8 @@ fn shortcuts_can_be_changed_and_reverted_from_the_editor() {
     harness.get_by_label("Settings… ctrl+,").click();
     harness.run();
     harness.get_by_label("Editor").click();
+    harness.run();
+    harness.get_by_label("Edit shortcuts…").scroll_to_me();
     harness.run();
     harness.get_by_label("Edit shortcuts…").click();
     harness.run();

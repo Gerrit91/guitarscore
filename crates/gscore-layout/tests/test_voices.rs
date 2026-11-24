@@ -136,9 +136,15 @@ fn a_tie_across_a_system_break_is_split_into_fragments() {
         .unwrap();
     let laid = common::layout(&song, 0);
     assert_eq!(laid.places.systems.len(), 2);
-    let boundary = laid.places.measures[1].left;
-    // No curve runs from one system to the other.
-    assert_eq!(crossing_curves(&laid, boundary), 0);
+    // No curve runs from one system to the other (down to the next line).
+    let second_top = laid.places.systems[1].top;
+    assert!(
+        !laid
+            .ops
+            .iter()
+            .any(|op| matches!(op, DrawOp::Curve { from, to, .. }
+        if from.y.min(to.y) < second_top - 10.0 && from.y.max(to.y) > second_top - 2.0))
+    );
     // Each staff has an outgoing fragment on the first system and an incoming one on the
     // second.
     let first = &laid.places.measures[0];
@@ -155,12 +161,64 @@ fn a_tie_across_a_system_break_is_split_into_fragments() {
         .ops
         .iter()
         .filter(|op| {
+            // The incoming arc starts in the room before the bar (the tie's own).
             matches!(op, DrawOp::Curve { from, to, .. }
-                if from.x >= second.left && to.x <= second.content)
+                if from.x >= second.left - 2.0 && to.x <= second.content + 2.0
+                    && from.y > laid.places.systems[1].top - 2.0)
         })
         .count();
     assert!(outgoing >= 2, "an outgoing tie fragment per staff");
     assert!(incoming >= 2, "an incoming tie fragment per staff");
+}
+
+/// The first bar of a line, when a tie arrives there, starts further right: the incoming
+/// arcs end before the notehead and before the fret number, not through them.
+#[test]
+fn a_tie_into_a_new_line_gets_room_before_the_note() {
+    let song_with = |tied: bool| {
+        let mut song = testing::song(&[testing::GUITAR_6], 2).unwrap();
+        for (measure, beat) in [(0, 3), (1, 0)] {
+            let _ = song
+                .set_note(at(measure, beat, 0), string(1), Fret::new(5).unwrap())
+                .unwrap();
+        }
+        let _ = song.set_note_tie(at(1, 0, 0), string(1), tied).unwrap();
+        let _ = song
+            .set_system_break(TrackIndex::new(0), MeasureIndex::new(1), SystemBreak::Line)
+            .unwrap();
+        common::layout(&song, 0)
+    };
+    let tied = song_with(true);
+    let plain = song_with(false);
+    let start = |laid: &Layout| laid.places.measures[1].left;
+    assert!(start(&tied) > start(&plain) + 1.0);
+    // The tab's tied fret is written in parentheses; the arc ends left of it.
+    let fret_x = tied
+        .ops
+        .iter()
+        .find_map(|op| match op {
+            DrawOp::Text { text, at, .. } if text == "(5)" => Some(at.x),
+            _ => None,
+        })
+        .expect("the tied fret");
+    let second = &tied.places.measures[1];
+    let incoming: Vec<f32> = tied
+        .ops
+        .iter()
+        .filter_map(|op| match op {
+            DrawOp::Curve { from, to, .. } if to.x > second.left - 2.0 && to.x < second.right => {
+                Some(to.x.max(from.x))
+            }
+            _ => None,
+        })
+        .collect();
+    assert!(incoming.len() >= 2, "an incoming arc per staff");
+    for end in incoming {
+        assert!(
+            end < fret_x - 0.5,
+            "an arc ends at {end}, the fret is at {fret_x}"
+        );
+    }
 }
 
 #[test]

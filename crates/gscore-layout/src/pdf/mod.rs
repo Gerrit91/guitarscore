@@ -7,6 +7,7 @@
 //! stack of pages) into points (y up, origin at each page's bottom-left corner).
 
 mod font;
+pub(crate) use font::FontInfo;
 
 use std::collections::BTreeMap;
 
@@ -17,7 +18,6 @@ use subsetter::GlyphRemapper;
 use crate::draw::{DrawOp, Point, Rect, TextAnchor, TextFont};
 use crate::theme::{Rgb, Theme};
 use crate::{Layout, LayoutError};
-use font::FontInfo;
 
 /// Points per millimetre.
 const POINTS_PER_MM: f32 = 72.0 / 25.4;
@@ -29,6 +29,11 @@ const MAX_PAGES: usize = 10_000;
 pub struct PdfFonts<'a> {
     /// The SMuFL music font (OpenType).
     pub music: &'a [u8],
+    /// The music font's name, for the PDF's font dictionaries.
+    pub music_name: &'static [u8],
+    /// Bravura, for the glyphs the music font does not have (see
+    /// [`crate::MusicFontChoice::fallbacks`]); `None` when the music font is Bravura.
+    pub fallback_music: Option<&'a [u8]>,
     /// The text font.
     pub text: &'a [u8],
     /// The bold text font.
@@ -37,17 +42,43 @@ pub struct PdfFonts<'a> {
 
 // Statics, not constants: a constant's bytes are copied into every crate that uses them
 // (the app and this crate each had their own 2.4 MiB), a static exists once.
-static BRAVURA: &[u8] = include_bytes!("../../../../assets/fonts/bravura/Bravura.otf");
 static NOTO_SANS: &[u8] = include_bytes!("../../../../assets/fonts/noto-sans/NotoSans-Regular.ttf");
 static NOTO_SANS_BOLD: &[u8] =
     include_bytes!("../../../../assets/fonts/noto-sans/NotoSans-Bold.ttf");
+
+/// The width of `text` set in the bundled Noto Sans Bold at `size`, from the font's own
+/// advances (a character the font lacks counts with the regular estimate).
+pub(crate) fn bold_text_width(text: &str, size: f32) -> f32 {
+    static BOLD: std::sync::OnceLock<Option<FontInfo<'static>>> = std::sync::OnceLock::new();
+    let Some(font) = BOLD
+        .get_or_init(|| FontInfo::parse(NOTO_SANS_BOLD).ok())
+        .as_ref()
+    else {
+        return crate::TextMetrics::NOTO_SANS.width(text, size);
+    };
+    let em = f32::from(font.units_per_em.max(1));
+    text.chars()
+        .map(|c| match font.glyph(c) {
+            Some(glyph) => f32::from(font.advance(glyph)) / em * size,
+            None => crate::TextMetrics::NOTO_SANS.width(c.encode_utf8(&mut [0; 4]), size),
+        })
+        .sum()
+}
 
 impl PdfFonts<'static> {
     /// The bundled fonts: Bravura, Noto Sans and Noto Sans Bold. The app draws with the
     /// same bytes (`gscore-app/src/fonts.rs`), so the files are compiled in once.
     pub fn bundled() -> Self {
+        Self::with_music(crate::MusicFontChoice::Bravura)
+    }
+
+    /// The bundled fonts with the music font `music`.
+    pub fn with_music(music: crate::MusicFontChoice) -> Self {
         PdfFonts {
-            music: BRAVURA,
+            music: music.file(),
+            music_name: music.name().as_bytes(),
+            fallback_music: (music != crate::MusicFontChoice::Bravura)
+                .then(|| crate::MusicFontChoice::Bravura.file()),
             text: NOTO_SANS,
             bold: NOTO_SANS_BOLD,
         }
@@ -83,6 +114,11 @@ impl<'a> UsedFont<'a> {
             originals: vec![0],
             unicode: BTreeMap::new(),
         })
+    }
+
+    /// Whether the font has a glyph for `c`.
+    fn has_glyph(&self, c: char) -> bool {
+        self.info.glyph(c).is_some()
     }
 
     /// `text` as two-byte subset glyph ids (the font's Identity-H encoding), and its width
@@ -150,7 +186,7 @@ impl<'a> UsedFont<'a> {
         let mut descriptor = pdf.font_descriptor(ids.descriptor);
         descriptor
             .name(Name(&name))
-            .flags(if self.resource == b"M" {
+            .flags(if self.resource == b"M" || self.resource == b"F" {
                 FontFlags::SYMBOLIC
             } else {
                 FontFlags::NON_SYMBOLIC
@@ -268,7 +304,13 @@ pub fn to_pdf(
             layout.pages.len()
         )));
     }
-    let mut music = UsedFont::new(fonts.music, b"M", b"Bravura")?;
+    let mut music = UsedFont::new(fonts.music, b"M", fonts.music_name)?;
+    // Glyphs the chosen font does not have are drawn with Bravura; it is embedded only if
+    // the score uses one of them.
+    let mut fallback = fonts
+        .fallback_music
+        .map(|data| UsedFont::new(data, b"F", b"Bravura"))
+        .transpose()?;
     let mut text = UsedFont::new(fonts.text, b"T", b"NotoSans-Regular")?;
     let mut bold = UsedFont::new(fonts.bold, b"B", b"NotoSans-Bold")?;
 
@@ -353,13 +395,22 @@ pub fn to_pdf(
                 scale: glyph_scale,
                 color,
             } => {
-                let (bytes, _) = music.encode(&glyph.codepoint().to_string());
+                let character = glyph.codepoint();
+                // A glyph the chosen font lacks is drawn with Bravura.
+                let used = if music.has_glyph(character) {
+                    &mut music
+                } else if let Some(fallback) = fallback.as_mut() {
+                    fallback
+                } else {
+                    &mut music
+                };
+                let (bytes, _) = used.encode(&character.to_string());
                 // One em of a SMuFL font is four staff spaces.
                 let size = 4.0 * glyph_scale * scale;
                 let (x, y) = at(*anchor);
                 show(
                     content,
-                    music.resource,
+                    used.resource,
                     size,
                     [1.0, 0.0, 0.0, 1.0, x, y],
                     theme.color(*color),
@@ -432,8 +483,11 @@ pub fn to_pdf(
         .iter()
         .map(|_| (ids.next(), ids.next()))
         .collect();
-    let used: Vec<(&UsedFont<'_>, FontIds)> = [&music, &text, &bold]
+    let mut all_music = vec![&music];
+    all_music.extend(fallback.as_ref());
+    let used: Vec<(&UsedFont<'_>, FontIds)> = all_music
         .into_iter()
+        .chain([&text, &bold])
         .filter(|font| font.originals.len() > 1)
         .map(|font| (font, ids.font()))
         .collect();

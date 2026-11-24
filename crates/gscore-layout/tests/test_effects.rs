@@ -319,3 +319,59 @@ fn a_legato_beat_run_gets_a_slur_on_the_notation_staff() {
     }
     assert_eq!(curves(&song), before + 1, "one slur over the run");
 }
+
+/// A vibrato over a note bent up (and one right after it) stands above the bend's arrow
+/// and its label, not through them.
+#[test]
+fn a_vibrato_over_a_bend_stands_above_the_bends_label() {
+    let note = [TestNote::new(1, 12)];
+    let beats: Vec<(u16, &[TestNote<'_>])> = vec![(4, &note), (4, &note), (4, &note), (4, &note)];
+    let mut song = song_with_notes(&beats).unwrap();
+    let effect = |song: &mut Song, index: usize, effect: NoteEffect| {
+        let _change = song.set_note_effect(at(index), string(1), effect).unwrap();
+    };
+    effect(
+        &mut song,
+        0,
+        NoteEffect::Bend(Some(gscore_model::BendShape::up(4).unwrap())),
+    );
+    for beat in [0, 1] {
+        effect(
+            &mut song,
+            beat,
+            NoteEffect::Vibrato(Some(gscore_model::Vibrato::Wide)),
+        );
+    }
+    let fonts = Fonts::bundled().unwrap();
+    let laid = layout_track(&song, TrackIndex::new(0), &LayoutOptions::default(), &fonts).unwrap();
+    let label = laid
+        .ops
+        .iter()
+        .find_map(|op| match op {
+            DrawOp::Text { text, at, .. } if text == "full" => Some(at.y),
+            _ => None,
+        })
+        .expect("the bend's label");
+    // The vibrato's strokes: the wide wiggle's slanted lines, of its own thickness.
+    let lowest_wiggle = laid
+        .ops
+        .iter()
+        .filter_map(|op| match op {
+            DrawOp::Line {
+                from,
+                to,
+                thickness,
+                ..
+            } if (*thickness - 0.22).abs() < 0.01 && from.y != to.y && from.x != to.x => {
+                Some(from.y.max(to.y))
+            }
+            _ => None,
+        })
+        .fold(f32::NEG_INFINITY, f32::max);
+    assert!(lowest_wiggle.is_finite(), "the vibrato is drawn");
+    // The label's letters stand on its baseline, about 0.7 high.
+    assert!(
+        lowest_wiggle < label - 0.8,
+        "vibrato down to {lowest_wiggle}, label at {label}"
+    );
+}

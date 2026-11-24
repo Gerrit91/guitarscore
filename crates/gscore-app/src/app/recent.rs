@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use egui::{RichText, Sense};
-use gscore_layout::{Layout as ScoreLayout, Theme};
+use gscore_layout::{Layout as ScoreLayout, MusicFontChoice, Theme};
 
 use crate::canvas::{self, Arrangement, POINTS_PER_SPACE};
 
@@ -100,6 +100,13 @@ impl RecentFiles {
         self.selected = None;
         self.running = None;
     }
+
+    /// The music font changed: the page is prepared again in it, for the same chosen song.
+    pub(super) fn forget_preview_keeping_selection(&mut self) {
+        self.preview = None;
+        self.error = None;
+        self.running = None;
+    }
 }
 
 /// The empty workspace: the way to start, the recent songs, and the preview. The caller
@@ -108,6 +115,7 @@ pub(super) fn show(
     ui: &mut egui::Ui,
     state: &mut RecentFiles,
     recent: &[PathBuf],
+    music: MusicFontChoice,
 ) -> RecentActions {
     let mut actions = RecentActions::default();
     egui::ScrollArea::vertical()
@@ -128,7 +136,7 @@ pub(super) fn show(
                 ui.add_space(margin);
                 ui.vertical(|ui| {
                     ui.set_width(width);
-                    content(ui, width, state, recent, &mut actions);
+                    content(ui, width, state, recent, &mut actions, music);
                     let height = ui.min_rect().height();
                     if (height - state.content_height).abs() > 0.5 {
                         state.content_height = height;
@@ -164,6 +172,7 @@ fn content(
     state: &mut RecentFiles,
     recent: &[PathBuf],
     actions: &mut RecentActions,
+    music: MusicFontChoice,
 ) {
     ui.heading("Open a song");
     ui.add_space(4.0);
@@ -205,7 +214,7 @@ fn content(
         });
         ui.add_space(16.0);
         ui.vertical(|ui| {
-            if preview(ui, state, actions.open.is_some())
+            if preview(ui, state, actions.open.is_some(), music)
                 && let Some(path) = state.selected.clone()
             {
                 actions.open = Some(path);
@@ -340,7 +349,7 @@ fn song_table(
 
 /// The chosen song's first page, as it prints, or what waits for it. True when the preview
 /// was clicked (to open the song).
-fn preview(ui: &mut egui::Ui, state: &RecentFiles, opening: bool) -> bool {
+fn preview(ui: &mut egui::Ui, state: &RecentFiles, opening: bool, music: MusicFontChoice) -> bool {
     ui.label(RichText::new("Preview").strong());
     ui.add_space(4.0);
     let Some(selected) = state.selected.as_deref() else {
@@ -371,6 +380,7 @@ fn preview(ui: &mut egui::Ui, state: &RecentFiles, opening: bool) -> bool {
                 zoom,
                 rect,
                 canvas::Surface::Pages,
+                music,
             );
             ui.label(
                 RichText::new(format!("Page 1 of {}", layout.pages.len()))

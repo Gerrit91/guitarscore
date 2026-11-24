@@ -196,6 +196,10 @@ testing the built site in headless Chromium; what could only be judged by ear is
 25. **Audio starts only after a user gesture** (the browser's rule): the first Play
     resumes the context. Not a defect, but a count-in or an auditioned note before any
     click is silent.
+26. **Only Bravura in the browser.** Petaluma and Leland ship with the desktop builds
+    (`extra-music-fonts`) so the download stays small; a settings file that names one
+    falls back to Bravura there. Deliberate for now; the fonts are each under 400 KB, so
+    they could be added after a size check.
 
 ### Files
 

@@ -3,7 +3,7 @@
 //! visible area are painted, so long scores stay cheap per frame.
 
 use egui::{Color32, FontFamily, FontId, Painter, Pos2, Rect, Stroke, Vec2};
-use gscore_layout::{DrawOp, Layout, Point, Rgb, TextAnchor, TextFont, Theme};
+use gscore_layout::{DrawOp, Layout, MusicFontChoice, Point, Rgb, TextAnchor, TextFont, Theme};
 
 use crate::fonts;
 
@@ -190,6 +190,7 @@ pub(crate) fn paint(
     zoom: f32,
     visible: Rect,
     surface: Surface,
+    music: MusicFontChoice,
 ) {
     let scale = POINTS_PER_SPACE * zoom;
     let pixels_per_point = painter.ctx().pixels_per_point();
@@ -296,11 +297,14 @@ pub(crate) fn paint(
             } => {
                 let at = to_screen(*at);
                 if visible.contains(at) {
-                    // One em of a SMuFL font is four staff spaces.
-                    let font = FontId::new(
-                        4.0 * glyph_scale * scale,
-                        FontFamily::Name(fonts::MUSIC.into()),
-                    );
+                    // One em of a SMuFL font is four staff spaces. A glyph the chosen font
+                    // lacks is drawn with Bravura's.
+                    let family = if music.falls_back(*glyph) {
+                        fonts::music_family(MusicFontChoice::Bravura)
+                    } else {
+                        fonts::music_family(music)
+                    };
+                    let font = FontId::new(4.0 * glyph_scale * scale, family);
                     let text = glyph.codepoint().to_string();
                     text_at_baseline(
                         painter,

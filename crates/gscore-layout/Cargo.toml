@@ -6,6 +6,10 @@ authors.workspace = true
 license.workspace = true
 repository.workspace = true
 
+[features]
+# Petaluma and Leland besides Bravura (the desktop builds; the browser's stays small).
+extra-music-fonts = []
+
 [dependencies]
 gscore-model = { path = "../gscore-model" }
 # Reading the SMuFL font metadata (engraving defaults, glyph boxes and advances).

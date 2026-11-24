@@ -7,6 +7,8 @@ This file documents all third-party assets used in the GuitarScore project.
 | Path | Title | Author | Source | License |
 |------|-------|--------|--------|---------|
 | `assets/fonts/bravura/` (`Bravura.otf`, `bravura_metadata.json`) | Bravura 1.482, SMuFL music font and its metadata | Steinberg Media Technologies | https://github.com/steinbergmedia/bravura, commit `37b194378b710cc40e406ab6c4b07608bb9548ae` (`redist/`) | SIL OFL 1.1 (`assets/fonts/bravura/OFL.txt`) |
+| `assets/fonts/petaluma/` (`Petaluma.otf`, `petaluma_metadata.json`) | Petaluma, handwritten SMuFL music font and its metadata (desktop builds) | Steinberg Media Technologies | https://github.com/steinbergmedia/petaluma | SIL OFL 1.1 (`assets/fonts/petaluma/OFL.txt`) |
+| `assets/fonts/leland/` (`Leland.otf`, `leland_metadata.json`) | Leland 1.0, MuseScore's engraved SMuFL music font and its metadata (desktop builds) | MuseScore Limited | https://github.com/MuseScore/lelandFont | SIL OFL 1.1 (`assets/fonts/leland/LICENSE.txt`) |
 | `assets/fonts/noto-sans/` (`NotoSans-Regular.ttf`, `NotoSans-Bold.ttf`) | Noto Sans, text font for fret numbers and titles | The Noto Project Authors | https://github.com/notofonts/notofonts.github.io, commit `e2ec4a11da38a23b1ecebfcb233833a153ecb841` (`fonts/NotoSans/googlefonts/ttf/`) | SIL OFL 1.1 (`assets/fonts/noto-sans/OFL.txt`) |
 
 ## Sound Libraries

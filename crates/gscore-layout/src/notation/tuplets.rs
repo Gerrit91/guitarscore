@@ -4,6 +4,7 @@
 use super::draw::{BeamPlan, Stem, y_of};
 use super::{NotationItem, Tuplet};
 use crate::draw::{ColorToken, DrawOp, Point, TextAnchor, TextFont};
+use crate::glyph::Glyph;
 
 /// Size of a tuplet label.
 const LABEL_SIZE: f32 = 1.3;
@@ -38,22 +39,86 @@ fn item_tuplet(item: &NotationItem) -> Option<Tuplet> {
     }
 }
 
-/// Consecutive items with the same tuplet.
-fn groups(placed: &[BeamPlan<'_>]) -> Vec<Group> {
-    let mut groups: Vec<Group> = Vec::new();
-    for (index, p) in placed.iter().enumerate() {
-        let Some(tuplet) = item_tuplet(p.item) else {
+/// The written length of an item (its value and dots, without the tuplet's ratio), as a
+/// share of a whole note.
+fn written_length(item: &NotationItem) -> f64 {
+    let (value, dots) = match item {
+        NotationItem::Chord(chord) => (u32::from(chord.value), chord.dots),
+        NotationItem::Rest { glyph, dots, .. } => {
+            let value = match glyph {
+                Glyph::RestWhole => 1,
+                Glyph::RestHalf => 2,
+                Glyph::RestQuarter => 4,
+                Glyph::Rest8th => 8,
+                Glyph::Rest16th => 16,
+                Glyph::Rest32nd => 32,
+                Glyph::Rest64th => 64,
+                _ => 128,
+            };
+            (value, *dots)
+        }
+    };
+    let base = 1.0 / f64::from(value.max(1));
+    // Each dot adds half of what the one before it added.
+    base * (2.0 - 0.5_f64.powi(i32::from(dots)))
+}
+
+/// Splits a sequence of items into tuplet groups, given each item's tuplet (`None` for a
+/// normal item) and its written length (a share of a whole note). A group is a run of
+/// items with the same tuplet, and it ends where the run is broken (by a normal item or
+/// another tuplet) or where it is complete: when its written lengths add up to `enters`
+/// of one of its notes (three sixteenths for a sixteenth triplet), so four sixteenth
+/// triplets in a row are four groups, not one. Returns each group's items.
+pub(crate) fn tuplet_groups(items: &[(Option<(u8, u8)>, f64)]) -> Vec<(Vec<usize>, (u8, u8))> {
+    const EPSILON: f64 = 1e-9;
+    let mut groups: Vec<(Vec<usize>, (u8, u8))> = Vec::new();
+    let mut open = false;
+    let mut sum = 0.0_f64;
+    let mut units: Vec<f64> = Vec::new();
+    for (index, &(tuplet, length)) in items.iter().enumerate() {
+        let Some(tuplet) = tuplet else {
+            open = false;
             continue;
         };
         match groups.last_mut() {
-            Some(group) if group.tuplet == tuplet => group.indices.push(index),
-            _ => groups.push(Group {
-                indices: vec![index],
-                tuplet,
-            }),
+            Some((indices, current)) if open && *current == tuplet => indices.push(index),
+            _ => {
+                groups.push((vec![index], tuplet));
+                sum = 0.0;
+                units.clear();
+            }
+        }
+        open = true;
+        sum += length;
+        units.push(length);
+        let whole = units
+            .iter()
+            .any(|unit| (sum - unit * f64::from(tuplet.0)).abs() < EPSILON);
+        if whole {
+            open = false;
         }
     }
     groups
+}
+
+/// The tuplet groups of a staff's items (see [`tuplet_groups`]).
+fn groups(placed: &[BeamPlan<'_>]) -> Vec<Group> {
+    let items: Vec<(Option<(u8, u8)>, f64)> = placed
+        .iter()
+        .map(|p| {
+            (
+                item_tuplet(p.item).map(|tuplet| (tuplet.enters, tuplet.times)),
+                written_length(p.item),
+            )
+        })
+        .collect();
+    tuplet_groups(&items)
+        .into_iter()
+        .map(|(indices, (enters, times))| Group {
+            indices,
+            tuplet: Tuplet { enters, times },
+        })
+        .collect()
 }
 
 /// Draws each tuplet group's number over its beam, or a bracketed label when the group is
@@ -73,7 +138,7 @@ pub(super) fn draw_tuplets(
         if beamed {
             draw_beam_label(&group, placed, stems, &label, ops);
         } else {
-            draw_bracket(&group, placed, top, &label, ops);
+            draw_bracket(&group, placed, stems, top, &label, ops);
         }
     }
 }
@@ -114,6 +179,7 @@ fn draw_beam_label(
 fn draw_bracket(
     group: &Group,
     placed: &[BeamPlan<'_>],
+    stems: &[Option<Stem>],
     top: f32,
     label: &str,
     ops: &mut Vec<DrawOp>,
@@ -121,18 +187,26 @@ fn draw_bracket(
     let (Some(first), Some(last)) = (placed.get(group.start()), placed.get(group.end())) else {
         return;
     };
-    // The bracket sits a fixed distance above the staff unless a note is higher.
+    // The bracket sits a fixed distance above the staff unless a note (or the end of an
+    // up-stem) is higher.
     let highest = group
         .indices
         .iter()
         .filter_map(|&index| {
             let p = placed.get(index)?;
-            match p.item {
+            let head = match p.item {
                 NotationItem::Chord(chord) => {
                     chord.heads.last().map(|head| y_of(top, head.position))
                 }
                 NotationItem::Rest { .. } => None,
-            }
+            }?;
+            let stem = stems
+                .get(index)
+                .copied()
+                .flatten()
+                .filter(|stem| stem.up)
+                .map_or(head, |stem| stem.to.min(head));
+            Some(stem)
         })
         .fold(f32::MAX, f32::min);
     let y = if highest == f32::MAX {
@@ -192,6 +266,51 @@ mod tests {
 
     fn label(enters: u8, times: u8) -> String {
         tuplet_label(Tuplet { enters, times })
+    }
+
+    /// Four sixteenth triplets in a row are four groups; a normal note between two
+    /// triplets keeps them apart; a triplet of an eighth and a sixteenth is whole too.
+    #[test]
+    fn a_tuplet_group_ends_when_it_is_whole_or_interrupted() {
+        let triplet = Some((3, 2));
+        let sixteenth = 1.0 / 16.0;
+        let groups = |items: &[(Option<(u8, u8)>, f64)]| -> Vec<Vec<usize>> {
+            tuplet_groups(items)
+                .into_iter()
+                .map(|(indices, _)| indices)
+                .collect()
+        };
+        let twelve = vec![(triplet, sixteenth); 12];
+        assert_eq!(
+            groups(&twelve),
+            vec![vec![0, 1, 2], vec![3, 4, 5], vec![6, 7, 8], vec![9, 10, 11]]
+        );
+        // Bar 78 of the owner's solo: quarter, triplet, quarter, triplet.
+        let quarter = (None, 0.25);
+        let interrupted = [
+            quarter,
+            (triplet, sixteenth),
+            (triplet, sixteenth),
+            (triplet, sixteenth),
+            quarter,
+            (triplet, sixteenth),
+            (triplet, sixteenth),
+            (triplet, sixteenth),
+        ];
+        assert_eq!(groups(&interrupted), vec![vec![1, 2, 3], vec![5, 6, 7]]);
+        // An eighth and a sixteenth: three sixteenths' worth.
+        let swung = [
+            (triplet, 0.125),
+            (triplet, sixteenth),
+            (triplet, 0.125),
+            (triplet, sixteenth),
+        ];
+        assert_eq!(groups(&swung), vec![vec![0, 1], vec![2, 3]]);
+        // An unfinished group stays one group.
+        assert_eq!(
+            groups(&[(triplet, sixteenth), (triplet, sixteenth)]),
+            vec![vec![0, 1]]
+        );
     }
 
     #[test]

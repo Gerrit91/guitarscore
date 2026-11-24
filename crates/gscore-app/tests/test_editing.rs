@@ -1803,6 +1803,37 @@ fn shift_g_opens_the_grace_note_dialog_and_ok_sets_the_chosen_speed() {
     assert_eq!(grace_at_cursor(&harness), None);
 }
 
+/// The length tiles show the cursor beat's length: on a triplet beat the triplet tile is
+/// on, on a plain beat it is off again.
+#[test]
+fn the_length_tiles_show_the_cursor_beats_length() {
+    use egui_kittest::kittest::NodeT as _;
+    let mut harness = app_with(&testdata("basic/note_lengths.gp"));
+    type_char(&mut harness, "5", Modifiers::NONE);
+    harness.run();
+    let on = |harness: &Harness<'static, GuitarScoreApp>, label: &str| {
+        harness.get_by_label(label).accesskit_node().toggled()
+            == Some(egui::accesskit::Toggled::True)
+    };
+    // The second beat becomes an eighth triplet.
+    press(&mut harness, Key::ArrowRight);
+    harness.run();
+    harness.get_by_label("1/8").click();
+    harness.run();
+    harness.get_by_label("Triplet").click();
+    harness.run();
+    assert!(on(&harness, "Triplet"));
+    // Back to the first beat, which is no triplet, and on again.
+    press(&mut harness, Key::ArrowLeft);
+    harness.run();
+    assert!(!on(&harness, "Triplet"), "the first beat is no triplet");
+    assert!(!on(&harness, "1/8"), "nor an eighth");
+    press(&mut harness, Key::ArrowRight);
+    harness.run();
+    assert!(on(&harness, "Triplet"), "the triplet beat lights its tile");
+    assert!(on(&harness, "1/8"));
+}
+
 #[test]
 fn the_sextuplet_tile_and_the_tuplet_dialog_set_the_beats_tuplet() {
     let mut harness = app_with(&testdata("basic/note_lengths.gp"));

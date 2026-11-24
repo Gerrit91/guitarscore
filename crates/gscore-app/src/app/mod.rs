@@ -42,6 +42,7 @@ mod master_chain_window;
 mod metronome;
 #[cfg(not(target_arch = "wasm32"))]
 mod midi_input;
+mod music_font_picker;
 mod new_song;
 mod new_track;
 mod note_tools;
@@ -352,9 +353,10 @@ impl GuitarScoreApp {
             track_panel: settings.track_panel_width,
             edit_panel: settings.edit_panel_width,
         };
+        let music_font = view.music_font;
         let mut app = GuitarScoreApp {
             view,
-            fonts: Fonts::bundled().map_err(|e| e.to_string()),
+            fonts: Fonts::with_music(music_font).map_err(|e| e.to_string()),
             options: LayoutOptions::default(),
             tabs: Vec::new(),
             active: 0,
@@ -625,6 +627,27 @@ impl GuitarScoreApp {
                 self.notice = Some(error);
             } else {
                 self.settings = settings;
+            }
+        }
+    }
+
+    /// Switches the music font: every tab is laid out again with the font's metrics. A
+    /// font that cannot be loaded keeps the one shown (with a notice).
+    pub(super) fn set_music_font(&mut self, choice: gscore_layout::MusicFontChoice) {
+        if self.view.music_font == choice {
+            return;
+        }
+        match Fonts::with_music(choice) {
+            Ok(fonts) => {
+                self.fonts = Ok(fonts);
+                self.view.music_font = choice;
+                for tab in &mut self.tabs {
+                    tab.document.forget_layouts();
+                }
+                self.recent.forget_preview_keeping_selection();
+            }
+            Err(error) => {
+                self.notice = Some(format!("{} cannot be used: {error}", choice.name()));
             }
         }
     }

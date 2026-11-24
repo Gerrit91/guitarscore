@@ -178,6 +178,7 @@ impl GuitarScoreApp {
                 return;
             }
         };
+        let music = self.view.music_font;
         let Some(tab) = self.tabs.get_mut(self.active) else {
             return;
         };
@@ -398,6 +399,7 @@ impl GuitarScoreApp {
                 zoom,
                 ui.clip_rect(),
                 surface,
+                music,
             );
             // A position on the screen as a point of the layout.
             let to_layout = |pos: egui::Pos2| arrangement.layout_point((pos - origin) / scale);
@@ -946,7 +948,8 @@ impl GuitarScoreApp {
         }
         let ctx = ui.ctx().clone();
         let recent = self.settings.recent_files.clone();
-        let actions = super::recent::show(ui, &mut self.recent, &recent);
+        let music = self.view.music_font;
+        let actions = super::recent::show(ui, &mut self.recent, &recent, music);
         if actions.new_song {
             self.new_song(&ctx);
         }
@@ -957,7 +960,7 @@ impl GuitarScoreApp {
             self.open(path, &ctx);
         }
         if let Some(path) = actions.preview
-            && let Err(error) = self.tasks.preview(path.clone(), &ctx)
+            && let Err(error) = self.tasks.preview(path.clone(), music, &ctx)
         {
             self.recent.failed(path, error);
         }

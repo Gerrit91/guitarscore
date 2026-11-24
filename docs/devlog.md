@@ -6944,3 +6944,58 @@ Below the width where the drawer floats, the strips are 96 points wide instead o
 the fader has no meter scale, and the top row holds only the pan knob and a Sends button
 whose popup shows the whole row (pan, reverb, chorus, comp, a kit's room). The full
 interface's mixer is unchanged.
+
+2026-11-24: Petaluma and Leland as music fonts, chosen in Settings › Editor with a card
+per font and a strip of its own glyphs. Bravura stays the UI's font; the score, the page
+preview, the recent-file preview and PDF export follow the choice, and layout and the
+measure cache are dropped when it changes. Leland lacks seven marks (its text-sized notes,
+the white diamond harmonic head, `fermataVeryShortAbove`); those are measured from Bravura
+and drawn with it, in the app and in SVG and PDF (the PDF embeds a Bravura subset only when
+one is used). Petaluma and Leland ship with the desktop builds only (`extra-music-fonts`),
+so the browser download stays small and the browser offers Bravura. `gscore-cli render
+--music-font petaluma|leland`. Tests: fallbacks match what each font actually lacks, SVG
+names the right family, a Leland PDF embeds both subsets, the settings choice is kept.
+Still open: a font's glyphs in the palette tiles stay Bravura; no per-document font (it is
+an app setting).
+
+2026-11-24: the music font moved to Settings › Page layout (owner's wish), under the page
+fields and beside the preview, which shows the chosen font at once. It stays the app's
+setting: it applies at once and to every song (Apply and Revert leave it alone), as the tab
+says. The Editor tab's copy and its wrong note ("the older parts of a score always keep their
+layout") are gone.
+
+## 2026-11-24 — Notation clashes: high notes, ties after a line break, accidentals, section frames
+
+On the music-fonts branch, four layout fixes the owner found in their scores:
+- The rows of marks above a system (section names, endings, tempo, beat text, beat
+  effects) move up when the notes reach higher than the room the rows always kept
+  (`Rows::lifted`): only the excess, with half a space of clearance. A system without rows
+  keeps its height.
+- A tie arriving at the first bar of a line gets 1.5 spaces of room before the bar
+  (`TIE_IN_ROOM`). Its incoming arcs end before the notehead and before the tab's
+  parenthesized fret, instead of crossing them.
+- Accidentals stand left of the whole chord, including the head a down-stem moves to the
+  left of a second. Accidentals closer than a sixth stand in further columns
+  (`Chord::accidental_columns`); spacing (`extent`) reserves that room and counts a
+  second's extra head on the side it is drawn.
+- Section frames are measured with Noto Sans Bold's own advances
+  (`pdf::bold_text_width`) instead of an average letter width, so the frame fits the name.
+
+The music font cards no longer have a description (the owner found "lighter" for Leland
+misleading); they show the name and a glyph sample.
+
+Goldens and app snapshots were regenerated: they move because systems with high notes are
+taller and chords with seconds or accidentals space differently.
+
+Later the same day: a vibrato over a note bent up (or right after one, where the bend's
+label stands) goes 1.4 spaces higher, above the arrow and its label, and the gap between
+notation and tab (or the rows over a tab-only staff) makes room for it. Vibrato strokes are
+bolder (0.22 spaces, as thick as the SMuFL wiggles; other lines stay 0.15).
+
+Tuplets (the owner's Ballad, "Gerrit Solo" bars 78 and 80): a tuplet group ends at a note
+outside it (the notation staff skipped such notes and joined two triplets across a quarter)
+and once it is whole: its written lengths make `enters` of one of its notes
+(`notation::tuplet_groups`, shared by notation and tab), so twelve sixteenth triplets are
+four brackets. A bracket also clears the up-stems under it. The edit palette's length
+tiles follow the cursor's beat (value, dots, tuplet), as in Guitar Pro, so a triplet beat
+lights the triplet tile; an empty placeholder beat keeps the chosen length for entry.

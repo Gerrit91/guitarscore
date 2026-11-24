@@ -17,14 +17,14 @@ const ARROW_HALF_WIDTH: f32 = 0.42;
 /// Radius of a circled symbol (a left-hand tap's T, a string number).
 pub(crate) const CIRCLE_RADIUS: f32 = 0.55;
 
-/// Draws a horizontal wiggle from `start_x` to `end_x` around `center_y`, as the vibrato
-/// and the pick slide use it.
+/// Draws a horizontal wiggle from `start_x` to `end_x` around `center_y` with strokes
+/// `thickness` thick, as the vibrato uses it.
 pub(crate) fn draw_horizontal_wiggle(
     start_x: f32,
     end_x: f32,
     center_y: f32,
-    amplitude: f32,
-    step_length: f32,
+    (amplitude, step_length): (f32, f32),
+    thickness: f32,
     ops: &mut Vec<DrawOp>,
 ) {
     let width = end_x - start_x;
@@ -49,7 +49,7 @@ pub(crate) fn draw_horizontal_wiggle(
             to: Point::new(to_x, center_y),
             control1: Point::new(from_x + step * 0.35, peak),
             control2: Point::new(to_x - step * 0.35, peak),
-            thickness: LINE_THICKNESS,
+            thickness,
             color: ColorToken::Notation,
         });
     }

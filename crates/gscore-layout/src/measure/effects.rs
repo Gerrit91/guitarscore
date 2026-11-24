@@ -33,6 +33,13 @@ impl MeasureLayout {
                 ornaments::draw_whammy(at, span_end(index), top, whammy, ctx, ops);
             }
             if let Some(vibrato) = column.marks.vibrato {
+                // Over a note bent up, above the bend's arrow and label (also right after
+                // one: its label stands just before this column).
+                let top = if self.vibrato_meets_bend(index) {
+                    top - ornaments::VIBRATO_OVER_BEND
+                } else {
+                    top
+                };
                 ornaments::draw_vibrato(at, span_end(index), top, vibrato, ops);
             }
         }
@@ -69,6 +76,24 @@ impl MeasureLayout {
     /// Whether a column has beat effects drawn above the staff.
     pub(crate) fn has_beat_effects(&self) -> bool {
         self.columns.iter().any(|c| c.marks.has_beat_lane())
+    }
+
+    /// Whether a column has a vibrato over a note bent up: the vibrato goes higher, and
+    /// the tab needs that room above it.
+    pub(crate) fn has_vibrato_over_bend(&self) -> bool {
+        (0..self.columns.len()).any(|index| {
+            self.columns
+                .get(index)
+                .is_some_and(|column| column.marks.vibrato.is_some())
+                && self.vibrato_meets_bend(index)
+        })
+    }
+
+    /// Whether a vibrato in column `index` would meet a bend's arrow or label: the column
+    /// or the one before it bends a note up.
+    fn vibrato_meets_bend(&self, index: usize) -> bool {
+        let bends = |at: usize| self.columns.get(at).is_some_and(column_bends_up);
+        bends(index) || index.checked_sub(1).is_some_and(bends)
     }
 
     /// Whether a column has ornaments in the tab's lanes: a trill, a pinch harmonic's
@@ -223,4 +248,12 @@ impl UnderRow {
             }
         })
     }
+}
+
+/// Whether a note of `column` is bent up (its arrow rises above the tab).
+fn column_bends_up(column: &Column) -> bool {
+    column.items.iter().any(|item| {
+        matches!(item, Item::Fret(fret)
+            if fret.marks.bend.is_some_and(|bend| bend.kind == gscore_model::BendKind::Up))
+    })
 }

@@ -152,8 +152,8 @@ enum Command {
     /// broken into lines on an A4-wide page: standard notation and tab as each track shows
     /// them, a percussion staff for drums; several tracks are stacked in every system with
     /// their beats lined up) and writes it as SVG, or as PDF when <OUTPUT> ends in .pdf. The SVG uses
-    /// the Bravura and Noto Sans fonts by name (bundled in assets/fonts/); install them to
-    /// view it correctly. The PDF lays the track out on pages with the song's page setup
+    /// the chosen music font and Noto Sans by name (bundled in assets/fonts/); install them
+    /// to view it correctly. The PDF lays the track out on pages with the song's page setup
     /// (paper, margins, score size, header and footer) and embeds the fonts.
     Render {
         /// The Guitar Pro file to read
@@ -176,6 +176,9 @@ enum Command {
         /// with the number of bars above it), as parts are printed
         #[arg(long)]
         multi_bar_rests: bool,
+        /// The music font the score is drawn with
+        #[arg(long, value_enum, default_value = "bravura")]
+        music_font: render::MusicFontArg,
         /// Color theme
         #[arg(long, value_enum, default_value = "light")]
         theme: render::ThemeArg,
@@ -358,6 +361,7 @@ where
             all_tracks,
             hide_empty_staves,
             multi_bar_rests,
+            music_font,
             theme,
         } => render::run(
             &file,
@@ -369,6 +373,7 @@ where
                 multi_bar_rests,
             },
             theme,
+            music_font,
         ),
         Command::Convert {
             file,
