@@ -161,6 +161,10 @@ pub(crate) struct Fermata {
     pub fermata_type: Option<String>,
     #[serde(rename = "Offset", default)]
     pub offset: Option<String>,
+    /// GuitarScore addition: the fermata's written length (`0.5`), kept so a save does not
+    /// lose it.
+    #[serde(rename = "Length", default)]
+    pub length: Option<String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -239,6 +243,13 @@ pub(crate) struct Beat {
     pub whammy: Option<Whammy>,
     #[serde(rename = "Wah", default)]
     pub wah: Option<String>,
+    /// GuitarScore addition: kept as written (see `GpifBeatKept`).
+    #[serde(rename = "Hairpin", default)]
+    pub hairpin: Option<String>,
+    #[serde(rename = "Variation", default)]
+    pub variation: Option<String>,
+    #[serde(rename = "WhammyExtend", default)]
+    pub whammy_extend: Option<EnableTag>,
     /// GP6/GP7 beat-level legato (GuitarScore addition; it used to be dropped).
     #[serde(rename = "Legato", default)]
     pub legato: Option<LegatoInfo>,
@@ -316,6 +327,9 @@ pub(crate) struct BeatProperty {
     /// Strength of `VibratoWTremBar` ("Slight" or "Wide").
     #[serde(rename = "Strength", default)]
     pub strength: Option<String>,
+    /// GuitarScore addition: a `Rasgueado` property's pattern (`amii_1`).
+    #[serde(rename = "Rasgueado", default)]
+    pub rasgueado: Option<String>,
     /// GuitarScore addition: a stroke's speed (a note-value denominator) in a
     /// `GuitarScoreBrush`/`GuitarScoreArpeggio` property.
     #[serde(rename = "Duration", default)]
@@ -342,7 +356,7 @@ pub(crate) struct NotesWrapper {
     pub notes: Vec<Note>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
 pub(crate) struct Note {
     #[serde(rename = "@id", default)]
     pub id: i32,
@@ -368,11 +382,13 @@ pub(crate) struct Note {
     pub left_fingering: Option<String>,
     #[serde(rename = "RightFingering", default)]
     pub right_fingering: Option<String>,
+    /// GuitarScore addition: Guitar Pro's opaque note properties, kept verbatim.
+    #[serde(rename = "XProperties", default)]
+    pub x_properties: Option<XPropertiesWrapper>,
 }
 
 #[derive(Debug, Deserialize)]
 pub(crate) struct TieInfo {
-    #[expect(dead_code, reason = "part of the GPIF format; parsed, not used yet")]
     #[serde(rename = "@origin", default)]
     pub origin: String,
     #[serde(rename = "@destination", default)]
@@ -392,13 +408,13 @@ pub(crate) struct LegatoInfo {
 #[derive(Debug, Deserialize)]
 pub(crate) struct EnableTag;
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
 pub(crate) struct NoteProperties {
     #[serde(rename = "Property", default)]
     pub properties: Vec<Property>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
 pub(crate) struct Property {
     #[serde(rename = "@name", default)]
     pub name: String,
@@ -428,6 +444,18 @@ pub(crate) struct Property {
     /// GuitarScore addition: user-given name of a tuning (empty for presets).
     #[serde(rename = "Label", default)]
     pub label: Option<String>,
+    /// GuitarScore addition: `PartialCapoStringFlags`'s bit set.
+    #[serde(rename = "Bitset", default)]
+    pub bitset: Option<String>,
+    /// GuitarScore addition: a tuning's `<Flat></Flat>` child (shown with flats).
+    #[serde(rename = "Flat", default)]
+    pub flat: Option<String>,
+    /// GuitarScore addition: a tuning's `<Instrument>` ("Guitar", "Bass").
+    #[serde(rename = "Instrument", default)]
+    pub instrument: Option<String>,
+    /// GuitarScore addition: a tuning's `<LabelVisible>` flag.
+    #[serde(rename = "LabelVisible", default)]
+    pub label_visible: Option<String>,
     /// GuitarScore addition: a text value (the track's symbol, when it is a string).
     #[serde(rename = "Text", default)]
     pub text: Option<String>,

@@ -10,7 +10,15 @@ use super::*;
 // ---------------------------------------------------------------------------
 
 /// `tie_origin`: a tie starts from this note (the next note on its string is tied to it).
-pub(super) fn build_note_xml(note: &Note, note_id: i32, tie_origin: bool) -> String {
+/// `hopo_destination`: a hammer-on or pull-off from the note before it on its string
+/// lands on this note. `tapped`: its beat is tapped (Guitar Pro marks that on the notes).
+pub(super) fn build_note_xml(
+    note: &Note,
+    note_id: i32,
+    tie_origin: bool,
+    hopo_destination: bool,
+    tapped: bool,
+) -> String {
     let mut s = format!("<Note id=\"{note_id}\"><Properties>");
 
     s.push_str(&format!(
@@ -38,6 +46,8 @@ pub(super) fn build_note_xml(note: &Note, note_id: i32, tie_origin: bool) -> Str
     if let Some(bend) = &note.effect.bend
         && let (Some(first), Some(last)) = (bend.points.first(), bend.points.last())
     {
+        // As Guitar Pro writes a bent note: flagged, then its shape.
+        s.push_str("<Property name=\"Bended\"><Enable /></Property>");
         let middle = bend
             .points
             .iter()
@@ -69,6 +79,8 @@ pub(super) fn build_note_xml(note: &Note, note_id: i32, tie_origin: bool) -> Str
     }
 
     if let Some(harm) = &note.effect.harmonic {
+        // As Guitar Pro writes a harmonic: flagged, then its kind and fret.
+        s.push_str("<Property name=\"Harmonic\"><Enable /></Property>");
         s.push_str(&format!(
             "<Property name=\"HarmonicType\"><HType>{}</HType></Property>",
             harmonic_type_str(&harm.kind)
@@ -83,21 +95,33 @@ pub(super) fn build_note_xml(note: &Note, note_id: i32, tie_origin: bool) -> Str
     if note.effect.hammer {
         s.push_str("<Property name=\"HopoOrigin\"><Enable /></Property>");
     }
+    if hopo_destination {
+        s.push_str("<Property name=\"HopoDestination\"><Enable /></Property>");
+    }
     if note.effect.left_hand_tapped {
         s.push_str("<Property name=\"LeftHandTapped\"><Enable /></Property>");
+    }
+    if tapped {
+        s.push_str("<Property name=\"Tapped\"><Enable /></Property>");
     }
     if note.effect.show_string_number {
         s.push_str("<Property name=\"ShowStringNumber\"><Enable /></Property>");
     }
 
+    // Guitar Pro writes (and reads) a dead note as `Muted`.
     if note.kind == NoteType::Dead {
-        s.push_str("<Property name=\"Dead\"><Enable /></Property>");
+        s.push_str("<Property name=\"Muted\"><Enable /></Property>");
     }
 
     s.push_str("</Properties>");
+    // GuitarScore addition: Guitar Pro's opaque note properties, written back as read.
+    s.push_str(&xproperties_xml(&note.x_properties));
 
     // As Guitar Pro writes it: both ends of a tie are marked, a note in the middle of a
     // chain of ties is both. A destination without its origin is struck anew in Guitar Pro.
+    // The file's own origin marker is kept, for ties that cannot be paired up from the tied
+    // ends alone (another voice, a grace note).
+    let tie_origin = tie_origin || note.tie_origin;
     let tie_destination = note.kind == NoteType::Tie;
     if tie_origin || tie_destination {
         s.push_str(&format!(

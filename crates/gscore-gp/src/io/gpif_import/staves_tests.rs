@@ -135,9 +135,22 @@ fn a_second_staff_survives_saving() {
 }
 
 #[test]
-fn a_one_staff_song_is_written_as_before() {
-    // No `<Staves>` for tracks with one staff: the GP6-style track properties stay.
+fn every_track_gets_a_staff_block_beside_the_track_properties() {
+    // Guitar Pro 7 writes each staff's properties in `<Staves>`; GuitarScore writes that
+    // for every track (a one-staff one too, so its fret count, tuning name and chord
+    // library survive) and keeps the GP6-style track properties.
     let song = read(MULTI_STAFF);
     let written = song.write_gpif_xml().expect("writes");
-    assert!(!written.contains("<Staves>"));
+    assert_eq!(
+        written.matches("<Staves>").count(),
+        song.tracks.len(),
+        "a staff block per track"
+    );
+    let staff_count: usize = song
+        .tracks
+        .iter()
+        .map(|track| track.staves.len().saturating_add(1))
+        .sum();
+    assert_eq!(written.matches("<Staff>").count(), staff_count);
+    assert!(written.contains("<Property name=\"FretCount\">"));
 }

@@ -629,7 +629,6 @@ fn bends_report_their_highest_point_in_quarter_tones() {
         // Bent and released again: the last point is 0, the bend still reached 4.
         (bend(BendType::BendRelease, &[0, 4, 4, 0]), BendKind::Up, 4),
         (bend(BendType::ReleaseDown, &[2, 0]), BendKind::Release, 2),
-        (bend(BendType::Bend, &[]), BendKind::Up, 0),
     ];
     for (effect, kind, quarter_tones) in cases {
         let song = song_with_note(|note| note.effect.bend = Some(effect.clone()));
@@ -642,6 +641,12 @@ fn bends_report_their_highest_point_in_quarter_tones() {
             }),
             "{effect:?}"
         );
+    }
+    // A `Bended` marker with no movement (empty or all-zero points) is kept for saving but
+    // plays and draws as no bend.
+    for effect in [bend(BendType::Bend, &[]), bend(BendType::Bend, &[0, 0, 0])] {
+        let song = song_with_note(|note| note.effect.bend = Some(effect.clone()));
+        assert_eq!(first_note(&song, |note| note.bend()), None, "{effect:?}");
     }
     // Whammy-bar shapes stored as bends are not note bends.
     let song = song_with_note(|note| note.effect.bend = Some(bend(BendType::Dip, &[0, -4])));

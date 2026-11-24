@@ -6999,3 +6999,73 @@ and once it is whole: its written lengths make `enters` of one of its notes
 four brackets. A bracket also clears the up-stems under it. The edit palette's length
 tiles follow the cursor's beat (value, dots, tuplet), as in Guitar Pro, so a triplet beat
 lights the triplet tile; an empty placeholder beat keeps the chosen length for entry.
+
+2026-11-23: the save audit. The save's own check compares songs, so it cannot see what the
+reader never picked up (the slap and pop marks were such a loss). `gscore-cli audit`
+saves GP7 files again in memory and compares their `score.gpif`, element by element and
+property by property, keyed by where each sits (`gscore_gp::gpif_fingerprint`); every
+key a save loses has a verdict in `gscore-io/src/audit.rs`: rebuilt by Guitar Pro (a
+note's pitch copies, stem directions, default pickup values, a drum kit's notation table,
+empty lyrics lines, tuning and capo written on the track as Guitar Pro 6 does) or a known
+loss still to fix. `cargo xtask corpus` runs it over `testdata/` and `corpus/` and fails on
+a loss without a verdict; a test does the same for the test files. Over the owner's 69
+files: 85 known losses, among them dead notes (written as `Dead`, Guitar Pro reads
+`Muted`), tapping (a note property in Guitar Pro), the flags of bends and harmonics, the
+note a hammer-on goes to, dynamics (Guitar Pro writes one on every beat), hairpins, wah,
+section letters, some lyrics and tempo changes, a track's sound changes, chord diagram
+libraries, fret counts and Guitar Pro's own playback settings.
+
+2026-11-23: the first losses the audit found, fixed in the GP7 writer: a dead note is
+written as `Muted` (as Guitar Pro writes and reads it; it was `Dead`), the note a
+hammer-on or pull-off goes to is marked (`HopoDestination`), bends and harmonics carry
+the flags Guitar Pro sets (`Bended`, `Harmonic`), and every beat has its dynamic (it was
+written only where it changed). Their verdicts are gone, so the test over the test files
+(which hold all four) fails if one comes back.
+
+2026-11-24: more losses the save audit found, fixed in the GP7 reader and writer: tapping
+on the notes (as Guitar Pro writes it), a section's letter, hairpins, wah, wah variations, a
+held or flat whammy and a rasgueado's pattern (kept on the beat as written, `GpifBeatKept`),
+tempo changes inside a bar (on the beat that starts there, as GP3-5 keep them; playback
+already plays them; one at a bar's very end becomes the next bar's tempo), a rest's dynamic,
+and the typed lyrics of every track, not only the lyric track's. Over the owner's 69 files 64
+kinds of loss are left; `docs/save-audit-handover.md` lists them with an approach for each,
+for whoever continues.
+
+2026-11-24: the save audit's kept-verbatim losses. A track's sound changing during the song
+is kept on its bar (bar 0's automation too, as Guitar Pro writes it) and written again, so
+inserting or deleting bars carries it along. Guitar Pro's per-track playback settings (icon,
+palm-mute strength, playing style, ...), its master effect chain (bypass, parameters,
+bypassed automations and automation points, so a master volume change mid-song and the
+bar-0 value both survive), GP8's audio tracks, its score views, the page header and footer
+templates, the words-and-music credit, each track's systems layout (an empty one included),
+the channel strip's bypassed automations and the tempo's name are kept or written back.
+Over the owner's 59 band files the audit now reports 36 known losses (from 52) and the
+test files 28 (from 46), with no unexplained loss. `docs/guitarpro.md` change 52 has the
+code; `docs/save-audit-handover.md` marks what is done.
+
+2026-11-24: the save audit reaches zero. The staff block is written for every track (tuning,
+capo and fret count from the model; a partial capo, a tuning's flats, instrument, label
+visibility, name and the whole chord and diagram libraries kept as written), notes keep
+their own Guitar Pro properties and the file's tie origin, a zero `Bended` marker stays a
+zero bend that plays and draws as none, a fermata keeps its length, a tempo automation at a
+bar's very end is kept, and a grace beat carrying a variation is no longer folded into the
+next note. Over the owner's 59 band files and the 6 test files the audit now reports no
+loss at all: 0 unexplained, 0 known (from 64 kinds). `docs/guitarpro.md` change 53 has the
+code. What a save writes that Guitar Pro should be checked against: the staff block for a
+one-staff track, the staff-level chord library beside the track-level collection beats use,
+and the end-of-bar tempo. `docs/save-audit-handover.md` lists the few items still worth a
+look.
+
+2026-11-24 (review): two save details that could go wrong after an edit, fixed.
+- Chord diagrams: the beats used to be numbered 0.. by first use while the staff's kept
+  library (which Guitar Pro 7 reads, and our reader prefers) kept the file's ids, so a beat
+  could name another chord, and a chord added in GuitarScore was missing from the staff's
+  collection. The file's ids are now kept (`Track::gpif_diagram_ids`): beats and the
+  track-level collection use them, a new diagram gets the next id, and only then is the
+  staff's `DiagramCollection` written anew (the other kept libraries refer to the same ids).
+- A tempo kept at a bar's very end falls on the next bar's start; setting that bar's tempo
+  now replaces it (undo restores it), so a save does not write both.
+Looked at and left as is: the file's own tie origins are written back as read, also after a
+tie is taken off. Guitar Pro itself leaves such dangling origins (two archived band files
+have them), so they are harmless, and dropping them would lose what the file had. Audit over
+the 59 band files and the test files: 0 unexplained, 0 known.

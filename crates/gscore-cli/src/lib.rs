@@ -4,6 +4,7 @@
 //! and its doc comment is its help text. A new subcommand gets a variant, a module, and a
 //! match arm in [`run_cli`].
 
+mod audit;
 mod bench;
 mod commands;
 mod convert;
@@ -279,6 +280,24 @@ enum Command {
         /// The Guitar Pro file to open
         file: Option<PathBuf>,
     },
+    /// Save GP7 files again and list what the saved files leave out
+    ///
+    /// Each `.gp` file (folders are searched through) is read, written as GP7 again in
+    /// memory, and the two files' Guitar Pro data are compared, element by element and
+    /// property by property. What the saved file has fewer of is listed: new losses first,
+    /// then known ones still to be fixed; what Guitar Pro rebuilds itself is only counted.
+    /// Nothing is written to disk.
+    Audit {
+        /// Guitar Pro 7+ files, or folders holding them
+        #[arg(required = true)]
+        paths: Vec<PathBuf>,
+        /// Fail (exit code 1) if there is a new loss or a file cannot be audited
+        #[arg(long)]
+        check: bool,
+        /// List what Guitar Pro rebuilds too
+        #[arg(long)]
+        verbose: bool,
+    },
     /// Write a file, read it back and report what changed (development tool)
     ///
     /// Writes the song in its own format (or `--to`), reads the result back and compares
@@ -432,6 +451,11 @@ where
         Command::Legend => Ok(legend::run()),
         Command::Keymap { check } => keymap::run(check.as_deref()),
         Command::Gui { file } => gui::run(file.as_deref()),
+        Command::Audit {
+            paths,
+            check,
+            verbose,
+        } => audit::run(&paths, check, verbose),
         Command::RoundtripCheck { file, to } => roundtrip::run(&file, to),
     }
 }

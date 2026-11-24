@@ -129,6 +129,23 @@ fn a_beat_text_is_set_changed_and_removed() {
     assert_unchanged(&before, &song);
 }
 
+/// A tempo change kept at the very end of a bar (as a Guitar Pro file can have it) falls
+/// on the next bar's start: setting that bar's tempo replaces it, and undo brings it back.
+#[test]
+fn setting_a_bars_tempo_replaces_the_one_kept_at_the_end_of_the_bar_before() {
+    let mut inner = test_song(vec![track(
+        "Guitar",
+        GUITAR_6,
+        vec![measure((4, 4), vec![]), measure((4, 4), vec![])],
+    )]);
+    inner.measure_headers[0].end_tempos = vec![(1.0, 150)];
+    let mut song = from_gp(inner).unwrap();
+    let change = song.set_measure_tempo(MeasureIndex::new(1), 90).unwrap();
+    assert!(song.inner().measure_headers[0].end_tempos.is_empty());
+    song.revert(&change).unwrap();
+    assert_eq!(song.inner().measure_headers[0].end_tempos, vec![(1.0, 150)]);
+}
+
 #[test]
 fn the_measure_tempo_changes_and_undo_restores_it() {
     let mut song = from_gp(test_song(vec![track(

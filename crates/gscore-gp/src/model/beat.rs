@@ -213,6 +213,29 @@ pub struct Beat {
     /// (`<XProperties>`), kept verbatim: beam overrides, and whatever Guitar Pro 8 writes
     /// where this code does not yet know a field (a design-mode beat offset, perhaps).
     pub x_properties: Vec<XProperty>,
+    /// GuitarScore addition: what a GP6/GP7 beat holds that nothing here uses yet, kept as
+    /// Guitar Pro wrote it so a save does not lose it.
+    pub kept: GpifBeatKept,
+}
+
+/// GuitarScore addition: a GP6/GP7 beat's elements that are kept as written (see
+/// [`Beat::kept`]); each is `None` (or `false`) when the beat had none.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct GpifBeatKept {
+    /// `<Hairpin>`: `Crescendo` or `Decrescendo`.
+    pub hairpin: Option<String>,
+    /// `<Wah>`: the wah pedal, `Open` or `Closed`.
+    pub wah: Option<String>,
+    /// `<Variation>`, written beside the wah.
+    pub variation: Option<String>,
+    /// `<WhammyExtend />`: the whammy bar held on from the beat before.
+    pub whammy_extend: bool,
+    /// A `<Whammy>` that does not move (every value 0), which the model has no effect for.
+    pub flat_whammy: bool,
+    /// The pattern of a `Rasgueado` property (`amii_1`).
+    pub rasgueado: Option<String>,
+    /// A rest's `<Dynamic>` (a rest has no notes to carry one).
+    pub rest_dynamic: Option<String>,
 }
 
 impl Default for Beat {
@@ -231,6 +254,7 @@ impl Default for Beat {
             lyrics: Vec::new(),
             spacing: None,
             x_properties: Vec::new(),
+            kept: GpifBeatKept::default(),
         }
     }
 }

@@ -111,7 +111,7 @@ guitarscore/
   assets/                    # fonts/ (Bravura, Noto Sans), soundfonts/ (licenses only)
   packaging/                 # desktop file and app icon (AppImage)
   web/, docker/, Dockerfile  # the browser build's page, worklet and service worker; nginx
-  xtask/                     # project tasks: layers, ci, bench, web
+  xtask/                     # project tasks: layers, ci, bench, web, tones, corpus
   crates/
     gscore-version/           # L0: the build version baked in at compile time
     gscore-gp/                # L0: Guitar Pro song data + reading/writing GP3-5, GPX, GP7+ (derived from guitarpro, MIT)
@@ -187,8 +187,11 @@ Also, when relevant:
 - commands added or changed: `cargo test -p gscore-edit --test panic_hunt` (part of the
   workspace tests, worth running on its own while working)
 - importers, exporters, `gscore-gp`, or `gscore-model` touched: check the owner's files in
-  `corpus/` by hand (`gscore-cli info`, `render`, `midi`); automated corpus tests
-  (`cargo xtask corpus`) are not built yet
+  `corpus/` by hand (`gscore-cli info`, `render`, `midi`), and run `cargo xtask corpus`:
+  it saves every GP7 file in `testdata/` and `corpus/` again and fails if a save loses
+  something that has no verdict yet (`gscore-cli audit`, the verdicts in
+  `gscore-io/src/audit.rs`). A loss is fixed in the writer or reader, or given a verdict
+  with its reason; never silenced
 - hot paths touched: `cargo xtask bench` and record the numbers in the devlog
 - the browser build touched: `cargo xtask web --smoke`
 
@@ -445,7 +448,7 @@ commands. Details of every step are in `docs/devlog.md`; known shortfalls in
   2026-11-13; drawing and editing them is next (`docs/handoff-staves.md`). Lyrics (read,
   shown, edited).
 - Beat text colliding with high notes in the notation.
-- Automated corpus tests (`cargo xtask corpus`), fuzzing with `cargo-fuzz`, a JSON control channel, a fretboard view, MusicXML import
+- Fuzzing with `cargo-fuzz`, a JSON control channel, a fretboard view, MusicXML import
   and export.
 
 ## 10. Dependency rules

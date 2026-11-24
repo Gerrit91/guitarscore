@@ -946,6 +946,7 @@ fn sections_and_note_squares_come_from_the_song() {
     gp.measure_headers[0].marker = Some(gscore_gp::Marker {
         title: "Intro".to_owned(),
         color: 0x00FF00,
+        letter: None,
     });
     let song = from_gp(gp).unwrap();
     assert!(

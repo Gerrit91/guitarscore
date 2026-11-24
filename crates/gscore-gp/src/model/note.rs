@@ -16,6 +16,14 @@ pub struct Note {
     pub kind: NoteType,
     pub duration: Option<i8>,
     pub tuplet: Option<i8>,
+    /// GuitarScore addition: whether the file marks this note as a tie's origin
+    /// (`<Tie origin="true" />`). The model otherwise keeps only the tied end; the file's
+    /// own marker is kept too, so a tie GuitarScore cannot pair up (another voice, a grace
+    /// note) still gets its origin written.
+    pub tie_origin: bool,
+    /// GuitarScore addition: Guitar Pro's opaque properties for this note, kept verbatim
+    /// (the run of a trill, a design-mode value).
+    pub x_properties: Vec<XProperty>,
 }
 
 impl Default for Note {
@@ -30,6 +38,8 @@ impl Default for Note {
             kind: NoteType::Rest,
             duration: None,
             tuplet: None,
+            tie_origin: false,
+            x_properties: Vec::new(),
         }
     }
 }

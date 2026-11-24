@@ -30,6 +30,7 @@ pub(super) fn note_with(property: &str) -> Note {
                 items: None,
                 element: None,
                 variation: None,
+                ..Default::default()
             }],
         },
         tie: None,
@@ -41,6 +42,7 @@ pub(super) fn note_with(property: &str) -> Note {
         ornament: None,
         left_fingering: None,
         right_fingering: None,
+        ..Default::default()
     }
 }
 
@@ -56,6 +58,9 @@ fn beat() -> GpifBeat {
         tremolo: None,
         whammy: None,
         wah: None,
+        hairpin: None,
+        variation: None,
+        whammy_extend: None,
         legato: None,
         free_text: None,
         lyrics: None,
@@ -241,6 +246,7 @@ fn harmonic_fret_is_read_before_the_harmonic_type() {
         items: None,
         element: None,
         variation: None,
+        ..Default::default()
     });
     let song_note = super::convert_note(&note, 80, false, false);
     let harmonic = song_note.effect.harmonic.expect("harmonic imported");
@@ -267,6 +273,9 @@ fn whammy_bar_is_imported() {
             destination_offset: None,
         }),
         wah: None,
+        hairpin: None,
+        variation: None,
+        whammy_extend: None,
         legato: None,
         free_text: None,
         lyrics: None,
@@ -380,6 +389,7 @@ fn gp6_whammy_properties_are_imported() {
             float: Some(value),
             flags: None,
             strength: None,
+            rasgueado: None,
             duration: None,
             text: None,
         };
@@ -393,6 +403,9 @@ fn gp6_whammy_properties_are_imported() {
             tremolo: None,
             whammy: None,
             wah: None,
+            hairpin: None,
+            variation: None,
+            whammy_extend: None,
             legato: None,
             free_text: None,
             lyrics: None,

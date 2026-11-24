@@ -23,7 +23,9 @@ pub(super) fn build_beat_xml(
     chord_id: Option<i32>,
     next_note_id: &mut i32,
     prev_velocity: &mut i16,
-    tie_starts: impl Fn(i8) -> bool,
+    // For a string: whether a tie starts from its note, and whether a hammer-on or
+    // pull-off lands on it.
+    links: impl Fn(i8) -> (bool, bool),
 ) -> GpResult<BeatExport> {
     let mut note_xmls: Vec<String> = Vec::new();
     let mut note_ids: Vec<i32> = Vec::new();
@@ -35,7 +37,14 @@ pub(super) fn build_beat_xml(
         for note in &beat.notes {
             let note_id = next_id(next_note_id)?;
             note_ids.push(note_id);
-            note_xmls.push(build_note_xml(note, note_id, tie_starts(note.string)));
+            let (tie_origin, hopo_destination) = links(note.string);
+            note_xmls.push(build_note_xml(
+                note,
+                note_id,
+                tie_origin,
+                hopo_destination,
+                beat.effect.slap_effect == SlapEffect::Tapping,
+            ));
         }
     }
 
@@ -69,13 +78,35 @@ pub(super) fn build_beat_xml(
         bxml.push_str(&format!("<Notes>{}</Notes>", ids_str.join(" ")));
     }
 
-    // Dynamic (only when velocity changes)
-    if beat_velocity != *prev_velocity {
-        bxml.push_str(&format!(
+    // GuitarScore fix: the dynamic on every beat, as Guitar Pro writes it (it was written
+    // only where it changed, and what Guitar Pro makes of a beat without one is unknown).
+    // A rest keeps the dynamic it was read with (it has no notes to carry one).
+    match beat
+        .kept
+        .rest_dynamic
+        .as_deref()
+        .filter(|_| beat.notes.is_empty())
+    {
+        Some(dynamic) => bxml.push_str(&format!("<Dynamic>{}</Dynamic>", escape_xml(dynamic))),
+        None => bxml.push_str(&format!(
             "<Dynamic>{}</Dynamic>",
             velocity_to_dynamic(beat_velocity)
-        ));
-        *prev_velocity = beat_velocity;
+        )),
+    }
+    *prev_velocity = beat_velocity;
+    // GuitarScore addition: what nothing here uses yet, as Guitar Pro wrote it.
+    let kept = &beat.kept;
+    if let Some(hairpin) = &kept.hairpin {
+        bxml.push_str(&format!("<Hairpin>{}</Hairpin>", escape_xml(hairpin)));
+    }
+    if let Some(wah) = &kept.wah {
+        bxml.push_str(&format!("<Wah>{}</Wah>", escape_xml(wah)));
+    }
+    if let Some(variation) = &kept.variation {
+        bxml.push_str(&format!("<Variation>{}</Variation>", escape_xml(variation)));
+    }
+    if kept.whammy_extend {
+        bxml.push_str("<WhammyExtend />");
     }
 
     // Free text
@@ -166,6 +197,14 @@ pub(super) fn build_beat_xml(
             offset(middle),
             offset(last),
         ));
+    } else if beat.kept.flat_whammy {
+        // GuitarScore addition: a whammy that does not move, as Guitar Pro wrote it.
+        bxml.push_str(
+            "<Whammy originValue=\"0.000000\" middleValue=\"0.000000\" \
+             destinationValue=\"0.000000\" originOffset=\"0.000000\" \
+             middleOffset1=\"50.000000\" middleOffset2=\"50.000000\" \
+             destinationOffset=\"100.000000\"/>",
+        );
     }
 
     // Beat properties (Brush, Rasgueado, PickStroke, VibratoWTremBar)
@@ -176,12 +215,11 @@ pub(super) fn build_beat_xml(
     let has_arpeggio = !matches!(beat.effect.arpeggio, BeatStrokeDirection::None);
     // GuitarScore addition: the design mode's offset of this beat's column.
     let spacing = beat.spacing;
-    // Tapping, slap or pop: a beat property in Guitar Pro's files.
+    // Slap or pop: a beat property in Guitar Pro's files (tapping is on the notes).
     let slap = match beat.effect.slap_effect {
-        SlapEffect::Tapping => Some("Tapped"),
         SlapEffect::Slapping => Some("Slapped"),
         SlapEffect::Popping => Some("Popped"),
-        SlapEffect::None => None,
+        SlapEffect::Tapping | SlapEffect::None => None,
     };
 
     if has_brush
@@ -248,7 +286,13 @@ pub(super) fn build_beat_xml(
             ));
         }
         if has_rasg {
-            bxml.push_str("<Property name=\"Rasgueado\"><Enable /></Property>");
+            match &beat.kept.rasgueado {
+                Some(pattern) => bxml.push_str(&format!(
+                    "<Property name=\"Rasgueado\"><Rasgueado>{}</Rasgueado></Property>",
+                    escape_xml(pattern)
+                )),
+                None => bxml.push_str("<Property name=\"Rasgueado\"><Enable /></Property>"),
+            }
         }
         if let Some(slap) = slap {
             bxml.push_str(&format!("<Property name=\"{slap}\"><Enable /></Property>"));

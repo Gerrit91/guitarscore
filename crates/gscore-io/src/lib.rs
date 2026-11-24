@@ -9,6 +9,7 @@
 
 #![warn(clippy::arithmetic_side_effects)]
 
+pub mod audit;
 mod contain;
 pub mod error;
 pub mod export;

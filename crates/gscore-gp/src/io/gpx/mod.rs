@@ -102,6 +102,9 @@ pub(crate) fn read_gp_with_audio(data: &[u8]) -> GpResult<(Gpif, Option<Vec<u8>>
     // GuitarScore addition: keep each track's `<Sounds>` and `<AudioEngineState>`
     // verbatim, which the serde model does not hold.
     gpif.track_raw = crate::io::gpif::capture_track_raw(&contents);
+    (gpif.audio_tracks_raw, gpif.score_views_raw) =
+        crate::io::gpif::capture_gpif_sections(&contents);
+    gpif.staff_libraries = crate::io::gpif::capture_staff_libraries(&contents);
 
     // Embedded backing track: first audio asset under Content/Assets/.
     // (zip entries can only be read once, so re-open the archive.)
@@ -343,6 +346,8 @@ pub(crate) fn read_gpx(data: &[u8]) -> GpResult<Gpif> {
     // GuitarScore addition: keep each track's `<Sounds>` and `<AudioEngineState>`
     // verbatim (see `capture_track_raw`).
     gpif.track_raw = crate::io::gpif::capture_track_raw(xml_str);
+    (gpif.audio_tracks_raw, gpif.score_views_raw) = crate::io::gpif::capture_gpif_sections(xml_str);
+    gpif.staff_libraries = crate::io::gpif::capture_staff_libraries(xml_str);
     Ok(gpif)
 }
 

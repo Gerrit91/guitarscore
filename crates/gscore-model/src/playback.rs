@@ -244,7 +244,7 @@ impl Song {
         header
             .fermatas
             .first()
-            .map(|(kind, _)| crate::marks::Fermata::from_gp(kind))
+            .map(|(kind, _, _)| crate::marks::Fermata::from_gp(kind))
     }
 
     /// The navigation signs at `measure` (codas, segnos, fine and D.C./D.S. directions),

@@ -69,6 +69,13 @@ pub struct Track {
     pub banjo_track: bool,
     pub port: u8,
     pub fret_count: u8,
+    /// GuitarScore addition: the parts of this track's first staff that GuitarScore does
+    /// not model (see [`StaffKept`]), kept so a save writes them back.
+    pub staff_kept: StaffKept,
+    /// GuitarScore addition: the file's chord diagrams with their ids (track and staff
+    /// collections, as read), so a save numbers the beats' diagrams as the file did and the
+    /// kept libraries (which refer to these ids) stay right.
+    pub gpif_diagram_ids: Vec<(i32, ChordDiagram)>,
     pub indicate_tuning: bool,
     pub use_rse: bool,
     pub rse: TrackRse,
@@ -112,6 +119,23 @@ pub struct Track {
     /// GuitarScore addition: the track's GP7 `<AudioEngineState>` element exactly as the
     /// file had it (`RSE` or `MIDI`), written back unchanged.
     pub gpif_audio_engine: Option<String>,
+    /// GuitarScore addition: Guitar Pro's per-track playback settings (palm-mute and
+    /// auto-accentuation strength, auto-brush, playing style, one channel per string, the
+    /// track icon, a forced sound), each element exactly as the file wrote it. GuitarScore
+    /// does not use them; kept so a save does not lose them.
+    pub gpif_playback: Vec<String>,
+    /// GuitarScore addition: the track's `<SystemsLayout>` (bars per line) exactly as the
+    /// file wrote it, and its `<SystemsDefautLayout>`, so an empty or unchanged layout is
+    /// written back as it was; the model's line breaks are written when they changed it.
+    pub gpif_systems_layout: Option<String>,
+    pub gpif_systems_default: Option<String>,
+    /// GuitarScore addition: the track's `<RSE><ChannelStrip><ByPassedAutomations>` text
+    /// (the automation types Guitar Pro has switched off), kept so a save does not lose it.
+    pub gpif_bypassed_automations: Option<String>,
+    /// GuitarScore addition: a GP6/GP7 track's typed lyric lines when it is not the song's
+    /// lyric track (backing vocals): `(line, start bar from 1, text)`, as
+    /// [`crate::model::Lyrics::lines`]; written back on the track.
+    pub gpif_lyrics: Vec<(u8, u16, String)>,
     /// GuitarScore addition: the track's own sound settings as an opaque JSON payload
     /// (`gscore-app`'s `TrackSound`), which the Guitar Pro format has no field for. It is
     /// never written to a Guitar Pro file; the app saves it in the song's notes block.
@@ -198,6 +222,37 @@ pub struct Staff {
     pub tuning_label: Option<String>,
     /// The capo fret.
     pub offset: i32,
+    /// GuitarScore addition: the number of frets (GP7 `FretCount`).
+    pub fret_count: u8,
+    /// GuitarScore addition: the parts of the staff's properties GuitarScore does not
+    /// model, kept so a save writes them back (see [`StaffKept`]).
+    pub kept: StaffKept,
+}
+
+/// GuitarScore addition: the parts of a GP7 staff's `<Properties>` that GuitarScore does
+/// not model, kept so a save writes them back: a partial capo, a tuning shown with flats,
+/// the tuning's name, instrument and label visibility, and the track's whole chord and
+/// diagram libraries (whole `<Property>` elements, verbatim).
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct StaffKept {
+    /// `PartialCapoFret`'s `<Fret>`, if the file has one.
+    pub partial_capo_fret: Option<i32>,
+    /// `PartialCapoStringFlags`'s `<Bitset>` text.
+    pub partial_capo_flags: Option<String>,
+    /// Whether the staff has a `<TuningFlat><Enable/></TuningFlat>`.
+    pub tuning_flat: bool,
+    /// Whether the tuning has a `<Flat></Flat>` child (a tuning shown with flats).
+    pub tuning_flat_child: bool,
+    /// The tuning's `<Instrument>` ("Guitar", "Bass").
+    pub tuning_instrument: Option<String>,
+    /// The tuning's `<LabelVisible>` text.
+    pub label_visible: Option<String>,
+    /// The staff's `<Name>` (the tuning's name, "Standard").
+    pub name: Option<String>,
+    /// The staff's chord and diagram collections (`ChordCollection`,
+    /// `ChordWorkingSet`, `DiagramCollection`, `DiagramWorkingSet`), each whole
+    /// `<Property>` element exactly as written.
+    pub chord_libraries: Vec<String>,
 }
 
 impl Default for Staff {
@@ -208,6 +263,8 @@ impl Default for Staff {
             has_tuning: false,
             tuning_label: None,
             offset: 0,
+            fret_count: 24,
+            kept: StaffKept::default(),
         }
     }
 }
@@ -230,6 +287,8 @@ impl Default for Track {
             twelve_stringed_guitar_track: false,
             percussion_track: false,
             fret_count: 24,
+            staff_kept: StaffKept::default(),
+            gpif_diagram_ids: Vec::new(),
             color: 0xff0000,
             port: 1,
             indicate_tuning: false,
@@ -249,6 +308,11 @@ impl Default for Track {
             symbol: None,
             gpif_sounds: None,
             gpif_audio_engine: None,
+            gpif_playback: Vec::new(),
+            gpif_systems_layout: None,
+            gpif_systems_default: None,
+            gpif_bypassed_automations: None,
+            gpif_lyrics: Vec::new(),
             sound_state: None,
             staves: Vec::new(),
         }

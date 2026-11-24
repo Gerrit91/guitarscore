@@ -64,6 +64,7 @@ fn beat_vibrato_survives_reading_and_writing() {
         float: None,
         flags: None,
         strength: Some("Wide".to_owned()),
+        rasgueado: None,
         duration: None,
         text: None,
     };
@@ -77,6 +78,9 @@ fn beat_vibrato_survives_reading_and_writing() {
         tremolo: None,
         whammy: None,
         wah: None,
+        hairpin: None,
+        variation: None,
+        whammy_extend: None,
         legato: None,
         free_text: None,
         lyrics: None,
@@ -134,6 +138,9 @@ fn beat_legato_survives_reading_and_writing() {
         tremolo: None,
         whammy: None,
         wah: None,
+        hairpin: None,
+        variation: None,
+        whammy_extend: None,
         legato: Some(LegatoInfo {
             origin: "true".to_owned(),
             destination: "false".to_owned(),

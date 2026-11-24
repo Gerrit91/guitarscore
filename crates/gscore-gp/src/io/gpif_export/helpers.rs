@@ -37,6 +37,13 @@ pub(super) fn escape_xml(s: &str) -> String {
         .replace('\'', "&apos;")
 }
 
+/// GuitarScore addition: `text` as a CDATA block, split where it would close the block
+/// early (an input holding `]]>` cannot break the XML). Guitar Pro writes free text such
+/// as a sound path in CDATA.
+pub(super) fn cdata(text: &str) -> String {
+    format!("<![CDATA[{}]]>", text.replace("]]>", "]]]]><![CDATA[>"))
+}
+
 pub(super) fn velocity_to_dynamic(velocity: i16) -> &'static str {
     let levels: [(i16, &str); 8] = [
         (MIN_VELOCITY, "PPP"),
