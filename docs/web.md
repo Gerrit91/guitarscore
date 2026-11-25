@@ -91,7 +91,9 @@ The app crate is the same on both platforms. Native-only pieces are behind
 - The desktop's recovery journal is file-based; the browser keeps copies of unsaved songs
   in IndexedDB instead (see "Recovery" below).
 - Threads: a wasm instance has none, so opening imports on the UI thread after the bytes
-  arrive (the one step that briefly blocks), and save/export run in `spawn_local` tasks.
+  arrive (the one step that briefly blocks). Saving runs in a `spawn_local` task; an
+  export (PDF, MIDI, Guitar Pro) runs inline and downloads its file, as Save does. Audio
+  export (WAV, stems) is not offered in the browser.
   `web-time` supplies `Instant` (`performance.now()`), since `std::time::Instant` panics on
   wasm.
 - `gscore-audio`'s device backends (`cpal`, `midir`) are `cfg`-gated out. The synth engine

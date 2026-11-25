@@ -7196,3 +7196,15 @@ and up to a second of edits.
 The smoke test goes on from the crash screen: the next visit must ask
 (`data-guitarscore-recovery="asking"`), Enter restores, and the restored tab's copy must be
 the page's own.
+## 2026-11-25 — Browser: File › Export downloads PDF, MIDI and Guitar Pro files
+
+Every export in the browser said "not available yet". The export helpers now build the
+file's bytes first (`gscore_session::export_bytes` for the Guitar Pro formats, with the same
+read-back loss report as `export`) and then write them: on the desktop next to the target
+and renamed into place (MIDI used to be written directly), in the browser as a download
+under the suggested name, as Save does. WAV and stems are left out of the browser's Export
+menu: the SoundFont and the engine live in the audio worklet.
+
+Checked in headless Chromium through the real menus: PDF (48 KB, `%PDF-`), MIDI (`MThd`)
+and GP5 downloads of `steel_guitar_dadgad.gp`. Not in the smoke test: egui's menus have no
+keyboard route to click through reliably.

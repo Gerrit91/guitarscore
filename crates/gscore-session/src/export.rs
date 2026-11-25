@@ -24,17 +24,7 @@ pub struct ExportReport {
 
 /// Writes `song` to `path` in `format`. Existing files are replaced atomically.
 pub fn export(song: &Song, path: &Path, format: FileFormat) -> Result<ExportReport, SaveError> {
-    let bytes = export_to_bytes(song, format).map_err(SaveError::Export)?;
-    // Read the bytes back in memory and compare: this says what an older or different
-    // format drops, without touching the disk yet.
-    let losses = match import_guitar_pro_from_bytes(&bytes) {
-        Ok(reread) => {
-            let mut losses = differences(song, &reread.song);
-            losses.extend(settings_differences(song, &reread.song));
-            losses
-        }
-        Err(error) => return Err(SaveError::Reread(error)),
-    };
+    let (bytes, losses) = export_bytes(song, format)?;
 
     let temp = sibling(path, |name| {
         let mut temp = std::ffi::OsString::from(".");
@@ -60,6 +50,22 @@ pub fn export(song: &Song, path: &Path, format: FileFormat) -> Result<ExportRepo
         path: path.to_path_buf(),
         losses,
     })
+}
+
+/// `song` in `format`, as a file's bytes, with what the format could not keep. The bytes
+/// are read back in memory and compared, as [`export`] does; nothing touches the disk (the
+/// browser build downloads them).
+pub fn export_bytes(
+    song: &Song,
+    format: FileFormat,
+) -> Result<(Vec<u8>, Vec<Difference>), SaveError> {
+    let bytes = export_to_bytes(song, format).map_err(SaveError::Export)?;
+    // Read the bytes back in memory and compare: this says what an older or different
+    // format drops, without touching the disk yet.
+    let reread = import_guitar_pro_from_bytes(&bytes).map_err(SaveError::Reread)?;
+    let mut losses = differences(song, &reread.song);
+    losses.extend(settings_differences(song, &reread.song));
+    Ok((bytes, losses))
 }
 
 #[cfg(test)]
@@ -88,6 +94,28 @@ mod tests {
 
         let missing = dir.join("no such folder").join("song.gp5");
         assert!(export(&song, &missing, FileFormat::Gp5).is_err());
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn export_bytes_are_the_file_an_export_writes_in_every_format() {
+        let dir = std::env::temp_dir().join(format!("gscore-export-bytes-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let song = Song::default();
+        for format in [
+            FileFormat::Gp,
+            FileFormat::Gpx,
+            FileFormat::Gp5,
+            FileFormat::Gp4,
+            FileFormat::Gp3,
+        ] {
+            let (bytes, losses) = export_bytes(&song, format).unwrap();
+            assert_eq!(gscore_io::detect_format(&bytes).unwrap(), format);
+            let path = dir.join(format!("song-{format:?}"));
+            let report = export(&song, &path, format).unwrap();
+            assert_eq!(fs::read(&path).unwrap(), bytes, "{format:?}");
+            assert_eq!(report.losses.len(), losses.len(), "{format:?}");
+        }
         fs::remove_dir_all(dir).unwrap();
     }
 }
