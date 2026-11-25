@@ -11,34 +11,23 @@
 you type, and open the Guitar Pro files you already have. Native, written in Rust, and
 built never to lose your work.
 
-![GuitarScore editing a tab with notation, techniques and the edit palette](docs/media/editor.png)
+![GuitarScore editing a song: notation and tab, the edit palette, and the song grid with its tracks and sections](docs/media/editor.png)
 
 ## Why GuitarScore
 
-- **Native and light.** One binary, GPU-rendered, no account, no cloud. Runs on all platforms and in the
-  browser. MIT licensed.
-- **Your Guitar Pro files.** Opens Guitar Pro 3 to 7+, saves Guitar Pro 7 files that open
-  in Guitar Pro again, and exports older Guitar Pro versions, MIDI and PDF. Every save is
-  read back and compared, and anything the file would lose is reported before you trust it.
-- **Never lose work.** Every edit goes to a recovery journal first; after a crash the next
-  start offers your document back, undo history included.
-- **Hear it.** Guitars and basses play on modelled strings through an effect chain you
-  dial in (drive, amp, cabinet, EQ, compressor, chorus, delay, reverb); a built-in
-  synthesizer plays everything else, and a mixer with buses and meters brings it together.
-  Or send any track to a MIDI synthesizer. A tuner is included.
-- **Keyboard first.** Type a fret, press `+` for a shorter note, arrow on. Every action
-  has a key, and every key can be rebound.
-- **Or play it in.** Step entry takes notes from typed frets, note names, the on-screen
-  fretboard and keyboard, or a MIDI keyboard or guitar, and moves on by itself; the
-  fingering picks string and fret, and you hear each note through the track's own sound.
-- **The whole score.** Notation and tab, all techniques with their own editors, several
-  tracks on one page, real pages or one endless page, light and dark. Named score views,
-  jumps and codas, multi-bar rests, and three music fonts (Bravura, Petaluma, Leland).
-- **See the song.** A song grid shows every track's bars with the song's sections: drag
-  sections and bars around, copy them between tracks, and jump to any bar.
-- **Practice anywhere.** A practice view made for phones and tablets: the score, a player
-  with loop and speed, and a compact mixer. The browser opens it on a small screen, `F2`
-  everywhere else.
+- **Native and light.** One binary, no account, no cloud; on the desktop and in the browser. MIT.
+- **Your Guitar Pro files.** Opens Guitar Pro 3 to 7+, saves Guitar Pro 7; exports MIDI and PDF.
+- **Never lose work.** A recovery journal brings your document back after a crash.
+- **Hear it.** Modelled guitars and basses with amp and effects, a mixer, a synthesizer for the rest.
+- **Enter it your way.** A key for every action, or play the notes in on a MIDI keyboard or guitar.
+- **The whole song.** Notation and tab with every technique, and a song grid with sections.
+- **Practice anywhere.** A practice view for phones and tablets: score, player, loop and speed.
+
+<p align="center">
+  <img src="docs/media/practice.png" width="260" alt="The practice view on a phone: the score and the player">
+  &nbsp;
+  <img src="docs/media/practice-drawer.png" width="260" alt="The practice view's drawer: loop, speed, metronome, mixer and more">
+</p>
 
 ## Installation
 
