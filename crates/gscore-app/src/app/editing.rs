@@ -1154,6 +1154,24 @@ impl GuitarScoreApp {
         }
     }
 
+    /// Swaps the run of whole sections from bar `first` to bar `last` with the section that
+    /// starts at `to` (several sections dragged together in the Song tab), with the effects
+    /// a structural edit has.
+    pub(super) fn swap_section_run(&mut self, first: usize, last: usize, to: usize) {
+        let swapped = self.document_mut().map(|document| {
+            document.editor_mut().swap_section_run(
+                MeasureIndex::new(first),
+                MeasureIndex::new(last),
+                MeasureIndex::new(to),
+            )
+        });
+        match swapped {
+            Some(Ok(_)) => self.after_bars_edit(),
+            Some(Err(error)) => self.notice = Some(error.to_string()),
+            None => {}
+        }
+    }
+
     /// Moves the `count` bars starting at `from` so they start at `to`, in every track
     /// (dragging the grid's bar selection), with the effects a structural edit has.
     pub(super) fn move_bars(&mut self, from: usize, count: usize, to: usize) {

@@ -41,6 +41,8 @@ pub(in crate::app) struct SongPanelState {
     /// pointer is over, which it would swap with.
     dragging: Option<usize>,
     target: Option<usize>,
+    /// While several selected sections are dragged together: their first and last bar.
+    run: Option<(usize, usize)>,
 }
 
 impl SongPanelState {
@@ -116,6 +118,9 @@ impl GuitarScoreApp {
         }
         if let Some((from, to)) = actions.swap {
             self.swap_sections(from, to);
+        }
+        if let Some((first, last, to)) = actions.swap_run {
+            self.swap_section_run(first, last, to);
         }
         if let Some(selection) = actions.select {
             self.apply_grid_action(GridAction::Select(selection));
@@ -208,6 +213,9 @@ struct SectionActions {
     clear: bool,
     /// A row was dragged onto another: swap the two sections' bars.
     swap: Option<(usize, usize)>,
+    /// Several selected sections (their first and last bar) were dragged onto another
+    /// section (its first bar): swap the run with it.
+    swap_run: Option<(usize, usize, usize)>,
 }
 
 /// The Sections category: a table like the track's tone presets, one row per section with
@@ -269,8 +277,12 @@ fn sections(
         // Rows scrolled out of view are still laid out; only the visible part counts.
         let visible = ui.clip_rect();
         let pointer = ui.input(|input| input.pointer.interact_pos());
+        // Whether a bar lies in the run of sections being dragged together.
+        let in_run = |run: Option<(usize, usize)>, bar: usize| {
+            run.is_some_and(|(first, last)| (first..=last).contains(&bar))
+        };
         for line in &lines {
-            let dragging = state.dragging == Some(line.start);
+            let dragging = state.dragging == Some(line.start) || in_run(state.run, line.start);
             let target = state.target == Some(line.start);
             let selected = line.chosen || dragging || target;
             let accessible = format!("Select the bars of section {}", line.title);
@@ -310,9 +322,20 @@ fn sections(
             if response.drag_started() {
                 state.dragging = Some(line.start);
                 state.target = None;
-                actions.clear = true;
+                // A row of a selection of several sections drags them all; any other row
+                // drags its own section, and the selection goes.
+                let several = selection.filter(|selection| {
+                    line.chosen
+                        && selection.track.is_none()
+                        && (selection.start() != line.start || selection.end() != line.end)
+                });
+                state.run = several.map(|selection| (selection.start(), selection.end()));
+                if state.run.is_none() {
+                    actions.clear = true;
+                }
             }
             if state.dragging.is_some_and(|from| from != line.start)
+                && !in_run(state.run, line.start)
                 && pointer
                     .is_some_and(|pointer| rect.contains(pointer) && visible.contains(pointer))
             {
@@ -331,14 +354,19 @@ fn sections(
             && let Some(to) = state.target
             && from != to
         {
-            actions.swap = Some((from, to));
+            match state.run {
+                Some((first, last)) => actions.swap_run = Some((first, last, to)),
+                None => actions.swap = Some((from, to)),
+            }
         }
         state.dragging = None;
         state.target = None;
+        state.run = None;
     } else if state.dragging.is_some() && !ui.input(|input| input.pointer.any_down()) {
         // The drag ended without its row seeing it (the panel changed tab): forget it.
         state.dragging = None;
         state.target = None;
+        state.run = None;
     }
 }
 

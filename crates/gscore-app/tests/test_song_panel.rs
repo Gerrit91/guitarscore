@@ -633,6 +633,66 @@ fn dragging_a_section_row_in_the_song_tab_swaps_the_sections() {
     );
 }
 
+/// Several sections selected with shift-click are dragged together: the run swaps with
+/// the section it is dropped on, and stays selected where it went.
+#[test]
+fn several_selected_sections_are_dragged_together() {
+    let mut harness = song_with_sections(false);
+    harness.get_by_label("Song tab").click();
+    harness.run();
+    // Intro (bars 1-2) and Verse (3-5) selected together.
+    harness
+        .get_by_label("Select the bars of section Intro")
+        .click();
+    harness.run();
+    let verse = section_row(&harness, "Verse");
+    click_with(&mut harness, verse, egui::Modifiers::SHIFT);
+    assert_eq!(
+        harness
+            .state()
+            .selection()
+            .map(|selection| (selection.start(), selection.end())),
+        Some((0, 4))
+    );
+    // Drag the Verse's row (part of the selection) onto the Chorus's.
+    let to = section_row(&harness, "Chorus");
+    harness.hover_at(verse);
+    harness.run();
+    harness.drag_at(verse);
+    harness.step();
+    harness.hover_at(verse + egui::vec2(10.0, 0.0));
+    harness.step();
+    // The selection stays while the run is dragged.
+    assert!(harness.state().selection().is_some());
+    harness.hover_at(to);
+    harness.step();
+    harness.drop_at(to);
+    harness.run();
+    // The Chorus (bars 6-9) comes first, then the Intro and the Verse.
+    let song = harness.state().document().unwrap().song();
+    let order: Vec<(usize, String)> = (0..song.measure_count())
+        .filter_map(|measure| {
+            song.section(MeasureIndex::new(measure))
+                .map(|section| (measure, section.title))
+        })
+        .collect();
+    assert_eq!(
+        order,
+        [
+            (0, "Chorus".to_owned()),
+            (4, "Intro".to_owned()),
+            (6, "Verse".to_owned())
+        ]
+    );
+    assert_eq!(
+        harness
+            .state()
+            .selection()
+            .map(|selection| (selection.start(), selection.end())),
+        Some((4, 8))
+    );
+}
+
 #[test]
 fn starting_a_section_drag_in_the_ruler_drops_the_selection() {
     let mut harness = song_with_sections(false);

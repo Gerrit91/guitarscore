@@ -7133,3 +7133,10 @@ into the same space, and the other notes' dots ran into the moved head.
   arrow keys, a shift-click), the grid scrolls that bar into sight if it is out of it
   (`Tab::grid_followed`). It does not hold the view: the grid scrolls freely while the
   cursor stays in its bar. Only sideways; the track rows do not follow yet.
+- Several sections selected in the Song tab's list (shift-click) are dragged together: a
+  drag that starts on one of them carries the whole run, which swaps with the section it is
+  dropped on (the run takes its place and it the run's; the sections between keep their
+  order), as one undo step, the run selected where it went (`TabEditor::swap_section_run`).
+  The selection stays marked during the drag, and the run's own rows are no drop target. A
+  drag on a row outside the selection drags that one section, as before. The grid ruler's
+  section drag still moves one section.
