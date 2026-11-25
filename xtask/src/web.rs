@@ -417,6 +417,8 @@ fn run_headless(browser: &std::ffi::OsString, out: &Path, port: u16) -> TaskResu
          if (text) return resolve('failed: ' + text); \
          if (Date.now() - started > 30000) return resolve('timeout: the editor did not start'); \
          setTimeout(poll, 100); }; poll(); })";
+    // Listens to the audio worklet in every page, for the playback check.
+    browser.before_each_page(page_checks::AUDIO_PROBE)?;
     let url = format!("http://127.0.0.1:{port}/");
     let result = browser.evaluate(&url, app)?;
     if result != "ok" {
@@ -467,6 +469,13 @@ fn run_headless(browser: &std::ffi::OsString, out: &Path, port: u16) -> TaskResu
     })?;
     println!("web: an edit left a rescue copy ({copy})");
     browser.screenshot(&out.join("smoke-edited.png"))?;
+    let played = page_checks::space_plays_the_song(&mut browser).map_err(|e| {
+        format!(
+            "playing in the browser: {e}{}",
+            console_log(browser.events())
+        )
+    })?;
+    println!("web: Space played the song and stopped it ({played})");
     page_checks::crash_screen_offers_the_copies(&mut browser).map_err(|e| {
         format!(
             "the browser's crash screen: {e}{}",

@@ -7179,3 +7179,15 @@ From the owner's drum tabs:
   still overlaps; heads a step apart in two voices still meet.
 - The song's key signature reached the percussion staff: with sharps or flats, every drum
   on a letter the key alters got a natural sign. A drum staff takes no accidentals now.
+
+## 2026-11-25 — Browser smoke test: Space plays the song
+
+The smoke test now plays the dropped song. `Browser::before_each_page` injects a probe
+before the page's scripts: it wraps `MessagePort.postMessage` to record what reaches the
+worklet (and listens to the worklet's status replies on that port), and tees the worklet
+node into an `AnalyserNode` when it is connected to the speakers. Seen on the first run:
+eight `sound` messages and the SoundFont before Play; the song itself is only sent on the
+first Play (`sequence`, `seek`, `tempo`, `play`); four playing reports with a moving
+position; loudest RMS 0.015; Space again sends `stop`. Choosing a tone is not driven:
+egui draws the tone list on the canvas, and clicking fixed coordinates would break with
+any layout change.

@@ -234,11 +234,12 @@ testing the built site in headless Chromium; what could only be judged by ear is
     after a deploy runs it (`docs/web.md`, "Updates"; the smoke test plays a deploy). The
     reload happens a moment after the page opened, before most edits; with unsaved edits
     the browser asks first.
-32. **Little automated browser testing of playing or editing.** The smoke test
-    (`docs/web.md`) waits for the page and the SoundFont, drops a song and types one fret
-    (2026-11-13); nothing clicks Play or chooses a tone. The checks of 2026-11-13 were done by hand with headless
-    Chromium over the DevTools protocol (the messages posted to the worklet were recorded
-    and replayed into the built worklet in Node); that could become a test.
+32. **Little automated browser testing of editing and the mixer.** The smoke test
+    (`docs/web.md`) drops a song, types one fret, and plays it with Space (2026-11-25): a
+    probe injected before the page's scripts records what is posted to the worklet and
+    its status replies, and an analyser beside the speakers must hear sound. Not tested:
+    choosing a tone, the mixer, menus (egui draws them on the canvas, with no keyboard
+    route the test could use reliably), several tracks and drum parts.
 33. **Not looked at in the browser:** the Sound chain window, the string sound tabs, the
     mixer's bus windows, the tuner (`tuner_web.rs` exists), drag and drop of a file,
     keyboard shortcuts the browser takes for itself (Ctrl+S, Ctrl+O, Ctrl+N, F11), touch

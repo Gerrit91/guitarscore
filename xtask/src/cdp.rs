@@ -60,6 +60,23 @@ impl Browser {
         self.page.evaluate(expression)
     }
 
+    /// Runs `source` in every page loaded from now on, before the page's own scripts
+    /// (`Page.addScriptToEvaluateOnNewDocument`).
+    pub(crate) fn before_each_page(&mut self, source: &str) -> Result<(), String> {
+        self.page
+            .call(
+                "Page.addScriptToEvaluateOnNewDocument",
+                &format!("{{\"source\":\"{}\"}}", escape_json(source)),
+            )
+            .and_then(|response| {
+                if response.contains("\"error\":") {
+                    Err(format!("the browser refused the script: {response}"))
+                } else {
+                    Ok(())
+                }
+            })
+    }
+
     /// Evaluates `expression` in the current page (no navigation).
     pub(crate) fn eval(&mut self, expression: &str) -> Result<String, String> {
         self.page.evaluate(expression)

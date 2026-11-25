@@ -132,6 +132,11 @@ not wait for wasm and AudioWorklet loading). It checks:
 - a song dropped on the page (a synthetic drop event) and a typed fret leave a rescue copy
   of the edited song with the page (`smoke-edited.png`), and the crash screen a panic shows
   offers it for download (`smoke-crashed.png`), see "Crashes" below;
+- playing: a probe the test injects before the page's own scripts
+  (`page_checks::AUDIO_PROBE`) records the messages posted to the worklet, its status
+  replies, and puts an analyser beside the speakers. The dropped song's string sounds must
+  have reached the worklet; Space must send the song and `play`, the worklet must report a
+  moving position, and the analyser must hear sound; Space again must stop it;
 - a deploy: once the service worker controls the page, the built `sw.js` and `index.html`
   are changed as a new build's would be, and one visit later the page must run the new
   build (the files are put back afterwards);
