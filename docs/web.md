@@ -62,8 +62,9 @@ The app crate is the same on both platforms. Native-only pieces are behind
   (Save and Save As alike; the browser decides where it goes). rfd's web save is not
   used: it shows its own "click here to download" overlay and reports success even when
   that is cancelled, which would mark an undownloaded song as saved.
-- Leaving: with unsaved edits, closing or reloading the page asks first (`beforeunload`),
-  because there is no recovery journal in the browser yet. The title bar has no window
+- Leaving: with unsaved edits, closing or reloading the page asks first (`beforeunload`):
+  the copies kept for the next visit (below, "Recovery") are as of the last pause in
+  editing, not the last keystroke. The title bar has no window
   buttons and the File menu no Quit: the browser owns the tab.
 - Storage: settings and shortcuts live in `localStorage` (`gscore-session/src/web.rs`),
   with the same "missing or broken falls back to defaults, and says why" behaviour as the
@@ -87,8 +88,8 @@ The app crate is the same on both platforms. Native-only pieces are behind
   (`app/practice.rs`, M25) instead of the full interface; its menu leads to the full
   interface, View › Practice view back. While a song plays the page holds a Screen Wake
   Lock (`app/wake_lock.rs`), if the browser offers one.
-- The recovery journal is still file-based, so the browser build starts without one. This
-  is the main missing browser feature (see `docs/gaps.md`); saving is unaffected.
+- The desktop's recovery journal is file-based; the browser keeps copies of unsaved songs
+  in IndexedDB instead (see "Recovery" below).
 - Threads: a wasm instance has none, so opening imports on the UI thread after the bytes
   arrive (the one step that briefly blocks), and save/export run in `spawn_local` tasks.
   `web-time` supplies `Instant` (`performance.now()`), since `std::time::Instant` panics on
@@ -151,12 +152,29 @@ the user's work:
   song (the bytes Save would download) once its edits have rested for a second
   (`crates/gscore-app/src/app/web_rescue.rs`). The copies live in the page's JavaScript,
   `globalThis.guitarscoreRescue`, outside the instance; a saved or closed tab takes its
-  copy back. They are in memory only: a closed tab or a reload loses them (a
-  storage-backed journal is still open, `docs/gaps.md`).
+  copy back. The page keeps them in IndexedDB too, so a closed tab or a reload does not
+  lose them (see "Recovery").
 - **The crash screen.** The panic hook (`web.rs`) calls the page's `guitarscoreCrashed`,
   which hides the canvas and offers each copy for download, then Reload (asking first if a
   copy was not downloaded). An uncaught `WebAssembly.RuntimeError` after the editor started
   (an abort whose hook could not run) shows the same screen.
+
+## Recovery
+
+`web/recovery.js` stores the rescue copies (above) in IndexedDB (`guitarscore-recovery`,
+store `copies`), keyed by the page's session (a random id per page load) and tab. A page
+holds a Web Lock named after its session while it is open. At the start, the editor asks
+about every copy whose session holds no lock (its page was closed, reloaded or crashed),
+newest first: Restore opens it in a new tab, unsaved, without its undo history (the copy
+is that tab's from then on); Discard deletes it; Later keeps it for the next visit. A
+second tab of the site open beside this one is not asked about. The question shows on
+`<body>` as `data-guitarscore-recovery` (`asking`, then `restored`, `discarded`, `kept` or
+`failed`), which the smoke test waits for.
+
+Limits: a copy is as of the last pause in editing (one second), so leaving still asks
+first. Without IndexedDB (some private windows) the copies stay in memory, as before;
+without Web Locks (browsers before 2022) a page open beside this one counts as gone, so
+its copies are offered too. A copy the browser cannot store (quota) is not reported.
 
 ## Updates
 

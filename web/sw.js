@@ -31,6 +31,7 @@ const SHELL = [
   "./guitarscore_bg.wasm",
   "./worklet.js",
   "./worklet-polyfills.js",
+  "./recovery.js",
   "./worklet_synth.js",
   "./worklet_synth_bg.wasm",
   "./manifest.json",

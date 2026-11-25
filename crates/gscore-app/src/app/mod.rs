@@ -1021,13 +1021,15 @@ impl eframe::App for GuitarScoreApp {
         self.track_pointer(&ctx);
         #[cfg(target_arch = "wasm32")]
         self.mark_browser_sound(&ctx);
-        // The page asks before it is left while a song has unsaved edits: the browser
-        // build has no recovery journal yet.
+        // The page asks before it is left while a song has unsaved edits: its stored
+        // copies are as of the last pause in editing, not the last keystroke.
         #[cfg(target_arch = "wasm32")]
         {
             crate::web::set_unsaved(self.tabs.iter().any(|tab| tab.document.is_dirty()));
-            // A panic ends the page: its crash screen offers these copies instead.
+            // A panic ends the page and a closed tab ends it too: the crash screen and
+            // the next visit offer these copies instead.
             self.keep_rescue_copies(&ctx);
+            self.ask_about_rescued_copies(&ctx);
             // The screen stays on while a song plays (or counts in), if asked for.
             let sounding = self.playback.state() == gscore_play::PlayState::Playing
                 || self.playback.count_in_pending();

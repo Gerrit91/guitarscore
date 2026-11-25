@@ -9,10 +9,12 @@
 //! assets/             icon and optional runtime assets (SoundFonts)
 //! manifest.json       installable app metadata
 //! sw.js               service worker (offline app shell)
+//! recovery.js         the page's store of copies of unsaved songs (IndexedDB)
 //! ```
 //!
 //! `--smoke` opens the built page in a headless Chromium, waits for the editor's ready
-//! marker, checks the SoundFont, an edit and the crash screen, and saves screenshots.
+//! marker, checks the SoundFont, an edit, the crash screen and the recovery of its copy at
+//! the next visit, and saves screenshots.
 
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -237,6 +239,7 @@ fn copy_shell(root: &Path, out: &Path) -> Result<(), String> {
         "worklet.js",
         "worklet-polyfills.js",
         "worklet-check.html",
+        "recovery.js",
     ] {
         let from = source.join(name);
         let to = out.join(name);
@@ -475,6 +478,13 @@ fn run_headless(browser: &std::ffi::OsString, out: &Path, port: u16) -> TaskResu
     })?;
     browser.screenshot(&out.join("smoke-crashed.png"))?;
     println!("web: crash screen OK");
+    page_checks::the_next_visit_restores_the_copy(&mut browser, &url).map_err(|e| {
+        format!(
+            "recovery in the browser: {e}{}",
+            console_log(browser.events())
+        )
+    })?;
+    println!("web: the next visit restored the crashed page's copy");
 
     // A deploy: the next visit must run the new build, not the cached one. (Last on the
     // app page: putting the built files back looks like one more deploy to the page.)

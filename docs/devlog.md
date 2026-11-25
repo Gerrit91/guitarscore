@@ -7179,3 +7179,20 @@ From the owner's drum tabs:
   still overlaps; heads a step apart in two voices still meet.
 - The song's key signature reached the percussion staff: with sharps or flats, every drum
   on a letter the key alters got a natural sign. A drum staff takes no accidentals now.
+
+## 2026-11-25 — Browser: unsaved songs survive a closed tab, a reload or a crash
+
+The browser had no recovery journal: the rescue copies the editor hands the page (a GP7
+copy of every song with unsaved edits, after a second's pause) lived only in the page's
+memory, for the crash screen. Now `web/recovery.js` stores them in IndexedDB as well, keyed
+by a per-page session id and the tab, and the next visit asks about the copies of pages
+that are gone (Restore, Discard, Later, as on the desktop). A Web Lock per live session
+keeps a second tab of the site from offering a page that is still open. A restored copy
+opens unsaved without its undo history and becomes the new tab's copy in one IndexedDB
+transaction. Chosen over porting the command journal: the copies already existed and are
+exactly what Save writes, so nothing new has to be replayed; the cost is no undo history
+and up to a second of edits.
+
+The smoke test goes on from the crash screen: the next visit must ask
+(`data-guitarscore-recovery="asking"`), Enter restores, and the restored tab's copy must be
+the page's own.
