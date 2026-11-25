@@ -455,12 +455,19 @@ impl MeasureLayout {
         let min_gap = ctx.options.spacing.min_gap;
         let barline_padding = ctx.options.spacing.barline_padding.max(0.0);
         let edge_padding = barline_padding.max(min_gap);
-        notation::assign_accidentals(
-            columns
-                .iter_mut()
-                .flat_map(|(d, _, _, _)| d.notation.iter_mut().flatten()),
-            key,
-        );
+        // A drum's place is its sound, not a pitch: the key signature does not reach it, so
+        // it never takes an accidental.
+        if ctx
+            .notation
+            .is_some_and(|n| n.clef != notation::Clef::Percussion)
+        {
+            notation::assign_accidentals(
+                columns
+                    .iter_mut()
+                    .flat_map(|(d, _, _, _)| d.notation.iter_mut().flatten()),
+                key,
+            );
+        }
         // Room each column needs left and right of its center: the tab's fret numbers are
         // symmetric, notation is not (accidentals left; dots and flags right). A second
         // voice whose notehead shares a staff position with the first moves right.

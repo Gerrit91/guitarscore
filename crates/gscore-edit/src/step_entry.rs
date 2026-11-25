@@ -344,11 +344,14 @@ impl TabEditor {
             .flatten()
     }
 
-    /// The highest fret two typed digits make on the cursor's staff.
+    /// The highest fret two typed digits make on the cursor's staff: its fret count, and
+    /// 99 on a drum staff (the number is the sound).
     pub(crate) fn max_typed_fret(&self) -> u8 {
+        // On a drum staff the "fret" is the drum sound's number, not a place on a neck.
         self.editor
             .song()
             .staff(self.cursor.track, self.cursor.staff)
+            .filter(|staff| !staff.is_percussion())
             .map_or(MAX_TYPED_FRET, |staff| staff.fret_count())
             .min(MAX_TYPED_FRET)
     }

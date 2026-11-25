@@ -96,6 +96,20 @@ fn digits_enter_frets_and_a_quick_second_digit_makes_two_digit_frets() {
 }
 
 #[test]
+fn a_drum_track_takes_every_two_digit_sound() {
+    let mut song = testing::song(&[GUITAR_6], 1).unwrap();
+    let _drums = song.set_track_drums(TrackIndex::new(0), true).unwrap();
+    let mut e = TabEditor::new(song, TrackIndex::new(0));
+    // The kit has 24 "frets", but a drum's number is its sound: 57 is the second crash.
+    e.perform(Action::Digit(5), 1000).unwrap();
+    e.perform(Action::Digit(7), 1200).unwrap();
+    assert_eq!(fret_at(&e, 1), Some(57));
+    e.perform(Action::Digit(9), 3000).unwrap();
+    e.perform(Action::Digit(2), 3200).unwrap();
+    assert_eq!(fret_at(&e, 1), Some(92));
+}
+
+#[test]
 fn notes_go_on_the_cursor_string_and_can_be_cleared() {
     let mut e = editor(1);
     plain(&mut e, ActionId::CursorDownString);
