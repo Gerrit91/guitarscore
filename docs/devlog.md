@@ -7166,3 +7166,16 @@ Later: the "All strings" step moved out of its own row into the tuning dialog's 
 side: a thin bracket over the string rows (a tick at each string) with an up chevron above
 and a down chevron below, "All strings / a semitone" between them (owner's wish: more
 visual, less like the per-string steppers).
+
+## 2026-11-25 — Drum notation: heads on one place, typed sound numbers, no naturals
+
+From the owner's drum tabs:
+- Typing a drum's number: a second digit only made a two-digit number up to the staff's
+  fret count, 24 on a drum kit too, so only numbers starting with 1 or 2 could be typed.
+  On a drum staff the limit is 99 (the number is the sound, not a fret).
+- Two drum sounds on one place with different heads (55 splash and 57 crash 2 above the
+  staff, snare and side stick, ride and hi-mid tom) were drawn on top of each other. They
+  now stand either side of the stem, as a second does. A third head on the same place
+  still overlaps; heads a step apart in two voices still meet.
+- The song's key signature reached the percussion staff: with sharps or flats, every drum
+  on a letter the key alters got a natural sign. A drum staff takes no accidentals now.

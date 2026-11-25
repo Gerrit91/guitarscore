@@ -530,6 +530,37 @@ fn a_drum_track_gets_a_tablature_from_its_tablature_switch() {
     assert!(numbers.iter().any(|number| number == "35"), "{numbers:?}");
 }
 
+/// The song's key signature does not reach the percussion staff: no key signature and no
+/// natural signs before the drums its sharps would alter.
+#[test]
+fn a_drum_staff_takes_no_accidentals_from_the_key() {
+    let mut song = common::open("basic/multi_staff.gp");
+    let fonts = Fonts::bundled().unwrap();
+    let drums = song
+        .tracks()
+        .find(|track| track.is_percussion())
+        .expect("a drum track")
+        .index();
+    // Seven sharps alter every letter.
+    let _ = song
+        .set_key_signature(MeasureIndex::new(0), 7, false)
+        .unwrap();
+    let layout = layout_track(&song, drums, &LayoutOptions::default(), &fonts).unwrap();
+    let accidentals: Vec<Glyph> = layout
+        .ops
+        .iter()
+        .filter_map(|op| match op {
+            DrawOp::Glyph { glyph, .. }
+                if matches!(glyph, Glyph::Natural | Glyph::Sharp | Glyph::Flat) =>
+            {
+                Some(*glyph)
+            }
+            _ => None,
+        })
+        .collect();
+    assert!(accidentals.is_empty(), "{accidentals:?}");
+}
+
 /// A score view chooses a track's staves in the options; the track keeps its own, and the
 /// cache lays the track out again when the choice changes.
 #[test]

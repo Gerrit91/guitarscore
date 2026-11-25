@@ -273,7 +273,8 @@ impl Chord {
     }
 
     /// Which heads move beside the stem (by one head's width): in a second, the upper one
-    /// with an up-stem (to the right), the lower one with a down-stem (to the left).
+    /// with an up-stem (to the right), the lower one with a down-stem (to the left). Two
+    /// heads on one place (drum sounds with their own heads) stand apart the same way.
     pub(crate) fn shifted(&self, up: bool) -> Vec<bool> {
         let mut shifted = vec![false; self.heads.len()];
         let order: Vec<usize> = if up {
@@ -284,7 +285,7 @@ impl Chord {
         for pair in order.windows(2) {
             if let [a, b] = pair
                 && let (Some(ha), Some(hb)) = (self.heads.get(*a), self.heads.get(*b))
-                && ha.position.abs_diff(hb.position) == 1
+                && ha.position.abs_diff(hb.position) <= 1
                 && !shifted.get(*a).copied().unwrap_or(false)
                 && let Some(flag) = shifted.get_mut(*b)
             {
@@ -870,6 +871,35 @@ mod tests {
         ];
         assign_accidentals(items.iter_mut(), 0);
         assert_eq!(accidentals(&items), [Some(Glyph::Sharp), None]);
+    }
+
+    #[test]
+    fn two_drum_heads_on_one_place_stand_either_side_of_the_stem() {
+        // A splash (circled cross) and a second crash (cross) share the space above the
+        // staff: the second head moves beside the stem, as in a second.
+        let drum = |glyph| Head {
+            position: 11,
+            glyph: Some(glyph),
+            ..Head::plain()
+        };
+        let c = Chord {
+            heads: vec![
+                Head {
+                    position: 0,
+                    ..Head::plain()
+                },
+                drum(Glyph::NoteheadCircleX),
+                drum(Glyph::NoteheadX),
+            ],
+            value: 4,
+            dots: 0,
+            tuplet: None,
+            stem_up: Some(true),
+            slash: false,
+            marks: ChordMarks::default(),
+        };
+        assert_eq!(c.shifted(true), vec![false, false, true]);
+        assert_eq!(c.second_reach(1.2, true), (0.0, 1.2));
     }
 
     #[test]
