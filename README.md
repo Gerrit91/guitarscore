@@ -7,28 +7,36 @@
 
 # GuitarScore
 
+[![CI](https://github.com/Gerrit91/guitarscore/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Gerrit91/guitarscore/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/Gerrit91/guitarscore?include_prereleases)](https://github.com/Gerrit91/guitarscore/releases)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+
 **A fast, free guitar tablature editor.** Write tabs at the speed you think, hear them as
 you type, and open the Guitar Pro files you already have. Native, written in Rust, and
 built never to lose your work.
 
-![GuitarScore editing a tab with notation, techniques and the edit palette](docs/media/editor.png)
+<p align="center">
+  <a href="https://gerrit91.github.io/guitarscore/"><img src="https://img.shields.io/badge/%E2%96%B6%20Open%20in%20your%20browser-nothing%20to%20install-2f81f7?style=for-the-badge" alt="Open GuitarScore in your browser, nothing to install"></a>
+  <a href="https://github.com/Gerrit91/guitarscore/releases/latest"><img src="https://img.shields.io/badge/Download-Linux%20%C2%B7%20Windows%20%C2%B7%20macOS-555?style=for-the-badge" alt="Download for Linux, Windows and macOS"></a>
+</p>
+
+<a href="https://gerrit91.github.io/guitarscore/"><img src="docs/media/editor.png" alt="GuitarScore editing a song: notation and tab, the edit palette, and the song grid with its tracks and sections"></a>
 
 ## Why GuitarScore
 
-- **Native and light.** One binary, GPU-rendered, no account, no cloud. Runs on all platforms and in the
-  browser. MIT licensed.
-- **Your Guitar Pro files.** Opens Guitar Pro 3 to 7+, saves Guitar Pro 7, and exports
-  older Guitar Pro versions, MIDI and PDF.
-- **Never lose work.** Every edit goes to a recovery journal first; after a crash the next
-  start offers your document back, undo history included.
-- **Hear it.** Guitars and basses play on modelled strings through an effect chain you
-  dial in (drive, amp, cabinet, EQ, compressor, chorus, delay, reverb); a built-in
-  synthesizer plays everything else, and a mixer with buses and meters brings it together.
-  Or send any track to a MIDI synthesizer. A tuner is included.
-- **Keyboard first.** Type a fret, press `+` for a shorter note, arrow on. Every action
-  has a key, and every key can be rebound.
-- **The whole score.** Notation and tab, all techniques with their own editors, several
-  tracks on one page, real pages or one endless page, light and dark.
+- **Native and light.** One binary, no account, no cloud; on the desktop and in the browser. MIT.
+- **Your Guitar Pro files.** Opens Guitar Pro 3 to 7+, saves Guitar Pro 7; exports MIDI and PDF.
+- **Never lose work.** A recovery journal brings your document back after a crash.
+- **Hear it.** Modelled guitars and basses with amp and effects, a mixer, a synthesizer for the rest.
+- **Enter it your way.** A key for every action, or play the notes in on a MIDI keyboard or guitar.
+- **The whole song.** Notation and tab with every technique, and a song grid with sections.
+- **Practice anywhere.** A practice view for phones and tablets: score, player, loop and speed.
+
+<p align="center">
+  <img src="docs/media/practice.png" width="260" alt="The practice view on a phone: the score and the player">
+  &nbsp;
+  <img src="docs/media/practice-drawer.png" width="260" alt="The practice view's drawer: loop, speed, metronome, mixer and more">
+</p>
 
 ## Installation
 

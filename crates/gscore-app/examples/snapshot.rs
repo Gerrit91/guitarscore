@@ -2,7 +2,7 @@
 //! "Verify UI changes visually"):
 //!
 //! ```text
-//! cargo run -p gscore-app --example snapshot -- <file> <out.png> [--dark] [--track N] [--zoom Z] [--size WxH] [--settings] [--history] [--mixer] [--new-track] [--scale S] [--click LABEL]...
+//! cargo run -p gscore-app --example snapshot -- <file> <out.png> [--dark] [--track N] [--zoom Z] [--size WxH] [--settings] [--history] [--mixer] [--new-track] [--practice] [--scale S] [--click LABEL]...
 //! ```
 
 // An example is a small tool: failing loudly with a message is fine here.
@@ -19,14 +19,14 @@ use std::time::{Duration, Instant};
 
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
-use gscore_app::{GuitarScoreApp, ThemeChoice};
+use gscore_app::{GuitarScoreApp, PracticeChoice, ThemeChoice};
 
 /// How long to wait for the file to open.
 const OPEN_TIMEOUT: Duration = Duration::from_secs(30);
 
 fn main() {
     let mut args = std::env::args().skip(1);
-    let usage = "usage: snapshot <file> <out.png> [--dark] [--track N] [--zoom Z] [--size WxH] [--settings] [--history] [--mixer] [--new-track] [--scale S] [--click LABEL]...";
+    let usage = "usage: snapshot <file> <out.png> [--dark] [--track N] [--zoom Z] [--size WxH] [--settings] [--history] [--mixer] [--new-track] [--practice] [--scale S] [--click LABEL]...";
     let file = PathBuf::from(args.next().expect(usage));
     let out = PathBuf::from(args.next().expect(usage));
     let (mut dark, mut track, mut zoom, mut size) = (false, 1_usize, 1.0_f32, (1100.0, 800.0));
@@ -34,6 +34,7 @@ fn main() {
     let mut history = false;
     let mut mixer = false;
     let mut new_track = false;
+    let mut practice = false;
     let mut scale = 1.0_f32;
     let mut clicks = Vec::new();
     while let Some(arg) = args.next() {
@@ -43,6 +44,7 @@ fn main() {
             "--history" => history = true,
             "--mixer" => mixer = true,
             "--new-track" => new_track = true,
+            "--practice" => practice = true,
             "--track" => track = args.next().and_then(|t| t.parse().ok()).expect(usage),
             "--scale" => scale = args.next().and_then(|s| s.parse().ok()).expect(usage),
             "--click" => clicks.push(args.next().expect(usage)),
@@ -97,6 +99,9 @@ fn main() {
         }
         if new_track {
             app.open_new_track();
+        }
+        if practice {
+            app.set_practice_view(PracticeChoice::On);
         }
     }
     harness.run();
