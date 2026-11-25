@@ -279,15 +279,14 @@ impl TuningDialog {
         }
 
         ui.add_space(8.0);
-        // Every string a semitone up or down at once (tuning the whole instrument down to
-        // Eb, say); a step that would take a string out of range is not taken.
-        ui.horizontal(|ui| {
-            ui.label(RichText::new("All strings").color(style::tokens(ui).text_weak));
-            let (down, up) = super::super::icons::step_pair(
-                ui,
-                ("All strings a semitone lower", "A semitone lower", true),
-                ("All strings a semitone higher", "A semitone higher", true),
-            );
+        // The strings, and beside them a bracket over all of them that tunes every string a
+        // semitone down or up at once (the whole instrument down to Eb, say); a step that
+        // would take a string out of range is not taken.
+        let mut centers = Vec::new();
+        ui.horizontal_top(|ui| {
+            ui.vertical(|ui| self.strings_visual(ui, &mut centers));
+            ui.add_space(14.0);
+            let (down, up) = all_strings(ui, &centers);
             let shift = |pitches: &[u8], up: bool| -> Option<Vec<u8>> {
                 pitches
                     .iter()
@@ -305,8 +304,6 @@ impl TuningDialog {
                 self.error = None;
             }
         });
-        ui.add_space(4.0);
-        self.strings_visual(ui);
         ui.add_space(8.0);
 
         // String count and capo.
@@ -355,7 +352,8 @@ impl TuningDialog {
 
     /// The strings as a headstock: a nut at the left and one line per string, thickest for
     /// the lowest, with its note beside it.
-    fn strings_visual(&mut self, ui: &mut egui::Ui) {
+    /// `centers` gets each string's line height, for the bracket beside them.
+    fn strings_visual(&mut self, ui: &mut egui::Ui, centers: &mut Vec<f32>) {
         let tokens = style::tokens(ui);
         let count = self.strings;
         for index in 0..count {
@@ -364,6 +362,7 @@ impl TuningDialog {
                 let (line, _) = ui.allocate_exact_size(vec2(90.0, 16.0), egui::Sense::hover());
                 let thickness = 1.0 + (index as f32 / count.max(1) as f32) * 2.4;
                 let y = line.center().y;
+                centers.push(y);
                 // The nut.
                 ui.painter().rect_filled(
                     egui::Rect::from_min_max(
@@ -544,6 +543,105 @@ pub(super) fn button(ui: &mut egui::Ui, snapshot: &TrackPanel, open: &mut bool) 
     {
         *open = true;
     }
+}
+
+/// Beside the strings: a thin bracket over all of them, with a button above to tune every
+/// string a semitone higher and one below to tune them a semitone lower. `centers` are the
+/// strings' heights. Returns whether the lower and the higher button were clicked.
+fn all_strings(ui: &mut egui::Ui, centers: &[f32]) -> (bool, bool) {
+    const WIDTH: f32 = 92.0;
+    const BUTTON: egui::Vec2 = vec2(44.0, 24.0);
+    let (Some(&first), Some(&last)) = (centers.first(), centers.last()) else {
+        return (false, false);
+    };
+    let tokens = style::tokens(ui);
+    let left = ui.cursor().left();
+    // At least room for both buttons and the caption between them.
+    let height = (last - first + 16.0).max(BUTTON.y * 2.0 + 30.0);
+    let rect = egui::Rect::from_min_size(egui::pos2(left, first - 8.0), vec2(WIDTH, height));
+    ui.allocate_rect(rect, egui::Sense::hover());
+    let painter = ui.painter_at(rect.expand(2.0));
+    let stroke = egui::Stroke::new(1.0, tokens.text_weak);
+    // The bracket: a line down the strings with a short tick at each, and a stem to the
+    // buttons from its middle.
+    let x = rect.left() + 5.0;
+    painter.line_segment([egui::pos2(x, first), egui::pos2(x, last)], stroke);
+    for &y in centers {
+        painter.line_segment([egui::pos2(x - 5.0, y), egui::pos2(x, y)], stroke);
+    }
+    let middle = rect.center().y;
+    let column = egui::Rect::from_min_max(egui::pos2(x + 10.0, rect.top()), rect.max);
+    painter.line_segment(
+        [
+            egui::pos2(x, (first + last) / 2.0),
+            egui::pos2(column.left(), middle),
+        ],
+        stroke,
+    );
+    let cx = column.center().x;
+    painter.text(
+        egui::pos2(cx, middle - 7.0),
+        egui::Align2::CENTER_CENTER,
+        "All strings",
+        egui::FontId::proportional(11.0),
+        tokens.text,
+    );
+    painter.text(
+        egui::pos2(cx, middle + 7.0),
+        egui::Align2::CENTER_CENTER,
+        "a semitone",
+        egui::FontId::proportional(10.0),
+        tokens.text_weak,
+    );
+    // One button: a chevron pointing the way the strings go.
+    let button = |center: Pos2, up: bool| -> bool {
+        let area = egui::Rect::from_center_size(center, BUTTON);
+        let (label, tip) = if up {
+            (
+                "All strings a semitone higher",
+                "Tune every string a semitone higher",
+            )
+        } else {
+            (
+                "All strings a semitone lower",
+                "Tune every string a semitone lower",
+            )
+        };
+        let response = ui.interact(
+            area,
+            ui.scope_id().with(("all_strings", up)),
+            egui::Sense::click(),
+        );
+        ui.ctx().accesskit_node_builder(response.id, |node| {
+            node.set_label(label);
+            node.set_role(egui::Role::Button);
+        });
+        let visuals = ui.style().interact(&response);
+        ui.painter().rect_stroke(
+            area,
+            6.0,
+            egui::Stroke::new(1.0, tokens.line),
+            egui::StrokeKind::Inside,
+        );
+        if response.hovered() || response.has_focus() {
+            ui.painter()
+                .rect_filled(area.shrink(1.0), 5.0, visuals.weak_bg_fill);
+        }
+        let (dx, dy) = (6.0, if up { -3.0 } else { 3.0 });
+        let c = area.center();
+        ui.painter().line(
+            vec![
+                egui::pos2(c.x - dx, c.y - dy),
+                egui::pos2(c.x, c.y + dy),
+                egui::pos2(c.x + dx, c.y - dy),
+            ],
+            egui::Stroke::new(1.6, visuals.fg_stroke.color),
+        );
+        response.on_hover_text(tip).clicked()
+    };
+    let up = button(egui::pos2(cx, column.top() + BUTTON.y / 2.0), true);
+    let down = button(egui::pos2(cx, column.bottom() - BUTTON.y / 2.0), false);
+    (down, up)
 }
 
 /// The note name of a MIDI pitch ("E2", "F#3").

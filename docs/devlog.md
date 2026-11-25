@@ -7161,3 +7161,8 @@ folder) a GP7 save now reports no difference; before, four things showed up:
 - A track without an instrument name (GP3-5) gets one in GP7 ("Drums"): the check no longer
   counts a name gained as a change.
 Save audit over the band files and test files: still 0 unexplained, 0 known.
+
+Later: the "All strings" step moved out of its own row into the tuning dialog's empty right
+side: a thin bracket over the string rows (a tick at each string) with an up chevron above
+and a down chevron below, "All strings / a semitone" between them (owner's wish: more
+visual, less like the per-string steppers).
