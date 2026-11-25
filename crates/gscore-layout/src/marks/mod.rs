@@ -308,10 +308,12 @@ impl Rows {
         let empty = Rows { lift: 0.0, ..self }.height() <= 0.0;
         // The lowest row's ink: the beat effects' row, else the first row of text (its
         // letters stand on the baseline; a little room under it).
-        let free = if self.band() > 0.0 {
-            self.ornament_band() + BEAT_ABOVE - NOTE_CLEARANCE
-        } else {
-            FIRST_ROW - NOTE_CLEARANCE
+        let free = match (self.band() > 0.0, self.tab_only) {
+            // Over a tab, the beat effects have a lane of their own above the tab's lanes;
+            // the rows start above that.
+            (true, true) => self.band() + FIRST_ROW - NOTE_CLEARANCE,
+            (true, false) => self.ornament_band() + BEAT_ABOVE - NOTE_CLEARANCE,
+            (false, _) => FIRST_ROW - NOTE_CLEARANCE,
         };
         let lift = reach - free;
         Rows {

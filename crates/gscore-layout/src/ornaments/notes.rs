@@ -30,6 +30,10 @@ const WIGGLE_STEP: (f32, f32) = (0.45, 0.7);
 const WIGGLE_THICKNESS: f32 = 0.22;
 /// How much higher a vibrato goes over a note bent up: above the bend's arrow and label.
 pub(crate) const VIBRATO_OVER_BEND: f32 = 1.4;
+/// How far above its lane line a vibrato, a trill or a whammy line reaches (its top).
+pub(crate) const LANE_REACH: f32 = WIGGLE_CENTER + 0.5;
+/// How far above the tab an up-bend's arrow and label reach.
+pub(crate) const BEND_REACH: f32 = 2.2 + 0.5 + 0.75;
 /// How far above its lane line a vibrato over a bend reaches (its top).
 pub(crate) const BENT_VIBRATO_REACH: f32 = WIGGLE_CENTER + VIBRATO_OVER_BEND + 0.45;
 /// Gap between a bend's arrow and the next note.

@@ -96,6 +96,21 @@ impl MeasureLayout {
         bends(index) || index.checked_sub(1).is_some_and(bends)
     }
 
+    /// How far the marks in the lanes above the tab reach above its top line: a vibrato,
+    /// trill or whammy line, a bend's arrow and label, and highest a vibrato over a bend.
+    pub(crate) fn tab_lane_reach(&self) -> f32 {
+        let bends = self.columns.iter().any(column_bends_up);
+        if self.has_vibrato_over_bend() {
+            ornaments::BENT_VIBRATO_REACH
+        } else if self.has_lane_ornaments() {
+            ornaments::LANE_REACH.max(if bends { ornaments::BEND_REACH } else { 0.0 })
+        } else if bends {
+            ornaments::BEND_REACH
+        } else {
+            0.0
+        }
+    }
+
     /// Whether a column has ornaments in the tab's lanes: a trill, a pinch harmonic's
     /// label, a vibrato or a whammy line.
     pub(crate) fn has_lane_ornaments(&self) -> bool {

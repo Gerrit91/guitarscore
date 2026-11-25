@@ -7087,3 +7087,27 @@ the 59 band files and the test files: 0 unexplained, 0 known.
   owner's settings name it; the bundled `FluidR3_GM.sf2` is in the AppImage beside the
   program.
 - Open: a new pre-release to confirm sound from the AppImage on Arch (and Ubuntu, Fedora).
+
+## 2026-11-24 — Section names clear vibratos and tuplet brackets
+
+The rows above a system (section names, endings, tempo, beat text) are lifted by what reaches
+above the top staff; that reach now counts two more things. Over a tab without notation, the
+marks in the tab's lanes: a vibrato, trill or whammy line, a bend's arrow and label, and a
+vibrato over a bend (`MeasureLayout::tab_lane_reach`); the owner's Ballad, "Gerrit Solo"
+bar 77, had its vibrato through the "Solo" frame. With notation, a tuplet's bracket and
+number above the notes (`MeasureLayout::tuplet_reach`, which mirrors how tuplets are drawn:
+a group beamed on its own with its stems down has its number under the beam and needs no
+room above). Over a tab with beat effects, the rows already start above the beat lane, so
+only marks reaching beyond that lift them.
+
+Branches checked on the owner's question: `fix/recovery-scan-race` and `fix/windows-exe-icon`
+are in main (cherry-picked). `fix-appimage-alsa` (stop bundling Ubuntu's libasound, which
+leaves the AppImage silent on Arch) and `fix/old-gp-signatures` (GP3-5 measures keep their
+time and key signature; main still shows a 6/8 GP5 file as 4/4, its test fails on main) are
+not in main and still needed.
+
+Dotted chords: a chord's augmentation dots stand in one column right of the whole chord
+(also of a second's head moved right of an up-stem), one dot per space
+(`Chord::dot_positions`): a note in a space keeps its space, a note on a line takes the space
+above, or below when the note above took it. A second's two notes used to put their dots
+into the same space, and the other notes' dots ran into the moved head.
