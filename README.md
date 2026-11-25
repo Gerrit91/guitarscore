@@ -17,8 +17,9 @@ built never to lose your work.
 
 - **Native and light.** One binary, GPU-rendered, no account, no cloud. Runs on all platforms and in the
   browser. MIT licensed.
-- **Your Guitar Pro files.** Opens Guitar Pro 3 to 7+, saves Guitar Pro 7, and exports
-  older Guitar Pro versions, MIDI and PDF.
+- **Your Guitar Pro files.** Opens Guitar Pro 3 to 7+, saves Guitar Pro 7 files that open
+  in Guitar Pro again, and exports older Guitar Pro versions, MIDI and PDF. Every save is
+  read back and compared, and anything the file would lose is reported before you trust it.
 - **Never lose work.** Every edit goes to a recovery journal first; after a crash the next
   start offers your document back, undo history included.
 - **Hear it.** Guitars and basses play on modelled strings through an effect chain you
@@ -27,8 +28,17 @@ built never to lose your work.
   Or send any track to a MIDI synthesizer. A tuner is included.
 - **Keyboard first.** Type a fret, press `+` for a shorter note, arrow on. Every action
   has a key, and every key can be rebound.
+- **Or play it in.** Step entry takes notes from typed frets, note names, the on-screen
+  fretboard and keyboard, or a MIDI keyboard or guitar, and moves on by itself; the
+  fingering picks string and fret, and you hear each note through the track's own sound.
 - **The whole score.** Notation and tab, all techniques with their own editors, several
-  tracks on one page, real pages or one endless page, light and dark.
+  tracks on one page, real pages or one endless page, light and dark. Named score views,
+  jumps and codas, multi-bar rests, and three music fonts (Bravura, Petaluma, Leland).
+- **See the song.** A song grid shows every track's bars with the song's sections: drag
+  sections and bars around, copy them between tracks, and jump to any bar.
+- **Practice anywhere.** A practice view made for phones and tablets: the score, a player
+  with loop and speed, and a compact mixer. The browser opens it on a small screen, `F2`
+  everywhere else.
 
 ## Installation
 

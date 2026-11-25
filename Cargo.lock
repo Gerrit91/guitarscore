@@ -1794,7 +1794,7 @@ dependencies = [
 
 [[package]]
 name = "gscore-app"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "crc32fast",
  "eframe",
@@ -1824,7 +1824,7 @@ dependencies = [
 
 [[package]]
 name = "gscore-audio"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "cpal",
  "gscore-audio",
@@ -1842,7 +1842,7 @@ dependencies = [
 
 [[package]]
 name = "gscore-cli"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "clap",
  "gscore-audio",
@@ -1858,7 +1858,7 @@ dependencies = [
 
 [[package]]
 name = "gscore-edit"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "gscore-io",
  "gscore-model",
@@ -1866,7 +1866,7 @@ dependencies = [
 
 [[package]]
 name = "gscore-gp"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "encoding_rs",
  "fraction",
@@ -1878,14 +1878,14 @@ dependencies = [
 
 [[package]]
 name = "gscore-guitar"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "stats_alloc",
 ]
 
 [[package]]
 name = "gscore-io"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "gscore-gp",
  "gscore-model",
@@ -1893,7 +1893,7 @@ dependencies = [
 
 [[package]]
 name = "gscore-layout"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "gscore-io",
  "gscore-model",
@@ -1905,14 +1905,14 @@ dependencies = [
 
 [[package]]
 name = "gscore-model"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "gscore-gp",
 ]
 
 [[package]]
 name = "gscore-play"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "gscore-io",
  "gscore-model",
@@ -1920,7 +1920,7 @@ dependencies = [
 
 [[package]]
 name = "gscore-session"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "gscore-edit",
  "gscore-io",
@@ -1933,11 +1933,11 @@ dependencies = [
 
 [[package]]
 name = "gscore-version"
-version = "0.2.0"
+version = "0.3.0"
 
 [[package]]
 name = "gscore-worklet"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "gscore-audio",
  "gscore-play",
@@ -5459,7 +5459,7 @@ checksum = "e450f9b2ed1dff33c94c12589a87338689467b9c4f5d8a5710bd09a847d2c8a7"
 
 [[package]]
 name = "xtask"
-version = "0.2.0"
+version = "0.3.0"
 
 [[package]]
 name = "yoke"
