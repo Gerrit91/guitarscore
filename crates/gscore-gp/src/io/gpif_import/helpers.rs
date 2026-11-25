@@ -38,7 +38,7 @@ pub(super) fn note_value_to_duration(s: &str) -> u16 {
 }
 
 /// Convert GPIF dynamic string to MIDI velocity
-pub(super) fn dynamic_to_velocity(s: &str) -> i16 {
+pub(crate) fn dynamic_to_velocity(s: &str) -> i16 {
     match s {
         "PPP" => MIN_VELOCITY,
         "PP" => MIN_VELOCITY + VELOCITY_INCREMENT,

@@ -94,6 +94,7 @@ mod display_tests;
 #[cfg(test)]
 mod effect_tests;
 mod helpers;
+pub(crate) use helpers::dynamic_to_velocity;
 #[cfg(test)]
 mod lyrics_tests;
 mod notes;
@@ -156,8 +157,15 @@ impl SongGpifOps for Song {
         // Notices
         self.score_systems_layout = gpif.score.score_systems_layout.clone();
         self.score_systems_default = gpif.score.score_systems_default.clone();
+        // Every line as written, empty ones included (also the last: `lines()` would drop
+        // it, so a note ending in an empty line lost a line on each save).
         if !gpif.score.notices.is_empty() {
-            self.notice = gpif.score.notices.lines().map(|l| l.to_string()).collect();
+            self.notice = gpif
+                .score
+                .notices
+                .split('\n')
+                .map(|line| line.strip_suffix('\r').unwrap_or(line).to_owned())
+                .collect();
         }
 
         // 2. Tempo from MasterTrack automations
@@ -388,10 +396,11 @@ impl SongGpifOps for Song {
                     .map(str::trim)
                     .filter(|letter| !letter.is_empty());
                 let title = text.or(letter).unwrap_or("Section");
-                // GP6/7 GPIF XML does not include the marker color.
+                // GP6/7 GPIF XML does not include the marker color; GuitarScore writes one
+                // in its own attribute.
                 mh.marker = Some(Marker {
                     title: title.to_string(),
-                    color: Marker::DEFAULT_COLOR,
+                    color: section.gs_color.unwrap_or(Marker::DEFAULT_COLOR),
                     // Kept as written, an empty one too (Guitar Pro writes one on every
                     // section).
                     letter: section

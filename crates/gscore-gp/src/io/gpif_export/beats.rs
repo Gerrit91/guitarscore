@@ -32,28 +32,29 @@ pub(super) fn build_beat_xml(
 
     let is_grace_beat = beat.grace;
 
-    // Build note XMLs
-    if beat.status == BeatStatus::Normal {
-        for note in &beat.notes {
-            let note_id = next_id(next_note_id)?;
-            note_ids.push(note_id);
-            let (tie_origin, hopo_destination) = links(note.string);
-            note_xmls.push(build_note_xml(
-                note,
-                note_id,
-                tie_origin,
-                hopo_destination,
-                beat.effect.slap_effect == SlapEffect::Tapping,
-            ));
-        }
-    }
-
     // Determine beat velocity (from first note)
     let beat_velocity = beat
         .notes
         .first()
         .map(|n| n.velocity)
         .unwrap_or(*prev_velocity);
+    // What a reader gives each note from the beat's dynamic.
+    let read_velocity = gpif_import::dynamic_to_velocity(velocity_to_dynamic(beat_velocity));
+
+    // Build note XMLs
+    if beat.status == BeatStatus::Normal {
+        for note in &beat.notes {
+            let note_id = next_id(next_note_id)?;
+            note_ids.push(note_id);
+            note_xmls.push(build_note_xml(
+                note,
+                note_id,
+                links(note.string),
+                beat.effect.slap_effect == SlapEffect::Tapping,
+                read_velocity,
+            ));
+        }
+    }
 
     let mut bxml = format!("<Beat id=\"{beat_id}\">");
 

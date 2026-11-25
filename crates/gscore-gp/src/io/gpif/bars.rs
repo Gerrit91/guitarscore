@@ -133,6 +133,10 @@ pub(crate) struct Repeat {
 
 #[derive(Debug, Deserialize)]
 pub(crate) struct Section {
+    /// GuitarScore addition: the marker's color (GP7 has none; a GP3-5 file or a color
+    /// chosen in GuitarScore keeps it in this attribute, which Guitar Pro ignores).
+    #[serde(rename = "@gsColor", default)]
+    pub gs_color: Option<i32>,
     #[serde(rename = "Letter", default)]
     pub letter: Option<String>,
     #[serde(rename = "Text", default)]
@@ -360,6 +364,10 @@ pub(crate) struct NotesWrapper {
 pub(crate) struct Note {
     #[serde(rename = "@id", default)]
     pub id: i32,
+    /// GuitarScore addition: the note's own velocity when it differs from its beat's
+    /// dynamic (GP3-5 give every note one; GP6 and later one per beat).
+    #[serde(rename = "@gsVelocity", default)]
+    pub gs_velocity: Option<i16>,
     #[serde(rename = "Properties")]
     pub properties: NoteProperties,
     #[serde(rename = "Tie", default)]

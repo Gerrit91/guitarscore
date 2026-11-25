@@ -696,8 +696,15 @@ impl WriteGpifInGpifStringOrder for Song {
                     .as_deref()
                     .map(|letter| format!("<Letter>{}</Letter>", escape_xml(letter)))
                     .unwrap_or_default();
+                // GuitarScore addition: a color other than the default, in an attribute
+                // Guitar Pro ignores (GP7 sections have no color).
+                let color = if marker.color == Marker::DEFAULT_COLOR {
+                    String::new()
+                } else {
+                    format!(" gsColor=\"{}\"", marker.color)
+                };
                 xml.push_str(&format!(
-                    "<Section>{letter}<Text>{}</Text></Section>",
+                    "<Section{color}>{letter}<Text>{}</Text></Section>",
                     escape_xml(&marker.title)
                 ));
             }

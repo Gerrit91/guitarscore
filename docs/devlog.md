@@ -7140,3 +7140,24 @@ into the same space, and the other notes' dots ran into the moved head.
   The selection stays marked during the drag, and the run's own rows are no drop target. A
   drag on a row outside the selection drags that one section, as before. The grid ruler's
   section drag still moves one section.
+
+## 2026-11-25 — No more "cannot be kept" alerts saving old files as GP7
+
+The owner's users saw the save check's alert ("Some of the song cannot be kept") when saving
+a tab. Over every GP3, GP4 and GP5 file on the owner's machine (Dropbox, Downloads, band
+folder) a GP7 save now reports no difference; before, four things showed up:
+- Notes ending in an empty line lost it: the GP7 reader split the notices with `lines()`,
+  which drops a last empty line. It splits on `\n` now. The check ignores empty lines at
+  the very end (a single empty line is stored as no notes in GP7).
+- A note louder or softer than its beat's dynamic (GP3-5 give every note one, GP6+ one
+  per beat) took the beat's dynamic: 311 notes in one file. Such a note keeps its velocity
+  in a `gsVelocity` attribute on the GPIF note, which Guitar Pro ignores (it plays the
+  beat's dynamic, as it would anyway).
+- GP3-5 section titles began with their length as a character ("\u{5}Intro", shown in the
+  score too): a marker's title is an int-byte-size string, read and written as an int-size
+  string. Both fixed; a GP5 file written before by GuitarScore had titles Guitar Pro read
+  with a stray first letter.
+- A section's color is kept in a `gsColor` attribute on the GPIF section (GP7 has none).
+- A track without an instrument name (GP3-5) gets one in GP7 ("Drums"): the check no longer
+  counts a name gained as a change.
+Save audit over the band files and test files: still 0 unexplained, 0 known.

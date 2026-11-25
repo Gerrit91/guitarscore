@@ -56,12 +56,16 @@ pub fn differences(before: &Song, after: &Song) -> Vec<Difference> {
         before.instructions(),
         after.instructions(),
     );
-    diff.check(
-        song,
-        "notes",
-        before.notes().collect::<Vec<_>>(),
-        after.notes().collect::<Vec<_>>(),
-    );
+    // Empty lines at the very end of the notes say nothing (and one empty line alone is
+    // stored as no notes at all in Guitar Pro 7): they are not compared.
+    fn notes(song: &Song) -> Vec<&str> {
+        let mut lines: Vec<&str> = song.notes().collect();
+        while lines.last().is_some_and(|line| line.is_empty()) {
+            lines.pop();
+        }
+        lines
+    }
+    diff.check(song, "notes", notes(before), notes(after));
     diff.check(song, "tempo", before.tempo(), after.tempo());
     diff.check(
         song,
@@ -131,12 +135,16 @@ fn compare_track(diff: &mut Diffs, a: &TrackView<'_>, b: &TrackView<'_>) {
     let at = a.index().to_string();
     diff.check(&at, "name", a.name(), b.name());
     diff.check(&at, "instrument", a.instrument_kind(), b.instrument_kind());
-    diff.check(
-        &at,
-        "instrument name",
-        a.instrument_name(),
-        b.instrument_name(),
-    );
+    // A track without an instrument name (GP3-5 have none) gets one in Guitar Pro 7
+    // ("Drums" for a kit), which it must write: a name gained is nothing lost.
+    if a.instrument_name().is_some() {
+        diff.check(
+            &at,
+            "instrument name",
+            a.instrument_name(),
+            b.instrument_name(),
+        );
+    }
     diff.check(&at, "strings", a.string_count(), b.string_count());
     diff.check(&at, "tuning", a.tuning().ok(), b.tuning().ok());
     diff.check(&at, "capo", a.capo().ok(), b.capo().ok());
