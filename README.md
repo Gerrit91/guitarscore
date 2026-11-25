@@ -7,6 +7,10 @@
 
 # GuitarScore
 
+[![CI](https://github.com/Gerrit91/guitarscore/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Gerrit91/guitarscore/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/Gerrit91/guitarscore?include_prereleases)](https://github.com/Gerrit91/guitarscore/releases)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+
 **A fast, free guitar tablature editor.** Write tabs at the speed you think, hear them as
 you type, and open the Guitar Pro files you already have. Native, written in Rust, and
 built never to lose your work.
