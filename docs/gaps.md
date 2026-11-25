@@ -203,10 +203,11 @@ testing the built site in headless Chromium; what could only be judged by ear is
 
 ### Files
 
-26. **No recovery journal.** Settings and shortcuts live in `localStorage`, but a closed
-    tab or a reload loses unsaved edits; the page only asks before it is left. After a
-    crash the crash screen offers the unsaved songs for download (item 30), from memory.
-    Needs a storage-backed journal (IndexedDB).
+26. **Recovery is a copy, not a journal** (2026-11-25). Every song with unsaved edits is
+    kept in IndexedDB as of the last second-long pause in editing, and the next visit
+    offers to restore it (`docs/web.md`, "Recovery"). Unlike the desktop journal it has no
+    undo history and can lose the last second of edits; a storage quota that refuses the
+    copy is not reported.
 27. **No export.** PDF, MIDI, the older Guitar Pro formats and audio (WAV) report
     "exporting ... is not available in the browser build yet" (`tasks.rs`). Saving as
     Guitar Pro 7 works, as a download.

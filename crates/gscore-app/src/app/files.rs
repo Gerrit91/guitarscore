@@ -40,6 +40,24 @@ pub(super) enum Dialog {
     Losses { path: PathBuf, details: Vec<String> },
     /// A document was not closed normally; restore it?
     Recover(Box<FoundSession>),
+    /// The browser kept a copy of a song whose page went with unsaved edits; restore it?
+    #[cfg(target_arch = "wasm32")]
+    RecoverCopy(super::web_rescue::FoundCopy),
+}
+
+/// `song` as opened, with GuitarScore's own state applied. The state travels in the song's
+/// free-text notes ("Notices", which Guitar Pro keeps): it is taken out and put onto the
+/// tracks before the document exists, so every edit (and its undo) carries it from the
+/// start.
+pub(super) fn with_song_state(mut song: gscore_model::Song) -> gscore_model::Song {
+    let (notes, state) = super::song_state::split(song.notes().map(str::to_owned));
+    if state.is_some() {
+        song = song.with_notes(notes);
+    }
+    if let Some(state) = state.as_ref() {
+        state.apply_to_song(&mut song);
+    }
+    song
 }
 
 impl GuitarScoreApp {
@@ -451,19 +469,7 @@ impl GuitarScoreApp {
                 Event::Opened { path, result } => match result {
                     Ok(opened) => {
                         let recent = path.clone();
-                        // GuitarScore's own state travels in the song's free-text notes
-                        // ("Notices", which Guitar Pro keeps): take it out and apply it.
-                        let mut song = *opened.song;
-                        let (notes, state) =
-                            super::song_state::split(song.notes().map(str::to_owned));
-                        if state.is_some() {
-                            song = song.with_notes(notes);
-                        }
-                        // The state goes onto the tracks before the document exists, so
-                        // every edit (and its undo) carries it from the start.
-                        if let Some(state) = state.as_ref() {
-                            state.apply_to_song(&mut song);
-                        }
+                        let song = with_song_state(*opened.song);
                         let (document, problem) = match opened.journal {
                             Ok(Some(journal)) => (
                                 Document::with_journal(path, song, opened.format, journal),
@@ -718,6 +724,8 @@ impl GuitarScoreApp {
             Dialog::Unsaved(then) => self.unsaved_dialog(ctx, then),
             Dialog::Losses { path, details } => self.losses_dialog(ctx, path, &details),
             Dialog::Recover(session) => self.recover_dialog(ctx, *session),
+            #[cfg(target_arch = "wasm32")]
+            Dialog::RecoverCopy(copy) => self.recover_copy_dialog(ctx, copy),
         }
     }
 

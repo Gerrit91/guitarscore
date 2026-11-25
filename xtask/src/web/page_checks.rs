@@ -1,6 +1,7 @@
 //! The smoke test's checks of the running editor page (after it has started): a new
 //! build takes over at the first visit after a deploy, an edit leaves a rescue copy of the
-//! song with the page, and the crash screen a panic shows offers it for download. Driven
+//! song with the page, the crash screen a panic shows offers it for download, and the next
+//! visit offers to restore it. Driven
 //! through the page's own events (a dropped file, typed keys), as a user would.
 
 use std::fmt::Write as _;
@@ -145,7 +146,7 @@ pub(super) fn edit_leaves_a_rescue_copy(browser: &mut Browser) -> Result<String,
              {{ key: k, code, bubbles: true, cancelable: true }})); \
            let typed = false; \
            const poll = () => {{ \
-             const copies = Object.values(globalThis.guitarscoreRescue ?? {{}}); \
+             const copies = globalThis.guitarscoreRescue?.copies() ?? []; \
              const copy = copies.find((c) => c && c.name === '{SONG_NAME}'); \
              if (copy) {{ const b = copy.bytes; \
                return resolve(b[0] === 80 && b[1] === 75 ? 'ok, ' + b.length + ' bytes' \
@@ -169,7 +170,7 @@ pub(super) fn edit_leaves_a_rescue_copy(browser: &mut Browser) -> Result<String,
 /// Shows the crash screen (the function the panic hook calls) and checks that it offers
 /// the rescue copies for download. Run last on the page: the editor is hidden after it.
 pub(super) fn crash_screen_offers_the_copies(browser: &mut Browser) -> Result<(), String> {
-    let script = "(() => { const copies = Object.values(globalThis.guitarscoreRescue ?? {}); \
+    let script = "(() => { const copies = globalThis.guitarscoreRescue?.copies() ?? []; \
                   globalThis.guitarscoreCrashed('smoke test: a simulated panic'); \
                   const screen = document.getElementById('crashed'); \
                   if (!screen || screen.hidden) return 'the crash screen is not shown'; \
@@ -180,5 +181,55 @@ pub(super) fn crash_screen_offers_the_copies(browser: &mut Browser) -> Result<()
                     return 'the copies are not offered: ' + screen.textContent; \
                   return 'ok'; })()";
     let result = browser.eval(script)?;
+    if result == "ok" { Ok(()) } else { Err(result) }
+}
+
+/// After the crash screen: the next visit to `url` must find the crashed page's copy in
+/// storage, ask about it (`data-guitarscore-recovery="asking"`), and on Enter (Restore)
+/// open it in a tab whose copy the page now keeps. The stored copies are cleared
+/// afterwards, so later visits are not asked again.
+pub(super) fn the_next_visit_restores_the_copy(
+    browser: &mut Browser,
+    url: &str,
+) -> Result<(), String> {
+    let asked = "new Promise((resolve) => { const started = Date.now(); \
+         const poll = () => { const body = document.body; \
+         if (body?.dataset.guitarscoreReady === 'true' && \
+             body.dataset.guitarscoreRecovery === 'asking') return resolve('ok'); \
+         if (Date.now() - started > 30000) return resolve('not asked (ready: ' + \
+           body?.dataset.guitarscoreReady + ', recovery: ' + body?.dataset.guitarscoreRecovery + \
+           ', found: ' + JSON.stringify(globalThis.guitarscoreRescue?.found?.map((c) => c.name)) + ')'); \
+         setTimeout(poll, 100); }; poll(); })";
+    let result = browser.evaluate(url, asked)?;
+    if result != "ok" {
+        return Err(format!("the next visit after a crash: {result}"));
+    }
+    let restore = format!(
+        "new Promise((resolve) => {{ \
+           const canvas = document.getElementById('guitarscore'); canvas.focus(); \
+           const key = (type) => canvas.dispatchEvent(new KeyboardEvent(type, \
+             {{ key: 'Enter', code: 'Enter', bubbles: true, cancelable: true }})); \
+           key('keydown'); key('keyup'); \
+           const started = Date.now(); \
+           const poll = () => {{ \
+             const state = document.body.dataset.guitarscoreRecovery; \
+             const own = globalThis.guitarscoreRescue.copies().some((c) => c.name === '{SONG_NAME}'); \
+             if (state === 'restored' && own) return resolve('ok'); \
+             if (Date.now() - started > 10000) \
+               return resolve('not restored (recovery: ' + state + ', kept as this page\\'s copy: ' + own + ')'); \
+             setTimeout(poll, 100); }}; \
+           poll(); }})"
+    );
+    let result = browser.eval(&restore)?;
+    if result != "ok" {
+        return Err(format!("Restore: {result}"));
+    }
+    let clear = "new Promise((resolve) => { const open = indexedDB.open('guitarscore-recovery'); \
+         open.onerror = () => resolve('cannot open the store'); \
+         open.onsuccess = () => { const transaction = open.result.transaction('copies', 'readwrite'); \
+           transaction.objectStore('copies').clear(); \
+           transaction.oncomplete = () => { open.result.close(); resolve('ok'); }; \
+           transaction.onerror = () => resolve('cannot clear the store'); }; })";
+    let result = browser.eval(clear)?;
     if result == "ok" { Ok(()) } else { Err(result) }
 }

@@ -23,8 +23,8 @@ pub(crate) fn set_unsaved(unsaved: bool) {
 }
 
 /// Makes the browser ask before the page is closed or reloaded while a song has unsaved
-/// edits. There is no recovery journal in the browser yet: this and the crash screen's
-/// copies (see [`install_panic_hook`]) are the only guards.
+/// edits. The page keeps a copy of each such song for the next visit
+/// (`app/web_rescue.rs`), but only as of the last pause in editing.
 fn warn_before_leaving(window: &web_sys::Window) -> Result<(), JsValue> {
     let handler = Closure::<dyn FnMut(web_sys::BeforeUnloadEvent)>::new(
         |event: web_sys::BeforeUnloadEvent| {
@@ -95,8 +95,8 @@ pub async fn start() -> Result<(), JsValue> {
             &cc.egui_ctx,
             None,
             keymap,
-            // The recovery journal is a file journal; the browser build does not write
-            // one yet (docs/web.md).
+            // The recovery journal is a file journal; the browser keeps copies of unsaved
+            // songs in IndexedDB instead (`app/web_rescue.rs`, docs/web.md).
             None,
             settings,
             None,

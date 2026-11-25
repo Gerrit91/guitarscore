@@ -234,6 +234,10 @@
     <noscript>GuitarScore needs JavaScript and WebAssembly.</noscript>
     <script type="module">
       import init from "./guitarscore.js";
+      import { startRecovery } from "./recovery.js";
+
+      // Copies of unsaved songs, kept for the crash screen and the next visit.
+      const recovery = startRecovery();
 
       // Used by the browser smoke test to measure download + SoundFont load.
       globalThis.__guitarscoreStarted = performance.now();
@@ -274,8 +278,8 @@
       };
 
       // The crash screen. A panic aborts the editor's WebAssembly instance; its panic hook
-      // calls this. The editor keeps a copy of every song with unsaved edits here
-      // (globalThis.guitarscoreRescue, by tab), outside the instance, so it survives.
+      // calls this. The editor keeps a copy of every song with unsaved edits in the
+      // recovery store (recovery.js), outside the instance, so it survives.
       let crashed = false;
       const download = (name, bytes) => {
         const url = URL.createObjectURL(new Blob([bytes], { type: "application/octet-stream" }));
@@ -293,14 +297,15 @@
         document.getElementById("guitarscore").style.visibility = "hidden";
         const screen = document.getElementById("crashed");
         const rescue = document.getElementById("crash-rescue");
-        const copies = Object.values(globalThis.guitarscoreRescue ?? {}).filter(
+        const copies = recovery.copies().filter(
           (copy) => copy && typeof copy.name === "string" && copy.bytes instanceof Uint8Array,
         );
         const pending = new Set(copies);
         if (copies.length > 0) {
           document.getElementById("crash-text").textContent =
             "An internal error stopped the editor. Your unsaved songs are kept as of your " +
-            "last pause in editing (about a second): download them before you reload.";
+            "last pause in editing (about a second). The next visit offers to restore " +
+            "them; to be safe, download them before you reload.";
           for (const copy of copies) {
             const button = document.createElement("button");
             button.type = "button";
