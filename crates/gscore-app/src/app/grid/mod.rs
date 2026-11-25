@@ -170,6 +170,16 @@ impl GuitarScoreApp {
         let document = &mut tab.document;
         let grid = document.grid();
         let cursor = document.editor().cursor();
+        // The grid follows the cursor to another bar (from the score, the keys, a
+        // shift-click), bringing it into sight when it is out of it. The first frame only
+        // notes where the cursor is, so opening a song does not scroll.
+        let cursor_measure = cursor.measure.get();
+        if tab.grid_followed != Some(cursor_measure) {
+            if tab.grid_followed.is_some() && tab.grid_reveal.is_none() {
+                tab.grid_reveal = Some(cursor_measure);
+            }
+            tab.grid_followed = Some(cursor_measure);
+        }
         let rows = rows::track_rows(document, &shown);
         let master = document.song().master_mix();
         let measure_count = document.song().measure_count();

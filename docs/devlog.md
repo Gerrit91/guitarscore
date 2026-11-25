@@ -7129,3 +7129,7 @@ into the same space, and the other notes' dots ran into the moved head.
   keep the beat the selection started at as the pivot, so a shift-click before a selection
   made from its left end shrank it the other way, and a bar selection was dropped.
 - The count-in switch reads "Every time a loop starts" (the full sentence is its tooltip).
+- The song grid follows the cursor: when it goes to another bar (a click in the score, the
+  arrow keys, a shift-click), the grid scrolls that bar into sight if it is out of it
+  (`Tab::grid_followed`). It does not hold the view: the grid scrolls freely while the
+  cursor stays in its bar. Only sideways; the track rows do not follow yet.
