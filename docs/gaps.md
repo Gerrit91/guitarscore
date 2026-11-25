@@ -207,9 +207,10 @@ testing the built site in headless Chromium; what could only be judged by ear is
     tab or a reload loses unsaved edits; the page only asks before it is left. After a
     crash the crash screen offers the unsaved songs for download (item 30), from memory.
     Needs a storage-backed journal (IndexedDB).
-27. **No export.** PDF, MIDI, the older Guitar Pro formats and audio (WAV) report
-    "exporting ... is not available in the browser build yet" (`tasks.rs`). Saving as
-    Guitar Pro 7 works, as a download.
+27. **No audio export.** PDF, MIDI and every Guitar Pro format export as downloads
+    (2026-11-25), but they run on the UI thread, so a long song's PDF holds the page for a
+    moment. WAV and stems are not offered in the browser: the SoundFont and the engine live
+    in the audio worklet, and an offline render there would need its own path.
 28. **Saving is a download.** There is no file handle to write back to: every save
     downloads a new file (the File System Access API is not used), and the `.bak` copy and
     the read-back check of the desktop save do not apply.

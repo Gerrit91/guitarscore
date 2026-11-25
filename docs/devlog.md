@@ -7179,3 +7179,16 @@ From the owner's drum tabs:
   still overlaps; heads a step apart in two voices still meet.
 - The song's key signature reached the percussion staff: with sharps or flats, every drum
   on a letter the key alters got a natural sign. A drum staff takes no accidentals now.
+
+## 2026-11-25 — Browser: File › Export downloads PDF, MIDI and Guitar Pro files
+
+Every export in the browser said "not available yet". The export helpers now build the
+file's bytes first (`gscore_session::export_bytes` for the Guitar Pro formats, with the same
+read-back loss report as `export`) and then write them: on the desktop next to the target
+and renamed into place (MIDI used to be written directly), in the browser as a download
+under the suggested name, as Save does. WAV and stems are left out of the browser's Export
+menu: the SoundFont and the engine live in the audio worklet.
+
+Checked in headless Chromium through the real menus: PDF (48 KB, `%PDF-`), MIDI (`MThd`)
+and GP5 downloads of `steel_guitar_dadgad.gp`. Not in the smoke test: egui's menus have no
+keyboard route to click through reliably.

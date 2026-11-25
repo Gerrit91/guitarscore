@@ -45,7 +45,6 @@ pub(crate) enum Event {
     #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
     PickedMasterImpulse { place: usize, path: Option<PathBuf> },
     /// The export dialog closed; `None` if it was cancelled.
-    #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
     PickedExport {
         /// The chosen export format.
         format: crate::export::ExportFormat,
@@ -795,20 +794,31 @@ impl Tasks {
         Ok(())
     }
 
-    /// Exporting is not available in the browser build yet.
+    /// A browser has no save dialog: an export downloads the file under the suggested
+    /// name, as a save does.
     #[cfg(target_arch = "wasm32")]
     pub(crate) fn pick_export_file(
         &mut self,
-        _format: crate::export::ExportFormat,
-        _name: String,
-        _ctx: &egui::Context,
+        format: crate::export::ExportFormat,
+        name: String,
+        ctx: &egui::Context,
     ) -> Result<(), String> {
-        Err("exporting files is not available in the browser build yet".to_owned())
+        self.deliver(
+            Event::PickedExport {
+                format,
+                picked: Some(Picked {
+                    path: PathBuf::from(name),
+                    bytes: Vec::new(),
+                }),
+            },
+            ctx,
+        );
+        Ok(())
     }
 
     /// Lays out `tracks` of `song` together (one track, or several stacked in every
-    /// system) on pages with `options` and writes them to `path` as PDF, in the background. The file is written next to `path` first and then moved there,
-    /// so a failed export never leaves half a file.
+    /// system) on pages with `options` and writes them to `path` as PDF, in the background
+    /// (see [`write_export`]).
     pub(crate) fn export_pdf(
         &mut self,
         song: Song,
@@ -1069,8 +1079,8 @@ impl Tasks {
     }
 
     /// A wasm instance has no threads: the job runs here and reports through the same
-    /// channel on the next poll. (It is used only by the recovery and PDF jobs, which the
-    /// browser build does not start.)
+    /// channel on the next poll. The browser build uses it for exports (PDF, MIDI, Guitar
+    /// Pro), which hold the page while they run.
     #[cfg(target_arch = "wasm32")]
     fn spawn(
         &mut self,
@@ -1141,6 +1151,35 @@ async fn read_web_file(handle: &rfd::FileHandle) -> Result<Vec<u8>, String> {
     Ok(bytes)
 }
 
+/// `path`'s file name, or `fallback` without one.
+fn file_name(path: &std::path::Path, fallback: &str) -> String {
+    path.file_name().map_or_else(
+        || fallback.to_owned(),
+        |name| name.to_string_lossy().into_owned(),
+    )
+}
+
+/// Writes an exported file's `bytes` to `path`: next to it first and then moved there, so a
+/// failed export never leaves half a file.
+#[cfg(not(target_arch = "wasm32"))]
+fn write_export(path: &std::path::Path, bytes: &[u8]) -> Result<(), String> {
+    let name = file_name(path, "export");
+    let temp = path.with_file_name(format!(".{name}.gscore-tmp-{}", std::process::id()));
+    std::fs::write(&temp, bytes)
+        .and_then(|()| std::fs::rename(&temp, path))
+        .map_err(|e| {
+            let _ = std::fs::remove_file(&temp);
+            format!("cannot write {}: {e}", path.display())
+        })
+}
+
+/// Hands an exported file's `bytes` to the browser as a download named after `path`.
+#[cfg(target_arch = "wasm32")]
+fn write_export(path: &std::path::Path, bytes: &[u8]) -> Result<(), String> {
+    let name = file_name(path, "export");
+    download(&name, bytes).map_err(|error| format!("cannot download {name}: {error}"))
+}
+
 /// The work of [`Tasks::export_pdf`]: the status message, or why it failed.
 fn export_pdf(
     song: &Song,
@@ -1168,17 +1207,8 @@ fn export_pdf(
         song.title(),
     )
     .map_err(|e| e.to_string())?;
-    let name = path.file_name().map_or_else(
-        || "export.pdf".to_owned(),
-        |name| name.to_string_lossy().into_owned(),
-    );
-    let temp = path.with_file_name(format!(".{name}.gscore-tmp-{}", std::process::id()));
-    std::fs::write(&temp, &pdf)
-        .and_then(|()| std::fs::rename(&temp, path))
-        .map_err(|e| {
-            let _ = std::fs::remove_file(&temp);
-            format!("cannot write {}: {e}", path.display())
-        })?;
+    let name = file_name(path, "export.pdf");
+    write_export(path, &pdf)?;
     let pages = layout.pages.len();
     Ok(format!(
         "Exported {name} ({pages} page{})",
@@ -1188,12 +1218,10 @@ fn export_pdf(
 
 /// The work of [`Tasks::export_score`]: the status message, or why it failed.
 fn export_score(song: &Song, format: FileFormat, path: &std::path::Path) -> Result<String, String> {
-    let report = gscore_session::export(song, path, format).map_err(|e| e.to_string())?;
-    let name = path.file_name().map_or_else(
-        || "export".to_owned(),
-        |name| name.to_string_lossy().into_owned(),
-    );
-    Ok(match report.losses.len() {
+    let (bytes, losses) = gscore_session::export_bytes(song, format).map_err(|e| e.to_string())?;
+    let name = file_name(path, "export");
+    write_export(path, &bytes)?;
+    Ok(match losses.len() {
         0 => format!("Exported {name}"),
         count => format!(
             "Exported {name}; {count} detail{} of the song {} not kept by this format",
@@ -1219,11 +1247,8 @@ fn export_midi(song: &Song, path: &std::path::Path) -> Result<String, String> {
     }
     let sequence = Sequence::new(&song, None).map_err(|e| e.to_string())?;
     let bytes = to_smf(&sequence, song.title()).map_err(|e| e.to_string())?;
-    std::fs::write(path, &bytes).map_err(|e| format!("cannot write {}: {e}", path.display()))?;
-    let name = path.file_name().map_or_else(
-        || "export.mid".to_owned(),
-        |name| name.to_string_lossy().into_owned(),
-    );
+    let name = file_name(path, "export.mid");
+    write_export(path, &bytes)?;
     Ok(format!(
         "Exported {name} ({} track{}, {} measure{})",
         sequence.tracks.len(),

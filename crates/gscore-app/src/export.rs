@@ -37,6 +37,13 @@ impl ExportFormat {
         ExportFormat::Gp3,
     ];
 
+    /// Whether this build can export it: the browser build has no audio export yet (the
+    /// SoundFont and the engine live in the audio worklet, and an offline render would
+    /// hold the page).
+    pub(crate) fn available(self) -> bool {
+        !(cfg!(target_arch = "wasm32") && self == ExportFormat::Wav)
+    }
+
     /// What the menu and the dialog title call it.
     pub(crate) fn label(self) -> &'static str {
         match self {

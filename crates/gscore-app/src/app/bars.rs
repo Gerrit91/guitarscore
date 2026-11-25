@@ -85,7 +85,8 @@ impl GuitarScoreApp {
                 let mut stems = false;
                 ui.add_enabled_ui(has_document, |ui| {
                     ui.menu_button("Export", |ui| {
-                        for format in crate::export::ExportFormat::ALL {
+                        let formats = crate::export::ExportFormat::ALL.into_iter();
+                        for format in formats.filter(|format| format.available()) {
                             let mut entry = ui.button(format.label());
                             if let Some(tip) = format.loses_details() {
                                 entry = entry.on_hover_text(tip);
@@ -94,6 +95,10 @@ impl GuitarScoreApp {
                                 export = Some(format);
                                 ui.close();
                             }
+                        }
+                        // Audio export is not in the browser build yet.
+                        if !crate::export::ExportFormat::Wav.available() {
+                            return;
                         }
                         ui.separator();
                         if ui
