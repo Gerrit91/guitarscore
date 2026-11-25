@@ -19,6 +19,8 @@ mod headers;
 mod key_signature;
 mod lyric;
 mod measure;
+#[cfg(test)]
+mod measure_tests;
 mod midi;
 mod mix_table;
 mod note;

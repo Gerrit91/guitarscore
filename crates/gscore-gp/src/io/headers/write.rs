@@ -82,7 +82,8 @@ pub(super) fn measure_header(
     if (flags & 0x20) == 0x20
         && let Some(marker) = &header.marker
     {
-        write_int_size_string(data, &marker.title);
+        // An int-byte-size string, as Guitar Pro reads it (see `read_marker`).
+        write_int_byte_size_string(data, &marker.title);
         write_color(data, marker.color);
     }
     if version.0 >= 4 && (flags & 0x40) == 0x40 {

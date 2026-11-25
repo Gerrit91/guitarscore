@@ -12,8 +12,11 @@ use crate::io::*;
 
 pub(crate) fn read_marker(data: &[u8], seek: &mut usize) -> GpResult<Marker> {
     use crate::io::primitive::*;
+    // GuitarScore fix: a marker's title is an int-byte-size string (a length byte after the
+    // size), as Guitar Pro writes it; it was read as an int-size string, so every title
+    // began with its length as a character ("\u{5}Intro").
     let mut marker = Marker {
-        title: read_int_size_string(data, seek)?,
+        title: read_int_byte_size_string(data, seek)?,
         ..Default::default()
     };
     marker.color = read_color(data, seek)?;

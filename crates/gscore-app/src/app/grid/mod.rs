@@ -170,6 +170,16 @@ impl GuitarScoreApp {
         let document = &mut tab.document;
         let grid = document.grid();
         let cursor = document.editor().cursor();
+        // The grid follows the cursor to another bar (from the score, the keys, a
+        // shift-click), bringing it into sight when it is out of it. The first frame only
+        // notes where the cursor is, so opening a song does not scroll.
+        let cursor_measure = cursor.measure.get();
+        if tab.grid_followed != Some(cursor_measure) {
+            if tab.grid_followed.is_some() && tab.grid_reveal.is_none() {
+                tab.grid_reveal = Some(cursor_measure);
+            }
+            tab.grid_followed = Some(cursor_measure);
+        }
         let rows = rows::track_rows(document, &shown);
         let master = document.song().master_mix();
         let measure_count = document.song().measure_count();
@@ -371,6 +381,7 @@ impl GuitarScoreApp {
                 ),
                 track_column: self.view.grid_track_column(),
                 stripes: self.settings.grid_stripes,
+                reveal: tab.grid_reveal.take(),
             },
             &levels,
             &comp_sends,
@@ -882,6 +893,8 @@ pub(super) struct GridView {
     track_column: f32,
     /// Whether every other row has a lighter background (a setting).
     stripes: bool,
+    /// A bar to scroll into sight this frame, if it is out of it.
+    reveal: Option<usize>,
 }
 
 impl GridView {
@@ -990,9 +1003,20 @@ fn body(
                 }
             });
         });
-    let scrolled = egui::ScrollArea::both()
+    let mut area = egui::ScrollArea::both()
         .id_salt("song_grid")
-        .vertical_scroll_offset(column.state.clamped_offset().y)
+        .vertical_scroll_offset(column.state.clamped_offset().y);
+    // A section chosen in the Song tab: its first bar comes into sight, a bar from the
+    // left edge, unless it is in sight already.
+    if let Some(measure) = view.reveal {
+        let column_width = MEASURE_WIDTH * view.zoom;
+        let left = measure as f32 * column_width;
+        let shown = matrix_width.max(column_width);
+        if left < offset.x || left + column_width > offset.x + shown {
+            area = area.horizontal_scroll_offset((left - column_width).max(0.0));
+        }
+    }
+    let scrolled = area
         .max_width(ui.available_width())
         .max_height(height)
         .auto_shrink([false, false])

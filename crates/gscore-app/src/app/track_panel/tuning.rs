@@ -118,6 +118,8 @@ pub(super) struct TuningDialog {
     playing: Option<usize>,
     /// Why the reference tone does not sound, if it does not.
     tone_error: Option<String>,
+    /// The string whose note list is open, so it scrolls to the note once, as it opens.
+    open_list: Option<usize>,
 }
 
 impl TuningDialog {
@@ -140,6 +142,7 @@ impl TuningDialog {
             tone: super::super::tuner::Tone::default(),
             playing: None,
             tone_error: None,
+            open_list: None,
         }
     }
 
@@ -235,11 +238,23 @@ impl TuningDialog {
         let mut chosen = matching.map(|preset| preset.name);
         ui.horizontal(|ui| {
             ui.label(RichText::new("Common tuning").color(style::tokens(ui).text_weak));
+            // Only tunings for as many strings as the draft has: picking one never turns a
+            // 4-string bass into a 6-string (the string count is set below).
+            let strings = self.strings;
             let combo = egui::ComboBox::from_id_salt("common_tuning")
                 .selected_text(chosen.unwrap_or("Custom"))
                 .width(WIDTH - 130.0)
                 .show_ui(ui, |ui| {
-                    for preset in PRESETS {
+                    let fitting: Vec<&Preset> = PRESETS
+                        .iter()
+                        .filter(|preset| preset.pitches.len() == strings)
+                        .collect();
+                    if fitting.is_empty() {
+                        ui.label(
+                            RichText::new(format!("No common tuning for {strings} strings")).weak(),
+                        );
+                    }
+                    for preset in fitting {
                         let label = format!("{} ({} strings)", preset.name, preset.pitches.len());
                         if ui
                             .selectable_label(chosen == Some(preset.name), label)
@@ -264,7 +279,31 @@ impl TuningDialog {
         }
 
         ui.add_space(8.0);
-        self.strings_visual(ui);
+        // The strings, and beside them a bracket over all of them that tunes every string a
+        // semitone down or up at once (the whole instrument down to Eb, say); a step that
+        // would take a string out of range is not taken.
+        let mut centers = Vec::new();
+        ui.horizontal_top(|ui| {
+            ui.vertical(|ui| self.strings_visual(ui, &mut centers));
+            ui.add_space(14.0);
+            let (down, up) = all_strings(ui, &centers);
+            let shift = |pitches: &[u8], up: bool| -> Option<Vec<u8>> {
+                pitches
+                    .iter()
+                    .map(|&pitch| {
+                        if up {
+                            pitch.checked_add(1).filter(|pitch| *pitch <= 127)
+                        } else {
+                            pitch.checked_sub(1)
+                        }
+                    })
+                    .collect()
+            };
+            if let Some(shifted) = (down || up).then(|| shift(&self.pitches, up)).flatten() {
+                self.pitches = shifted;
+                self.error = None;
+            }
+        });
         ui.add_space(8.0);
 
         // String count and capo.
@@ -313,7 +352,8 @@ impl TuningDialog {
 
     /// The strings as a headstock: a nut at the left and one line per string, thickest for
     /// the lowest, with its note beside it.
-    fn strings_visual(&mut self, ui: &mut egui::Ui) {
+    /// `centers` gets each string's line height, for the bracket beside them.
+    fn strings_visual(&mut self, ui: &mut egui::Ui, centers: &mut Vec<f32>) {
         let tokens = style::tokens(ui);
         let count = self.strings;
         for index in 0..count {
@@ -322,6 +362,7 @@ impl TuningDialog {
                 let (line, _) = ui.allocate_exact_size(vec2(90.0, 16.0), egui::Sense::hover());
                 let thickness = 1.0 + (index as f32 / count.max(1) as f32) * 2.4;
                 let y = line.center().y;
+                centers.push(y);
                 // The nut.
                 ui.painter().rect_filled(
                     egui::Rect::from_min_max(
@@ -355,14 +396,25 @@ impl TuningDialog {
                 if down {
                     pitch = pitch.saturating_sub(1);
                 }
+                // The list opens at the string's note (it runs from B7 down to C0).
+                let just_opened = self.open_list != Some(index);
                 let combo = egui::ComboBox::from_id_salt(("tuning_note", index))
                     .selected_text(note_name(current))
                     .width(58.0)
                     .show_ui(ui, |ui| {
                         for candidate in (LOWEST..=HIGHEST).rev() {
-                            ui.selectable_value(&mut pitch, candidate, note_name(candidate));
+                            let response =
+                                ui.selectable_value(&mut pitch, candidate, note_name(candidate));
+                            if just_opened && candidate == current {
+                                response.scroll_to_me(Some(Align::Center));
+                            }
                         }
                     });
+                if combo.inner.is_some() {
+                    self.open_list = Some(index);
+                } else if self.open_list == Some(index) {
+                    self.open_list = None;
+                }
                 ui.ctx().accesskit_node_builder(combo.response.id, |node| {
                     node.set_label(format!("String {number} note"));
                 });
@@ -491,6 +543,105 @@ pub(super) fn button(ui: &mut egui::Ui, snapshot: &TrackPanel, open: &mut bool) 
     {
         *open = true;
     }
+}
+
+/// Beside the strings: a thin bracket over all of them, with a button above to tune every
+/// string a semitone higher and one below to tune them a semitone lower. `centers` are the
+/// strings' heights. Returns whether the lower and the higher button were clicked.
+fn all_strings(ui: &mut egui::Ui, centers: &[f32]) -> (bool, bool) {
+    const WIDTH: f32 = 92.0;
+    const BUTTON: egui::Vec2 = vec2(44.0, 24.0);
+    let (Some(&first), Some(&last)) = (centers.first(), centers.last()) else {
+        return (false, false);
+    };
+    let tokens = style::tokens(ui);
+    let left = ui.cursor().left();
+    // At least room for both buttons and the caption between them.
+    let height = (last - first + 16.0).max(BUTTON.y * 2.0 + 30.0);
+    let rect = egui::Rect::from_min_size(egui::pos2(left, first - 8.0), vec2(WIDTH, height));
+    ui.allocate_rect(rect, egui::Sense::hover());
+    let painter = ui.painter_at(rect.expand(2.0));
+    let stroke = egui::Stroke::new(1.0, tokens.text_weak);
+    // The bracket: a line down the strings with a short tick at each, and a stem to the
+    // buttons from its middle.
+    let x = rect.left() + 5.0;
+    painter.line_segment([egui::pos2(x, first), egui::pos2(x, last)], stroke);
+    for &y in centers {
+        painter.line_segment([egui::pos2(x - 5.0, y), egui::pos2(x, y)], stroke);
+    }
+    let middle = rect.center().y;
+    let column = egui::Rect::from_min_max(egui::pos2(x + 10.0, rect.top()), rect.max);
+    painter.line_segment(
+        [
+            egui::pos2(x, (first + last) / 2.0),
+            egui::pos2(column.left(), middle),
+        ],
+        stroke,
+    );
+    let cx = column.center().x;
+    painter.text(
+        egui::pos2(cx, middle - 7.0),
+        egui::Align2::CENTER_CENTER,
+        "All strings",
+        egui::FontId::proportional(11.0),
+        tokens.text,
+    );
+    painter.text(
+        egui::pos2(cx, middle + 7.0),
+        egui::Align2::CENTER_CENTER,
+        "a semitone",
+        egui::FontId::proportional(10.0),
+        tokens.text_weak,
+    );
+    // One button: a chevron pointing the way the strings go.
+    let button = |center: Pos2, up: bool| -> bool {
+        let area = egui::Rect::from_center_size(center, BUTTON);
+        let (label, tip) = if up {
+            (
+                "All strings a semitone higher",
+                "Tune every string a semitone higher",
+            )
+        } else {
+            (
+                "All strings a semitone lower",
+                "Tune every string a semitone lower",
+            )
+        };
+        let response = ui.interact(
+            area,
+            ui.scope_id().with(("all_strings", up)),
+            egui::Sense::click(),
+        );
+        ui.ctx().accesskit_node_builder(response.id, |node| {
+            node.set_label(label);
+            node.set_role(egui::Role::Button);
+        });
+        let visuals = ui.style().interact(&response);
+        ui.painter().rect_stroke(
+            area,
+            6.0,
+            egui::Stroke::new(1.0, tokens.line),
+            egui::StrokeKind::Inside,
+        );
+        if response.hovered() || response.has_focus() {
+            ui.painter()
+                .rect_filled(area.shrink(1.0), 5.0, visuals.weak_bg_fill);
+        }
+        let (dx, dy) = (6.0, if up { -3.0 } else { 3.0 });
+        let c = area.center();
+        ui.painter().line(
+            vec![
+                egui::pos2(c.x - dx, c.y - dy),
+                egui::pos2(c.x, c.y + dy),
+                egui::pos2(c.x + dx, c.y - dy),
+            ],
+            egui::Stroke::new(1.6, visuals.fg_stroke.color),
+        );
+        response.on_hover_text(tip).clicked()
+    };
+    let up = button(egui::pos2(cx, column.top() + BUTTON.y / 2.0), true);
+    let down = button(egui::pos2(cx, column.bottom() - BUTTON.y / 2.0), false);
+    (down, up)
 }
 
 /// The note name of a MIDI pitch ("E2", "F#3").

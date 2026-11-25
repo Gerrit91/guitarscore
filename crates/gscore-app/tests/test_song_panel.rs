@@ -122,6 +122,71 @@ fn a_section_row_selects_all_its_bars_in_every_track() {
     );
 }
 
+/// Clicks at `pos` with `modifiers` held.
+fn click_with(
+    harness: &mut Harness<'static, GuitarScoreApp>,
+    pos: egui::Pos2,
+    modifiers: egui::Modifiers,
+) {
+    harness
+        .input_mut()
+        .events
+        .push(egui::Event::ModifiersChanged(modifiers));
+    harness.hover_at(pos);
+    for pressed in [true, false] {
+        harness.input_mut().events.push(egui::Event::PointerButton {
+            pos,
+            button: egui::PointerButton::Primary,
+            pressed,
+            modifiers,
+        });
+    }
+    harness.run();
+    harness
+        .input_mut()
+        .events
+        .push(egui::Event::ModifiersChanged(egui::Modifiers::NONE));
+    harness.run();
+}
+
+/// Shift-click on a section row grows the selection to take in that section and every
+/// one between, in either direction.
+#[test]
+fn shift_click_in_the_section_list_selects_several_sections() {
+    let mut harness = song_with_sections(false);
+    harness.get_by_label("Song tab").click();
+    harness.run();
+    harness
+        .get_by_label("Select the bars of section Verse")
+        .click();
+    harness.run();
+    let chorus = harness
+        .get_by_label("Select the bars of section Chorus")
+        .rect()
+        .center();
+    click_with(&mut harness, chorus, egui::Modifiers::SHIFT);
+    let span = |harness: &Harness<'static, GuitarScoreApp>| {
+        harness
+            .state()
+            .selection()
+            .map(|selection| (selection.start(), selection.end()))
+    };
+    assert_eq!(span(&harness), Some((2, 8)), "Verse and Chorus");
+    // Up again: the Intro joins, the far end stays.
+    let intro = harness
+        .get_by_label("Select the bars of section Intro")
+        .rect()
+        .center();
+    click_with(&mut harness, intro, egui::Modifiers::SHIFT);
+    assert_eq!(span(&harness), Some((0, 8)), "every section");
+    // A plain click selects one section again.
+    harness
+        .get_by_label("Select the bars of section Verse")
+        .click();
+    harness.run();
+    assert_eq!(span(&harness), Some((2, 4)));
+}
+
 #[test]
 fn the_song_tab_edits_the_song_and_undoes_a_field_as_one_step() {
     let mut harness = song_with_sections(false);
@@ -565,6 +630,66 @@ fn dragging_a_section_row_in_the_song_tab_swaps_the_sections() {
             focus: 5,
             track: None,
         })
+    );
+}
+
+/// Several sections selected with shift-click are dragged together: the run swaps with
+/// the section it is dropped on, and stays selected where it went.
+#[test]
+fn several_selected_sections_are_dragged_together() {
+    let mut harness = song_with_sections(false);
+    harness.get_by_label("Song tab").click();
+    harness.run();
+    // Intro (bars 1-2) and Verse (3-5) selected together.
+    harness
+        .get_by_label("Select the bars of section Intro")
+        .click();
+    harness.run();
+    let verse = section_row(&harness, "Verse");
+    click_with(&mut harness, verse, egui::Modifiers::SHIFT);
+    assert_eq!(
+        harness
+            .state()
+            .selection()
+            .map(|selection| (selection.start(), selection.end())),
+        Some((0, 4))
+    );
+    // Drag the Verse's row (part of the selection) onto the Chorus's.
+    let to = section_row(&harness, "Chorus");
+    harness.hover_at(verse);
+    harness.run();
+    harness.drag_at(verse);
+    harness.step();
+    harness.hover_at(verse + egui::vec2(10.0, 0.0));
+    harness.step();
+    // The selection stays while the run is dragged.
+    assert!(harness.state().selection().is_some());
+    harness.hover_at(to);
+    harness.step();
+    harness.drop_at(to);
+    harness.run();
+    // The Chorus (bars 6-9) comes first, then the Intro and the Verse.
+    let song = harness.state().document().unwrap().song();
+    let order: Vec<(usize, String)> = (0..song.measure_count())
+        .filter_map(|measure| {
+            song.section(MeasureIndex::new(measure))
+                .map(|section| (measure, section.title))
+        })
+        .collect();
+    assert_eq!(
+        order,
+        [
+            (0, "Chorus".to_owned()),
+            (4, "Intro".to_owned()),
+            (6, "Verse".to_owned())
+        ]
+    );
+    assert_eq!(
+        harness
+            .state()
+            .selection()
+            .map(|selection| (selection.start(), selection.end())),
+        Some((4, 8))
     );
 }
 

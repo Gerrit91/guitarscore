@@ -2420,8 +2420,12 @@ fn shift_click_extends_the_selection_from_the_cursor_to_the_beat_clicked() {
     assert_eq!((anchor.measure, anchor.beat), from);
     assert_eq!((focus.measure, focus.beat), to);
 
-    // Another shift-click keeps the start and moves the end.
+    // A shift-click inside the selection changes nothing (as in the song grid).
+    let before = selection(&harness);
     click_page(&mut harness, at(300.0), Modifiers::SHIFT);
+    assert_eq!(selection(&harness), before, "inside: unchanged");
+    // One before it grows it to that side; the far end stays, not the beat it started at.
+    click_page(&mut harness, at(150.0), Modifiers::SHIFT);
     let Some(gscore_edit::Selection::Beats {
         anchor: kept,
         focus,
@@ -2430,10 +2434,10 @@ fn shift_click_extends_the_selection_from_the_cursor_to_the_beat_clicked() {
     else {
         panic!("still a beat selection");
     };
-    assert_eq!(kept, anchor, "the selection still starts where it did");
-    assert_eq!(
-        (focus.measure, focus.beat),
-        (MeasureIndex::new(1), BeatIndex::new(2))
+    assert_eq!((kept.measure, kept.beat), to, "the far end stays");
+    assert!(
+        (focus.measure, focus.beat) < from,
+        "the selection grew before its start: {focus:?}"
     );
 
     // A plain click ends it.

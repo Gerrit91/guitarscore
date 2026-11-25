@@ -434,18 +434,14 @@ impl<'a> Part<'a> {
         if self.show_slash {
             (SLASH_REACH, below)
         } else if self.ctx.notation.is_none() && self.show_tab {
-            // A tab on top: a vibrato over a bend stands highest above it.
-            let bent = self
+            // A tab on top: its lanes' marks (vibrato, trill, bends) stand above it.
+            let lanes = self
                 .measures
                 .get(measures)
                 .unwrap_or_default()
                 .iter()
-                .any(|measure| measure.has_vibrato_over_bend());
-            let lanes = if bent {
-                crate::ornaments::BENT_VIBRATO_REACH
-            } else {
-                0.0
-            };
+                .map(|measure| measure.tab_lane_reach())
+                .fold(0.0_f32, f32::max);
             (above.max(lanes), below)
         } else {
             (above, below)
@@ -462,7 +458,11 @@ impl<'a> Part<'a> {
             .get(measures)
             .unwrap_or_default()
             .iter()
-            .map(|measure| measure.notation_reach())
+            // A tuplet's bracket and number stand above the notes too.
+            .map(|measure| {
+                let (above, below) = measure.notation_reach();
+                (above.max(measure.tuplet_reach()), below)
+            })
             .fold((0.0_f32, 0.0_f32), |(a, b), (above, below)| {
                 (a.max(above), b.max(below))
             })

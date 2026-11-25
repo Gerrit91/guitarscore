@@ -754,6 +754,74 @@ fn copying_all_tracks_from_a_one_track_selection_and_inserting_the_bars() {
     assert_eq!(e.song().measure_count(), 3);
 }
 
+/// Several sections selected together swap as one run with the section they are dropped
+/// on; the sections between keep their order between them.
+#[test]
+fn a_run_of_sections_swaps_with_another_section() {
+    // Seven bars, one section per bar or two: A (1), B (2-3), C (4), D (5-7).
+    let mut e = editor(7);
+    for (measure, title) in [(0, "A"), (1, "B"), (3, "C"), (4, "D")] {
+        e.execute_command(Command::SetSection {
+            measure: MeasureIndex::new(measure),
+            title: title.to_owned(),
+            color: gscore_model::Section::DEFAULT_COLOR,
+        })
+        .unwrap();
+    }
+    let order = |e: &TabEditor| -> Vec<String> {
+        (0..e.song().measure_count())
+            .filter_map(|measure| e.song().section(MeasureIndex::new(measure)))
+            .map(|section| section.title)
+            .collect()
+    };
+    // A and B (bars 1-3) dropped on D: D comes first, C stays between, A and B last.
+    assert!(matches!(
+        e.swap_section_run(
+            MeasureIndex::new(0),
+            MeasureIndex::new(2),
+            MeasureIndex::new(4)
+        ),
+        Ok(Outcome::Edited)
+    ));
+    assert_eq!(order(&e), ["D", "C", "A", "B"]);
+    // The run is selected where it went: bars 5-7.
+    assert!(matches!(
+        e.selection(),
+        Some(Selection::Measures { anchor, focus, .. })
+            if anchor == MeasureIndex::new(4) && focus == MeasureIndex::new(6)
+    ));
+    // One undo step.
+    plain(&mut e, ActionId::Undo);
+    assert_eq!(order(&e), ["A", "B", "C", "D"]);
+    // Backwards: C and D dropped on A.
+    e.swap_section_run(
+        MeasureIndex::new(3),
+        MeasureIndex::new(6),
+        MeasureIndex::new(0),
+    )
+    .unwrap();
+    assert_eq!(order(&e), ["C", "D", "B", "A"]);
+    plain(&mut e, ActionId::Undo);
+    // Not whole sections, or a target inside the run: refused, nothing changes.
+    assert!(
+        e.swap_section_run(
+            MeasureIndex::new(0),
+            MeasureIndex::new(1),
+            MeasureIndex::new(4)
+        )
+        .is_err()
+    );
+    assert!(
+        e.swap_section_run(
+            MeasureIndex::new(0),
+            MeasureIndex::new(2),
+            MeasureIndex::new(1)
+        )
+        .is_err()
+    );
+    assert_eq!(order(&e), ["A", "B", "C", "D"]);
+}
+
 #[test]
 fn swapping_two_sections_swaps_their_bars_and_names() {
     // Six bars: section A at bar 1 (bars 1-3) and B at bar 4 (bars 4-6).

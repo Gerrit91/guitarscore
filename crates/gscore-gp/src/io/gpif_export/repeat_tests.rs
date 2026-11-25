@@ -630,3 +630,85 @@ fn chord_diagrams_keep_the_files_ids_and_a_new_one_is_added() {
         vec![(5, a), (7, b), (8, c)]
     );
 }
+
+/// What a GP3-5 song keeps that GP7 has no place for, or lost on the way, survives a GP7
+/// round trip: notes ending in empty lines, a note louder than its beat's dynamic, and a
+/// section's color.
+#[test]
+fn notes_lines_note_velocities_and_section_colors_round_trip_through_gpif() {
+    let mut song = Song::default();
+    song.read_gp(include_bytes!(
+        "../../../../../testdata/basic/note_lengths.gp"
+    ))
+    .expect("read");
+    song.notice = vec![
+        String::new(),
+        "First line".to_owned(),
+        String::new(),
+        String::new(),
+    ];
+    song.measure_headers[0].marker = Some(crate::model::Marker {
+        title: "Intro".to_owned(),
+        color: 0x00_FF_00_00,
+        ..Default::default()
+    });
+    // A chord whose second note is softer than the first (the beat's dynamic).
+    let beat = first_beat(&mut song);
+    let mut second = beat.notes[0].clone();
+    second.string = if beat.notes[0].string == 1 { 2 } else { 1 };
+    second.velocity = beat.notes[0].velocity.saturating_sub(16);
+    beat.notes.push(second);
+    let velocities: Vec<i16> = beat.notes.iter().map(|note| note.velocity).collect();
+
+    let bytes = song.write_gp().expect("written");
+    let mut reread = Song::default();
+    reread.read_gp(&bytes).expect("read back");
+    assert_eq!(
+        reread.notice, song.notice,
+        "every line, the empty last ones too"
+    );
+    let marker = reread.measure_headers[0]
+        .marker
+        .as_ref()
+        .expect("a section");
+    assert_eq!(
+        (marker.title.as_str(), marker.color),
+        ("Intro", 0x00_FF_00_00)
+    );
+    let reread_velocities: Vec<i16> = first_beat(&mut reread)
+        .notes
+        .iter()
+        .map(|note| note.velocity)
+        .collect();
+    assert_eq!(
+        reread_velocities, velocities,
+        "each note keeps its own dynamic"
+    );
+}
+
+/// A GP5 marker's title is an int-byte-size string: read without its length byte, and
+/// written so Guitar Pro reads it the same way.
+#[test]
+fn a_gp5_marker_title_has_no_length_character() {
+    let mut song = empty_song(1);
+    song.measure_headers[0].marker = Some(crate::model::Marker {
+        title: "Intro".to_owned(),
+        ..Default::default()
+    });
+    let bytes = song.write((5, 1, 0), None).expect("written");
+    // As Guitar Pro stores it: the size (length plus one), the length byte, the text.
+    let stored = [6_u8, 0, 0, 0, 5, b'I', b'n', b't', b'r', b'o'];
+    assert!(
+        bytes.windows(stored.len()).any(|window| window == stored),
+        "written as an int-byte-size string"
+    );
+    let mut reread = Song::default();
+    reread.read_gp5(&bytes).expect("read back");
+    assert_eq!(
+        reread.measure_headers[0]
+            .marker
+            .as_ref()
+            .map(|m| m.title.as_str()),
+        Some("Intro")
+    );
+}

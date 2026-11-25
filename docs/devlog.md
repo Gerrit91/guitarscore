@@ -7069,3 +7069,100 @@ Looked at and left as is: the file's own tie origins are written back as read, a
 tie is taken off. Guitar Pro itself leaves such dangling origins (two archived band files
 have them), so they are harmless, and dropping them would lose what the file had. Audit over
 the 59 band files and the test files: 0 unexplained, 0 known.
+
+## 2026-11-04 — No sound from the AppImage on Arch: libasound no longer bundled
+
+- The owner's `v0.1.0-rc.0` AppImage printed `Cannot open shared library
+  libasound_module_pcm_pipewire.so (/usr/lib/x86_64-linux-gnu/alsa-lib/...)` at start.
+  The release workflow copied the build runner's (Ubuntu's) `libasound.so.2` into the
+  AppImage, and that library looks for ALSA plugins in Ubuntu's folder. On Arch the
+  PipeWire plugin is in `/usr/lib/alsa-lib/`, so ALSA's default device (routed to
+  PipeWire by the host's `/etc/alsa/conf.d/50-pipewire.conf`) could not be opened.
+  Reproduced with `aplay` and the AppImage's library preloaded: "audio open error";
+  with the host's own library it plays.
+- The workflow no longer bundles it (it is on the AppImage exclude list for this reason;
+  every desktop Linux has `libasound.so.2`), and the build fails if it ends up in the
+  AppImage again. It was the only bundled library.
+- The SoundFont in Settings was `/usr/share/soundfonts/FluidR3_GM.sf2` because the
+  owner's settings name it; the bundled `FluidR3_GM.sf2` is in the AppImage beside the
+  program.
+- Open: a new pre-release to confirm sound from the AppImage on Arch (and Ubuntu, Fedora).
+
+## 2026-11-24 — Section names clear vibratos and tuplet brackets
+
+The rows above a system (section names, endings, tempo, beat text) are lifted by what reaches
+above the top staff; that reach now counts two more things. Over a tab without notation, the
+marks in the tab's lanes: a vibrato, trill or whammy line, a bend's arrow and label, and a
+vibrato over a bend (`MeasureLayout::tab_lane_reach`); the owner's Ballad, "Gerrit Solo"
+bar 77, had its vibrato through the "Solo" frame. With notation, a tuplet's bracket and
+number above the notes (`MeasureLayout::tuplet_reach`, which mirrors how tuplets are drawn:
+a group beamed on its own with its stems down has its number under the beam and needs no
+room above). Over a tab with beat effects, the rows already start above the beat lane, so
+only marks reaching beyond that lift them.
+
+Branches checked on the owner's question: `fix/recovery-scan-race` and `fix/windows-exe-icon`
+are in main (cherry-picked). `fix-appimage-alsa` (stop bundling Ubuntu's libasound, which
+leaves the AppImage silent on Arch) and `fix/old-gp-signatures` (GP3-5 measures keep their
+time and key signature; main still shows a 6/8 GP5 file as 4/4, its test fails on main) are
+not in main and still needed.
+
+Dotted chords: a chord's augmentation dots stand in one column right of the whole chord
+(also of a second's head moved right of an up-stem), one dot per space
+(`Chord::dot_positions`): a note in a space keeps its space, a note on a line takes the space
+above, or below when the note above took it. A second's two notes used to put their dots
+into the same space, and the other notes' dots ran into the moved head.
+
+## 2026-11-25 — User issues: tuning, sections, shift-click, count-in wording
+
+- Tuning: the common tunings offered are the ones for as many strings as the dialog has.
+  The list used to offer every tuning, and most are 6-string guitar ones with plain names
+  ("Drop D", "Open G"): picking one on a 4-string bass made it a 6-string tuned like a
+  guitar. A new "All strings" step tunes every string a semitone down or up at once (a
+  step that would take a string out of range is not taken). A string's note list opens
+  scrolled to its note.
+- Sections: a section chosen in the Song tab's list scrolls the song grid to its first bar
+  when that is out of sight. Shift-click in the list grows the selection to take in that
+  section and every one between; every section the selection covers whole is marked.
+- Shift-click on the page grows the selection to the side clicked, as the song grid does:
+  before the selection its start moves there, after it its end, inside it nothing changes,
+  and a bar selection (from the grid or the section list) grows by whole bars. It used to
+  keep the beat the selection started at as the pivot, so a shift-click before a selection
+  made from its left end shrank it the other way, and a bar selection was dropped.
+- The count-in switch reads "Every time a loop starts" (the full sentence is its tooltip).
+- The song grid follows the cursor: when it goes to another bar (a click in the score, the
+  arrow keys, a shift-click), the grid scrolls that bar into sight if it is out of it
+  (`Tab::grid_followed`). It does not hold the view: the grid scrolls freely while the
+  cursor stays in its bar. Only sideways; the track rows do not follow yet.
+- Several sections selected in the Song tab's list (shift-click) are dragged together: a
+  drag that starts on one of them carries the whole run, which swaps with the section it is
+  dropped on (the run takes its place and it the run's; the sections between keep their
+  order), as one undo step, the run selected where it went (`TabEditor::swap_section_run`).
+  The selection stays marked during the drag, and the run's own rows are no drop target. A
+  drag on a row outside the selection drags that one section, as before. The grid ruler's
+  section drag still moves one section.
+
+## 2026-11-25 — No more "cannot be kept" alerts saving old files as GP7
+
+The owner's users saw the save check's alert ("Some of the song cannot be kept") when saving
+a tab. Over every GP3, GP4 and GP5 file on the owner's machine (Dropbox, Downloads, band
+folder) a GP7 save now reports no difference; before, four things showed up:
+- Notes ending in an empty line lost it: the GP7 reader split the notices with `lines()`,
+  which drops a last empty line. It splits on `\n` now. The check ignores empty lines at
+  the very end (a single empty line is stored as no notes in GP7).
+- A note louder or softer than its beat's dynamic (GP3-5 give every note one, GP6+ one
+  per beat) took the beat's dynamic: 311 notes in one file. Such a note keeps its velocity
+  in a `gsVelocity` attribute on the GPIF note, which Guitar Pro ignores (it plays the
+  beat's dynamic, as it would anyway).
+- GP3-5 section titles began with their length as a character ("\u{5}Intro", shown in the
+  score too): a marker's title is an int-byte-size string, read and written as an int-size
+  string. Both fixed; a GP5 file written before by GuitarScore had titles Guitar Pro read
+  with a stray first letter.
+- A section's color is kept in a `gsColor` attribute on the GPIF section (GP7 has none).
+- A track without an instrument name (GP3-5) gets one in GP7 ("Drums"): the check no longer
+  counts a name gained as a change.
+Save audit over the band files and test files: still 0 unexplained, 0 known.
+
+Later: the "All strings" step moved out of its own row into the tuning dialog's empty right
+side: a thin bracket over the string rows (a tick at each string) with an up chevron above
+and a down chevron below, "All strings / a semitone" between them (owner's wish: more
+visual, less like the per-string steppers).

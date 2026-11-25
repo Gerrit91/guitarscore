@@ -3504,9 +3504,7 @@ fn the_metronome_tab_sets_the_click_and_the_count_in() {
     harness.get_by_label("2 bars").click();
     harness.run();
     assert_eq!(harness.state().playback().count_in_bars(), 2);
-    harness
-        .get_by_label("Count in again each time a loop starts over")
-        .click();
+    harness.get_by_label("Every time a loop starts").click();
     harness.run();
     assert!(harness.state().playback().count_in_loops());
     // All of it is kept in the settings.
@@ -3990,6 +3988,65 @@ fn the_transpose_window_moves_the_notes_when_the_fingerings_change() {
     );
 }
 
+/// A 4-string bass retuned in the dialog stays a 4-string bass with the new tuning.
+#[test]
+fn retuning_a_four_string_bass_keeps_its_four_strings() {
+    let dir = std::env::temp_dir().join(format!("gscore-bass-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let file = dir.join("bass.gp");
+    let song = gscore_model::testing::song(&[gscore_model::testing::BASS_4], 2).unwrap();
+    std::fs::write(
+        &file,
+        gscore_io::export_to_bytes(&song, gscore_io::FileFormat::Gp).unwrap(),
+    )
+    .unwrap();
+    let mut harness = app_with(Some(file));
+    let strings = |harness: &Harness<'static, GuitarScoreApp>| {
+        let song = harness.state().document().unwrap().song();
+        let track = song.track(gscore_model::TrackIndex::new(0)).unwrap();
+        let pitches: Vec<u8> = track
+            .tuning()
+            .unwrap()
+            .unwrap_or_default()
+            .iter()
+            .map(|string| string.pitch.get())
+            .collect();
+        (track.string_count(), pitches)
+    };
+    assert_eq!(strings(&harness), (4, vec![43, 38, 33, 28]));
+    harness.get_by_label_contains("Tuning:").click();
+    harness.run();
+    harness.get_by_label("String 4 a semitone lower").click();
+    harness.run();
+    harness.get_by_label("OK").click();
+    harness.run();
+    assert_eq!(strings(&harness), (4, vec![43, 38, 33, 27]));
+
+    // The common tunings offered are the 4-string ones: no guitar tuning turns it into a
+    // 6-string, and a bass one keeps its strings.
+    harness.get_by_label_contains("Tuning:").click();
+    harness.run();
+    // The text before the list carries the same name; the list is the second.
+    harness
+        .get_all_by_label("Common tuning")
+        .last()
+        .expect("the common tuning list")
+        .click();
+    harness.run();
+    assert!(harness.query_by_label("Drop D (6 strings)").is_none());
+    harness
+        .get_by_label("E standard (bass) (4 strings)")
+        .click();
+    harness.run();
+    // Every string a semitone lower at once: Eb standard.
+    harness.get_by_label("All strings a semitone lower").click();
+    harness.run();
+    harness.get_by_label("OK").click();
+    harness.run();
+    assert_eq!(strings(&harness), (4, vec![42, 37, 32, 27]));
+    std::fs::remove_dir_all(dir).ok();
+}
+
 #[test]
 fn the_tuning_dialog_plays_a_string_and_stops_it_again() {
     let mut harness = app_with(Some(testdata("basic/steel_guitar_dadgad.gp")));
@@ -4439,9 +4496,7 @@ fn the_arrow_beside_the_count_in_switch_sets_its_length_and_loops() {
     settle(&mut harness);
     assert_eq!(harness.state().playback().count_in_bars(), 3);
     // The menu stays open for the next choice.
-    harness
-        .get_by_label("Count in again each time a loop starts over")
-        .click();
+    harness.get_by_label("Every time a loop starts").click();
     settle(&mut harness);
     assert!(harness.state().playback().count_in_loops());
     // The arrow leaves the switch itself alone, and the choices are kept in the settings.

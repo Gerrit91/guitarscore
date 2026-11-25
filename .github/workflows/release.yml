@@ -206,12 +206,16 @@ jobs:
             --exclude-library "libgbm.so*" \
             --exclude-library "libdrm.so*"
 
-          # libasound is the only hard link-time dependency (ALSA); bundle it so the app
-          # starts on a minimal system. Everything else is loaded from the host at run time.
-          mkdir -p "$appdir/usr/lib"
-          asound=$(ldconfig -p | awk '/libasound\.so\.2 /{print $NF; exit}')
-          test -n "$asound"
-          cp "$asound" "$appdir/usr/lib/libasound.so.2"
+          # ALSA (libasound) must come from the host, never from the AppImage: it loads
+          # its plugins (PipeWire, PulseAudio, JACK) from a folder fixed at its build, and
+          # Ubuntu's copy looks in /usr/lib/x86_64-linux-gnu/alsa-lib, which Arch, Fedora
+          # and others do not have, so the host's PipeWire plugin is not found and there
+          # is no sound. Every desktop Linux has libasound.so.2 (it is on the AppImage
+          # exclude list for this reason); fail the build if it was bundled anyway.
+          if [ -n "$(find "$appdir" -name 'libasound.so*' -print -quit)" ]; then
+            echo "::error::libasound must not be bundled into the AppImage"
+            exit 1
+          fi
 
           appimage="GuitarScore-${{ env.TAG }}-x86_64.AppImage"
           APPIMAGE_EXTRACT_AND_RUN=1 ARCH=x86_64 /tmp/appimagetool "$appdir" "$appimage"

@@ -52,7 +52,11 @@ pub(super) fn convert_note(
     grace_on_beat: bool,
 ) -> SongNote {
     let mut s_note = SongNote {
-        velocity,
+        // A note's own velocity, where GuitarScore wrote one, else its beat's dynamic.
+        velocity: g_note
+            .gs_velocity
+            .filter(|velocity| (1..=127).contains(velocity))
+            .unwrap_or(velocity),
         kind: NoteType::Normal,
         ..Default::default()
     };

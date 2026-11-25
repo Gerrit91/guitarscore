@@ -182,26 +182,80 @@ impl TabEditor {
                 "a section cannot be swapped with itself".to_owned(),
             ));
         }
+        let a = self
+            .section_span(a)
+            .ok_or_else(|| EditError::Unsupported("that bar starts no section".to_owned()))?;
+        let b = self
+            .section_span(b)
+            .ok_or_else(|| EditError::Unsupported("that bar starts no section".to_owned()))?;
+        self.swap_spans(a, b)
+    }
+
+    /// Swaps a run of whole sections, the bars `first` to `last` (several sections
+    /// selected together), with the section that starts at `target`, as one undo step:
+    /// the run takes the section's place and the section the run's, the sections between
+    /// them staying in order. Dragging several selected sections onto another in the Song
+    /// tab's list.
+    pub fn swap_section_run(
+        &mut self,
+        first: MeasureIndex,
+        last: MeasureIndex,
+        target: MeasureIndex,
+    ) -> Result<Outcome, EditError> {
         let song = self.song();
         let count = song.measure_count();
-        let span = |start: MeasureIndex| -> Option<(usize, usize)> {
-            if start.get() >= count || song.section(start).is_none() {
-                return None;
-            }
-            let end = (start.get().saturating_add(1)..count)
-                .find(|index| song.section(MeasureIndex::new(*index)).is_some())
-                .map_or(count.saturating_sub(1), |next| next.saturating_sub(1));
-            Some((start.get(), end))
-        };
-        let (a_start, a_end) = span(a)
+        let (first, last) = (first.get().min(last.get()), first.get().max(last.get()));
+        // The run must be whole sections: it starts at one and ends before the next one
+        // (or at the song's end).
+        let whole = last < count
+            && song.section(MeasureIndex::new(first)).is_some()
+            && (last.saturating_add(1) == count
+                || song
+                    .section(MeasureIndex::new(last.saturating_add(1)))
+                    .is_some());
+        if !whole {
+            return Err(EditError::Unsupported(
+                "only whole sections can be moved together".to_owned(),
+            ));
+        }
+        let target = self
+            .section_span(target)
             .ok_or_else(|| EditError::Unsupported("that bar starts no section".to_owned()))?;
-        let (b_start, b_end) = span(b)
-            .ok_or_else(|| EditError::Unsupported("that bar starts no section".to_owned()))?;
+        if (first..=last).contains(&target.0) {
+            return Err(EditError::Unsupported(
+                "the sections cannot be swapped with one of themselves".to_owned(),
+            ));
+        }
+        self.swap_spans((first, last), target)
+    }
+
+    /// The bars of the section that starts at `start`: to the bar before the next section,
+    /// or the song's last bar. `None` if no section starts there.
+    fn section_span(&self, start: MeasureIndex) -> Option<(usize, usize)> {
+        let song = self.song();
+        let count = song.measure_count();
+        if start.get() >= count || song.section(start).is_none() {
+            return None;
+        }
+        let end = (start.get().saturating_add(1)..count)
+            .find(|index| song.section(MeasureIndex::new(*index)).is_some())
+            .map_or(count.saturating_sub(1), |next| next.saturating_sub(1));
+        Some((start.get(), end))
+    }
+
+    /// Swaps two runs of bars that do not overlap, `(a_start, a_end)` and
+    /// `(b_start, b_end)`, in every track, as one undo step; the bars of `a` are selected
+    /// where they went, and the cursor goes to their first bar.
+    fn swap_spans(
+        &mut self,
+        (a_start, a_end): (usize, usize),
+        (b_start, b_end): (usize, usize),
+    ) -> Result<Outcome, EditError> {
         let (first, last) = (a_start.min(b_start), a_end.max(b_end));
-        // The later section moves to where the earlier one starts, then the earlier one
-        // (pushed right by it) moves past the sections between them, if any. Whole bars
-        // move, so everything a bar holds goes with it: its tempo change, signatures,
-        // section, repeats, endings, directions and the rest.
+        // The later run moves to where the earlier one starts, then the earlier one
+        // (pushed right by it) moves past the bars between them, if any. Whole bars move,
+        // so everything a bar holds goes with it: its tempo change, signatures, section,
+        // repeats, endings, directions and the rest.
         let (x0, x1, y0, y1) = if a_start < b_start {
             (a_start, a_end, b_start, b_end)
         } else {

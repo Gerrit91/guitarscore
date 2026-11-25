@@ -12,8 +12,9 @@ use gscore_layout::{
     ColorToken, DrawOp, Fonts, Glyph, Layout, LayoutCache, LayoutOptions, TextFont, layout_track,
 };
 use gscore_model::{
-    BeatIndex, BeatPosition, Direction, Dynamic, Feel, Fermata, Fret, MeasureIndex, Song,
-    StringNumber, TrackColor, TrackIndex, VoiceIndex, testing,
+    BeatIndex, BeatPosition, Direction, Dynamic, Feel, Fermata, Fret, MeasureIndex, NoteEffect,
+    NoteValue, Song, StringNumber, TrackColor, TrackIndex, TrackStaves, Vibrato, VoiceIndex,
+    testing,
 };
 
 fn at(measure: usize, beat: usize) -> BeatPosition {
@@ -294,6 +295,93 @@ fn a_section_name_stays_above_a_high_note() {
         section.3 + 0.4 < highest - 0.5,
         "section at {}, note at {highest}",
         section.3
+    );
+}
+
+/// The section frame's bottom, below its baseline.
+const FRAME_BELOW: f32 = 0.35;
+
+/// Over a tab without notation, a vibrato stands in a lane above the tab: the section name
+/// moves up over it.
+#[test]
+fn a_section_name_stays_above_a_vibrato_over_the_tab() {
+    let mut song = testing::song(&[testing::GUITAR_6], 2).unwrap();
+    let _ = song
+        .set_track_staves(TrackIndex::new(0), TrackStaves::TAB_ONLY)
+        .unwrap();
+    let _ = song
+        .set_section(MeasureIndex::new(0), "Solo", TrackColor::DEFAULT)
+        .unwrap();
+    note(&mut song, 0, 0);
+    let _ = song
+        .set_note_effect(
+            at(0, 0),
+            StringNumber::new(1).unwrap(),
+            NoteEffect::Vibrato(Some(Vibrato::Wide)),
+        )
+        .unwrap();
+    let laid = layout(&song);
+    let section = texts(&laid)
+        .into_iter()
+        .find(|t| t.0 == "Solo")
+        .expect("the section name");
+    // The wide vibrato's strokes: slanted lines of its own thickness.
+    let top = laid
+        .ops
+        .iter()
+        .filter_map(|op| match op {
+            DrawOp::Line {
+                from,
+                to,
+                thickness,
+                ..
+            } if (*thickness - 0.22).abs() < 0.01 && from.x != to.x && from.y != to.y => {
+                Some(from.y.min(to.y))
+            }
+            _ => None,
+        })
+        .fold(f32::INFINITY, f32::min);
+    assert!(top.is_finite(), "the vibrato is drawn");
+    assert!(
+        section.3 + FRAME_BELOW < top - 0.2,
+        "section at {}, vibrato from {top}",
+        section.3
+    );
+}
+
+/// A tuplet bracket over high notes: the section name moves up over its number.
+#[test]
+fn a_section_name_stays_above_a_tuplet_bracket() {
+    let mut song = testing::song(&[testing::GUITAR_6], 2).unwrap();
+    let _ = song
+        .set_section(MeasureIndex::new(0), "Solo", TrackColor::DEFAULT)
+        .unwrap();
+    // Quarter triplets (no beam: a bracket) on a high note.
+    for beat in 0..3 {
+        let _ = song
+            .set_duration(at(0, beat), NoteValue::new(4, 0, Some((3, 2))).unwrap())
+            .unwrap();
+        let _ = song
+            .set_note(
+                at(0, beat),
+                StringNumber::new(1).unwrap(),
+                Fret::new(12).unwrap(),
+            )
+            .unwrap();
+    }
+    let laid = layout(&song);
+    let texts = texts(&laid);
+    let section = texts.iter().find(|t| t.0 == "Solo").expect("the section");
+    let label = texts
+        .iter()
+        .find(|t| t.0 == "3")
+        .expect("the tuplet number");
+    // The number's digits stand about one space above its baseline.
+    assert!(
+        section.3 + FRAME_BELOW < label.3 - 1.0,
+        "section at {}, tuplet number at {}",
+        section.3,
+        label.3
     );
 }
 

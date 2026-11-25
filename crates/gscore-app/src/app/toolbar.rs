@@ -664,7 +664,8 @@ impl GuitarScoreApp {
                     );
                 }
                 ui.separator();
-                ui.checkbox(&mut loops, "Count in again each time a loop starts over");
+                ui.checkbox(&mut loops, "Every time a loop starts")
+                    .on_hover_text("Count in again each time a loop starts over");
             });
         if bars != self.playback.count_in_bars() {
             self.playback.set_count_in_bars(bars);

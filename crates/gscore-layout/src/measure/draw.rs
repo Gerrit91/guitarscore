@@ -692,6 +692,83 @@ impl MeasureLayout {
 
     /// How far the notation reaches above its staff's top line and below its bottom line
     /// (noteheads, ledger lines and stems), in staff spaces; 0 within the staff.
+    /// How far the tuplet numbers of the notation staff reach above its top line, in staff
+    /// spaces (0 without one above the staff). A group beamed on its own with its stems down
+    /// has its number under the beam; every other group has a bracket and its number above
+    /// the notes (see `notation::tuplets`).
+    pub(crate) fn tuplet_reach(&self) -> f32 {
+        const TOP_LINE: i32 = 8;
+        const STEM: f32 = 3.5;
+        const HEAD: f32 = 0.5;
+        let voices = self
+            .columns
+            .iter()
+            .map(|column| column.notation.len())
+            .max()
+            .unwrap_or(0);
+        let mut reach = 0.0_f32;
+        for voice in 0..voices {
+            let items: Vec<(Option<&NotationItem>, u64)> = self
+                .columns
+                .iter()
+                .map(|column| {
+                    (
+                        column.notation.get(voice).and_then(Option::as_ref),
+                        column.beat,
+                    )
+                })
+                .collect();
+            let tuplets: Vec<(Option<(u8, u8)>, f64)> = items
+                .iter()
+                .map(|(item, _)| match item {
+                    Some(item) => (
+                        tuplet_of(item).map(|t| (t.enters, t.times)),
+                        notation::written_length(item),
+                    ),
+                    None => (None, 0.0),
+                })
+                .collect();
+            for (indices, _) in notation::tuplet_groups(&tuplets) {
+                let chords: Vec<(&Chord, u64)> = indices
+                    .iter()
+                    .filter_map(|&index| match items.get(index)? {
+                        (Some(NotationItem::Chord(chord)), beat) => Some((chord, *beat)),
+                        _ => None,
+                    })
+                    .collect();
+                let one_beam = chords.len() == indices.len()
+                    && chords.len() > 1
+                    && chords.iter().all(|(chord, _)| chord.value >= 8)
+                    && chords
+                        .windows(2)
+                        .all(|pair| matches!(pair, [a, b] if a.1 == b.1));
+                let up = chords
+                    .iter()
+                    .filter(|(chord, _)| chord.stem_up())
+                    .count()
+                    .saturating_mul(2)
+                    >= chords.len();
+                if one_beam && !up {
+                    continue;
+                }
+                let highest = chords
+                    .iter()
+                    .filter_map(|(chord, _)| {
+                        let high = chord.heads.last()?;
+                        let stem = chord.stem_up() && chord.value >= 2;
+                        Some(
+                            high.position.saturating_sub(TOP_LINE) as f32 / 2.0
+                                + HEAD
+                                + if stem { STEM } else { 0.0 },
+                        )
+                    })
+                    .fold(0.0_f32, f32::max);
+                reach = reach.max((highest + notation::BRACKET_REACH).max(notation::BRACKET_FLOOR));
+            }
+        }
+        reach
+    }
+
     pub(crate) fn notation_reach(&self) -> (f32, f32) {
         // Staff positions: 0 the bottom line, 8 the top line; a stem is 3.5 spaces long.
         const TOP_LINE: i32 = 8;
@@ -869,4 +946,12 @@ fn next_on_line(columns: &[Column], from: usize, line: usize) -> Option<(usize, 
         index = index.saturating_add(1);
     }
     None
+}
+
+/// The tuplet of a notation item, if it has one.
+fn tuplet_of(item: &NotationItem) -> Option<notation::Tuplet> {
+    match item {
+        NotationItem::Chord(chord) => chord.tuplet,
+        NotationItem::Rest { tuplet, .. } => *tuplet,
+    }
 }

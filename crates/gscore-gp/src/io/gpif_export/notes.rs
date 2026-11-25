@@ -12,14 +12,22 @@ use super::*;
 /// `tie_origin`: a tie starts from this note (the next note on its string is tied to it).
 /// `hopo_destination`: a hammer-on or pull-off from the note before it on its string
 /// lands on this note. `tapped`: its beat is tapped (Guitar Pro marks that on the notes).
+/// `beat_velocity`: the velocity a reader gives the note from its beat's dynamic.
 pub(super) fn build_note_xml(
     note: &Note,
     note_id: i32,
-    tie_origin: bool,
-    hopo_destination: bool,
+    (tie_origin, hopo_destination): (bool, bool),
     tapped: bool,
+    beat_velocity: i16,
 ) -> String {
-    let mut s = format!("<Note id=\"{note_id}\"><Properties>");
+    // GuitarScore addition: a note louder or softer than its beat's dynamic (a GP3-5 file
+    // gives every note its own) keeps its velocity in an attribute Guitar Pro ignores.
+    let own = if note.velocity == beat_velocity {
+        String::new()
+    } else {
+        format!(" gsVelocity=\"{}\"", note.velocity)
+    };
+    let mut s = format!("<Note id=\"{note_id}\"{own}><Properties>");
 
     s.push_str(&format!(
         "<Property name=\"Fret\"><Fret>{}</Fret></Property>",

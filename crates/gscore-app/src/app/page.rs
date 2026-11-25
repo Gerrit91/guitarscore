@@ -804,28 +804,41 @@ impl GuitarScoreApp {
                     text_opened = true;
                     ui.ctx().request_repaint();
                 } else if ui.input(|input| input.modifiers.shift) {
-                    // A shift-click extends the selection to the beat clicked, in the
-                    // cursor's voice, as a drag from the cursor would.
+                    // A shift-click grows the selection to the side of the beat clicked
+                    // (in the cursor's voice), as in the song grid: a bar selection by
+                    // whole bars, a beat selection by beats; without one, it selects from
+                    // the cursor to the beat clicked.
                     let cursor = document.editor().cursor();
                     if let Some(hit) = point.and_then(|point| {
                         layout.hit_in_voice_on(point, cursor.track, cursor.staff, cursor.voice)
                     }) {
-                        let focus = Cursor {
+                        let clicked = Cursor {
                             measure: hit.measure,
                             beat: hit.beat,
                             string: hit.string,
                             ..cursor
                         };
-                        let anchor = shift_click_anchor(document.editor().selection(), cursor);
-                        document.editor_mut().set_selection(Some(Selection::Beats {
-                            staff: cursor.staff,
-                            track: cursor.track,
-                            voice: cursor.voice,
-                            anchor,
-                            focus: BeatSpot::of(focus),
-                        }));
-                        document.editor_mut().set_cursor(focus);
-                        tab.selection = None;
+                        let grown = shift_click_selection(
+                            document.editor().selection(),
+                            cursor,
+                            BeatSpot::of(clicked),
+                        );
+                        if let Some(selection) = grown {
+                            document.editor_mut().set_selection(Some(selection));
+                            document.editor_mut().set_cursor(clicked);
+                            tab.selection = match selection {
+                                Selection::Measures {
+                                    anchor,
+                                    focus,
+                                    track,
+                                } => Some(crate::state::MeasureSelection {
+                                    anchor: anchor.get(),
+                                    focus: focus.get(),
+                                    track: track.map(TrackIndex::get),
+                                }),
+                                Selection::Beats { .. } => None,
+                            };
+                        }
                     }
                 } else {
                     // A click clears a selection and moves the cursor.
@@ -967,18 +980,63 @@ impl GuitarScoreApp {
     }
 }
 
-/// Where a shift-click's selection starts: at the anchor of a beat selection in the
-/// cursor's track, staff and voice, or else at the cursor's beat.
-fn shift_click_anchor(selection: Option<Selection>, cursor: Cursor) -> BeatSpot {
+/// The selection a shift-click on `clicked` (a beat in the cursor's voice) makes: it grows
+/// to the side of the click, as in the song grid. A click before the selection moves its
+/// start there, one after it its end, one inside it changes nothing (`None`). A bar
+/// selection (from the grid or the section list) grows by whole bars; a beat selection in
+/// the cursor's voice by beats; anything else becomes the beats from the cursor's to the
+/// one clicked.
+fn shift_click_selection(
+    selection: Option<Selection>,
+    cursor: Cursor,
+    clicked: BeatSpot,
+) -> Option<Selection> {
+    /// The new `(anchor, focus)` of a range from `start` to `end` grown to take in `at`.
+    fn grow<T: Ord + Copy>(start: T, end: T, at: T) -> Option<(T, T)> {
+        if at < start {
+            Some((end, at))
+        } else if at > end {
+            Some((start, at))
+        } else {
+            None
+        }
+    }
     match selection {
+        Some(Selection::Measures {
+            anchor,
+            focus,
+            track,
+        }) if track.is_none_or(|track| track == cursor.track) => {
+            let (anchor, focus) = grow(anchor.min(focus), anchor.max(focus), clicked.measure)?;
+            Some(Selection::Measures {
+                anchor,
+                focus,
+                track,
+            })
+        }
         Some(Selection::Beats {
             track,
             staff,
             voice,
             anchor,
-            ..
-        }) if track == cursor.track && staff == cursor.staff && voice == cursor.voice => anchor,
-        _ => BeatSpot::of(cursor),
+            focus,
+        }) if track == cursor.track && staff == cursor.staff && voice == cursor.voice => {
+            let (anchor, focus) = grow(anchor.min(focus), anchor.max(focus), clicked)?;
+            Some(Selection::Beats {
+                track,
+                staff,
+                voice,
+                anchor,
+                focus,
+            })
+        }
+        _ => Some(Selection::Beats {
+            track: cursor.track,
+            staff: cursor.staff,
+            voice: cursor.voice,
+            anchor: BeatSpot::of(cursor),
+            focus: clicked,
+        }),
     }
 }
 
@@ -1155,8 +1213,68 @@ mod tests {
     use gscore_edit::{BeatSpot, Selection};
     use gscore_layout::{BeatPlace, MeasurePlace, Places, SystemPlace};
 
-    use super::{cursor_scroll, page_scroll, screen_turn, shown_selection};
+    use super::{cursor_scroll, page_scroll, screen_turn, shift_click_selection, shown_selection};
     use egui::Rect;
+
+    /// A shift-click grows the selection to the side clicked, never around the beat the
+    /// selection started at: bars 5 to 10 selected from bar 5, a shift-click in bar 2 makes
+    /// it 2 to 10 (it used to make 2 to 5).
+    #[test]
+    fn a_shift_click_grows_the_selection_to_the_side_clicked() {
+        use gscore_edit::Cursor;
+        use gscore_model::{BeatIndex, MeasureIndex, TrackIndex};
+        let spot = |measure: usize, beat: usize| BeatSpot {
+            measure: MeasureIndex::new(measure),
+            beat: BeatIndex::new(beat),
+        };
+        let cursor = Cursor::start(TrackIndex::new(0));
+        let bars = |anchor: usize, focus: usize| Selection::Measures {
+            anchor: MeasureIndex::new(anchor),
+            focus: MeasureIndex::new(focus),
+            track: None,
+        };
+        let span = |selection: Option<Selection>| match selection {
+            Some(Selection::Measures { anchor, focus, .. }) => {
+                (anchor.min(focus).get(), anchor.max(focus).get())
+            }
+            Some(Selection::Beats { anchor, focus, .. }) => (
+                anchor.min(focus).measure.get(),
+                anchor.max(focus).measure.get(),
+            ),
+            None => (usize::MAX, usize::MAX),
+        };
+        // Bars, from a section or the grid: before, after, inside.
+        assert_eq!(
+            span(shift_click_selection(Some(bars(4, 9)), cursor, spot(1, 2))),
+            (1, 9)
+        );
+        assert_eq!(
+            span(shift_click_selection(Some(bars(4, 9)), cursor, spot(11, 0))),
+            (4, 11)
+        );
+        assert_eq!(
+            shift_click_selection(Some(bars(4, 9)), cursor, spot(6, 0)),
+            None
+        );
+        // Beats in the cursor's voice: the far end stays.
+        let beats = Selection::Beats {
+            track: TrackIndex::new(0),
+            staff: cursor.staff,
+            voice: cursor.voice,
+            anchor: spot(4, 0),
+            focus: spot(9, 3),
+        };
+        let grown = shift_click_selection(Some(beats), cursor, spot(1, 0)).unwrap();
+        let Selection::Beats { anchor, focus, .. } = grown else {
+            panic!("a beat selection stays one");
+        };
+        assert_eq!((anchor, focus), (spot(9, 3), spot(1, 0)));
+        // Nothing selected: from the cursor's beat to the one clicked.
+        assert_eq!(
+            span(shift_click_selection(None, cursor, spot(3, 1))),
+            (0, 3)
+        );
+    }
 
     #[test]
     fn playback_turns_the_view_over_instead_of_creeping_a_line_at_a_time() {
