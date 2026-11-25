@@ -1,8 +1,9 @@
 //! The smoke test's checks of the running editor page (after it has started): a new
 //! build takes over at the first visit after a deploy, an edit leaves a rescue copy of the
-//! song with the page, the crash screen a panic shows offers it for download, and the next
-//! visit offers to restore it. Driven
-//! through the page's own events (a dropped file, typed keys), as a user would.
+//! song with the page, the song plays (messages reach the worklet and sound comes out),
+//! the crash screen a panic shows offers it for download, and the next visit offers to
+//! restore it. Driven through the page's own events (a dropped file, typed keys), as a
+//! user would.
 
 use std::fmt::Write as _;
 use std::path::Path;
@@ -232,4 +233,93 @@ pub(super) fn the_next_visit_restores_the_copy(
            transaction.onerror = () => resolve('cannot clear the store'); }; })";
     let result = browser.eval(clear)?;
     if result == "ok" { Ok(()) } else { Err(result) }
+}
+
+/// Run in every page before its own scripts ([`Browser::before_each_page`]): records what
+/// the page posts to the audio worklet (`smokeAudio.sent`: type, or `command:<name>`) and
+/// the worklet's status replies (`smokeAudio.status`), and puts an analyser beside the
+/// speakers (`smokeAudio.analyser`) so the test can tell sound from silence. It only
+/// listens; the page plays as it would without it.
+pub(super) const AUDIO_PROBE: &str = r#"(() => {
+  const probe = { sent: [], status: [], analyser: null };
+  globalThis.smokeAudio = probe;
+  const listened = new WeakSet();
+  const post = MessagePort.prototype.postMessage;
+  MessagePort.prototype.postMessage = function (message, ...rest) {
+    if (message && typeof message === "object" && typeof message.type === "string") {
+      probe.sent.push(message.type === "command" ? "command:" + message.name : message.type);
+      if (!listened.has(this)) {
+        listened.add(this);
+        this.addEventListener("message", (event) => {
+          const data = event.data;
+          if (data && data.type === "status") {
+            probe.status.push({ position: data.position, state: data.state });
+          }
+        });
+      }
+    }
+    return post.call(this, message, ...rest);
+  };
+  const connect = AudioNode.prototype.connect;
+  AudioNode.prototype.connect = function (target, ...rest) {
+    const result = connect.call(this, target, ...rest);
+    if (typeof AudioWorkletNode !== "undefined" && this instanceof AudioWorkletNode &&
+        target instanceof AudioDestinationNode && !probe.analyser) {
+      probe.analyser = this.context.createAnalyser();
+      probe.analyser.fftSize = 2048;
+      connect.call(this, probe.analyser);
+    }
+    return result;
+  };
+})();"#;
+
+/// With the dropped song open: its string sounds and chains have reached the worklet;
+/// Space sends the song (it goes over when it is first played) and play, the worklet
+/// reports playing with a moving position, and the output is not silent; Space again
+/// stops it ([`AUDIO_PROBE`] records all of it).
+pub(super) fn space_plays_the_song(browser: &mut Browser) -> Result<String, String> {
+    let script = "new Promise((resolve) => { \
+       const probe = globalThis.smokeAudio; \
+       if (!probe) return resolve('the audio probe is missing'); \
+       const canvas = document.getElementById('guitarscore'); canvas.focus(); \
+       const space = () => { for (const type of ['keydown', 'keyup']) \
+         canvas.dispatchEvent(new KeyboardEvent(type, \
+           { key: ' ', code: 'Space', bubbles: true, cancelable: true })); }; \
+       const sentBefore = probe.sent.length, statusBefore = probe.status.length; \
+       space(); \
+       const started = Date.now(); let loudest = 0; let stopping = 0; \
+       const samples = new Float32Array(2048); \
+       const poll = () => { \
+         if (probe.analyser) { probe.analyser.getFloatTimeDomainData(samples); \
+           let sum = 0; for (const v of samples) sum += v * v; \
+           loudest = Math.max(loudest, Math.sqrt(sum / samples.length)); } \
+         const sent = probe.sent.slice(sentBefore); \
+         const status = probe.status.slice(statusBefore); \
+         const playing = status.filter((s) => s.state === 1); \
+         const moved = playing.length > 1 && \
+           playing[playing.length - 1].position > playing[0].position; \
+         const report = () => 'sent ' + JSON.stringify(sent) + ', ' + playing.length + \
+           ' playing reports, loudest rms ' + loudest.toFixed(4) + \
+           ', before play: ' + JSON.stringify(probe.sent.slice(0, sentBefore)); \
+         const song = probe.sent.includes('sequence') || probe.sent.includes('replace'); \
+         if (!stopping && song && sent.includes('command:play') && moved && loudest > 0.001) { \
+           stopping = Date.now(); space(); } \
+         if (stopping) { \
+           const last = probe.status[probe.status.length - 1]; \
+           const stopSent = probe.sent.slice(sentBefore).some((m) => \
+             m === 'command:pause' || m === 'command:stop'); \
+           if (stopSent && last && last.state !== 1) return resolve('ok, ' + report()); \
+           if (Date.now() - stopping > 5000) return resolve('Space did not stop it: ' + report()); \
+         } else if (Date.now() - started > 15000) return resolve('not played: ' + report()); \
+         setTimeout(poll, 50); }; \
+       const before = probe.sent.slice(0, sentBefore); \
+       if (!before.includes('sound')) \
+         return resolve('no string sound or chain reached the worklet: ' + JSON.stringify(before)); \
+       poll(); })";
+    let result = browser.eval(script)?;
+    if result.starts_with("ok") {
+        Ok(result)
+    } else {
+        Err(result)
+    }
 }

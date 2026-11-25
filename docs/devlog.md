@@ -7208,3 +7208,14 @@ menu: the SoundFont and the engine live in the audio worklet.
 Checked in headless Chromium through the real menus: PDF (48 KB, `%PDF-`), MIDI (`MThd`)
 and GP5 downloads of `steel_guitar_dadgad.gp`. Not in the smoke test: egui's menus have no
 keyboard route to click through reliably.
+## 2026-11-25 — Browser smoke test: Space plays the song
+
+The smoke test now plays the dropped song. `Browser::before_each_page` injects a probe
+before the page's scripts: it wraps `MessagePort.postMessage` to record what reaches the
+worklet (and listens to the worklet's status replies on that port), and tees the worklet
+node into an `AnalyserNode` when it is connected to the speakers. Seen on the first run:
+eight `sound` messages and the SoundFont before Play; the song itself is only sent on the
+first Play (`sequence`, `seek`, `tempo`, `play`); four playing reports with a moving
+position; loudest RMS 0.015; Space again sends `stop`. Choosing a tone is not driven:
+egui draws the tone list on the canvas, and clicking fixed coordinates would break with
+any layout change.
