@@ -11,7 +11,12 @@
 you type, and open the Guitar Pro files you already have. Native, written in Rust, and
 built never to lose your work.
 
-![GuitarScore editing a song: notation and tab, the edit palette, and the song grid with its tracks and sections](docs/media/editor.png)
+<p align="center">
+  <a href="https://gerrit91.github.io/guitarscore/"><img src="https://img.shields.io/badge/%E2%96%B6%20Open%20in%20your%20browser-nothing%20to%20install-2f81f7?style=for-the-badge" alt="Open GuitarScore in your browser, nothing to install"></a>
+  <a href="https://github.com/Gerrit91/guitarscore/releases/latest"><img src="https://img.shields.io/badge/Download-Linux%20%C2%B7%20Windows%20%C2%B7%20macOS-555?style=for-the-badge" alt="Download for Linux, Windows and macOS"></a>
+</p>
+
+<a href="https://gerrit91.github.io/guitarscore/"><img src="docs/media/editor.png" alt="GuitarScore editing a song: notation and tab, the edit palette, and the song grid with its tracks and sections"></a>
 
 ## Why GuitarScore
 
