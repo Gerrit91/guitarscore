@@ -122,6 +122,71 @@ fn a_section_row_selects_all_its_bars_in_every_track() {
     );
 }
 
+/// Clicks at `pos` with `modifiers` held.
+fn click_with(
+    harness: &mut Harness<'static, GuitarScoreApp>,
+    pos: egui::Pos2,
+    modifiers: egui::Modifiers,
+) {
+    harness
+        .input_mut()
+        .events
+        .push(egui::Event::ModifiersChanged(modifiers));
+    harness.hover_at(pos);
+    for pressed in [true, false] {
+        harness.input_mut().events.push(egui::Event::PointerButton {
+            pos,
+            button: egui::PointerButton::Primary,
+            pressed,
+            modifiers,
+        });
+    }
+    harness.run();
+    harness
+        .input_mut()
+        .events
+        .push(egui::Event::ModifiersChanged(egui::Modifiers::NONE));
+    harness.run();
+}
+
+/// Shift-click on a section row grows the selection to take in that section and every
+/// one between, in either direction.
+#[test]
+fn shift_click_in_the_section_list_selects_several_sections() {
+    let mut harness = song_with_sections(false);
+    harness.get_by_label("Song tab").click();
+    harness.run();
+    harness
+        .get_by_label("Select the bars of section Verse")
+        .click();
+    harness.run();
+    let chorus = harness
+        .get_by_label("Select the bars of section Chorus")
+        .rect()
+        .center();
+    click_with(&mut harness, chorus, egui::Modifiers::SHIFT);
+    let span = |harness: &Harness<'static, GuitarScoreApp>| {
+        harness
+            .state()
+            .selection()
+            .map(|selection| (selection.start(), selection.end()))
+    };
+    assert_eq!(span(&harness), Some((2, 8)), "Verse and Chorus");
+    // Up again: the Intro joins, the far end stays.
+    let intro = harness
+        .get_by_label("Select the bars of section Intro")
+        .rect()
+        .center();
+    click_with(&mut harness, intro, egui::Modifiers::SHIFT);
+    assert_eq!(span(&harness), Some((0, 8)), "every section");
+    // A plain click selects one section again.
+    harness
+        .get_by_label("Select the bars of section Verse")
+        .click();
+    harness.run();
+    assert_eq!(span(&harness), Some((2, 4)));
+}
+
 #[test]
 fn the_song_tab_edits_the_song_and_undoes_a_field_as_one_step() {
     let mut harness = song_with_sections(false);

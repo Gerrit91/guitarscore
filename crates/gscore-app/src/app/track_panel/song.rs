@@ -119,6 +119,10 @@ impl GuitarScoreApp {
         }
         if let Some(selection) = actions.select {
             self.apply_grid_action(GridAction::Select(selection));
+            // The song grid shows the clicked section's first bar.
+            if let Some(tab) = self.tabs.get_mut(self.active) {
+                tab.grid_reveal = actions.reveal.or(Some(selection.start()));
+            }
             // The score follows to the section's first bar; the selection itself covers
             // every track, as the grid ruler's does.
             self.apply_grid_action(GridAction::MoveCursor {
@@ -198,6 +202,8 @@ struct SectionLine {
 struct SectionActions {
     /// A row was clicked: select its bars.
     select: Option<MeasureSelection>,
+    /// The first bar of the section clicked, which the song grid scrolls to.
+    reveal: Option<usize>,
     /// A row's drag began: drop the selection, so only the dragged section is marked.
     clear: bool,
     /// A row was dragged onto another: swap the two sections' bars.
@@ -236,8 +242,10 @@ fn sections(
                 title,
                 bars,
                 color: Color32::from_rgb(red, green, blue),
-                chosen: selection
-                    .is_some_and(|shown| shown.start() == row.start && shown.end() == row.end),
+                // Every section a selection covers whole is marked (shift-clicks select several).
+                chosen: selection.is_some_and(|shown| {
+                    shown.track.is_none() && shown.start() <= row.start && row.end <= shown.end()
+                }),
             }
         })
         .collect();
@@ -280,10 +288,23 @@ fn sections(
                 },
             );
             if response.clicked() {
-                actions.select = Some(MeasureSelection {
+                let section = MeasureSelection {
                     anchor: line.start,
                     focus: line.end,
                     track: None,
+                };
+                actions.reveal = Some(line.start);
+                // Shift-click grows the selection to take in this section too (and every
+                // section between), as in the song grid's ruler.
+                actions.select = Some(if ui.input(|input| input.modifiers.shift) {
+                    let mut grown = selection
+                        .unwrap_or(section)
+                        .extend_to(line.start)
+                        .extend_to(line.end);
+                    grown.track = None;
+                    grown
+                } else {
+                    section
                 });
             }
             if response.drag_started() {

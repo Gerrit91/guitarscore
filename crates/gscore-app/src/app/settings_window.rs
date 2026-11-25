@@ -787,10 +787,8 @@ impl GuitarScoreApp {
         });
         let mut loops = self.playback.count_in_loops();
         if ui
-            .add(style::switch(
-                &mut loops,
-                "Count in again each time a loop starts over",
-            ))
+            .add(style::switch(&mut loops, "Every time a loop starts"))
+            .on_hover_text("Count in again each time a loop starts over")
             .changed()
         {
             self.playback.set_count_in_loops(loops);

@@ -7111,3 +7111,21 @@ Dotted chords: a chord's augmentation dots stand in one column right of the whol
 (`Chord::dot_positions`): a note in a space keeps its space, a note on a line takes the space
 above, or below when the note above took it. A second's two notes used to put their dots
 into the same space, and the other notes' dots ran into the moved head.
+
+## 2026-11-25 — User issues: tuning, sections, shift-click, count-in wording
+
+- Tuning: the common tunings offered are the ones for as many strings as the dialog has.
+  The list used to offer every tuning, and most are 6-string guitar ones with plain names
+  ("Drop D", "Open G"): picking one on a 4-string bass made it a 6-string tuned like a
+  guitar. A new "All strings" step tunes every string a semitone down or up at once (a
+  step that would take a string out of range is not taken). A string's note list opens
+  scrolled to its note.
+- Sections: a section chosen in the Song tab's list scrolls the song grid to its first bar
+  when that is out of sight. Shift-click in the list grows the selection to take in that
+  section and every one between; every section the selection covers whole is marked.
+- Shift-click on the page grows the selection to the side clicked, as the song grid does:
+  before the selection its start moves there, after it its end, inside it nothing changes,
+  and a bar selection (from the grid or the section list) grows by whole bars. It used to
+  keep the beat the selection started at as the pivot, so a shift-click before a selection
+  made from its left end shrank it the other way, and a bar selection was dropped.
+- The count-in switch reads "Every time a loop starts" (the full sentence is its tooltip).

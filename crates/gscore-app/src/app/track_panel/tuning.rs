@@ -118,6 +118,8 @@ pub(super) struct TuningDialog {
     playing: Option<usize>,
     /// Why the reference tone does not sound, if it does not.
     tone_error: Option<String>,
+    /// The string whose note list is open, so it scrolls to the note once, as it opens.
+    open_list: Option<usize>,
 }
 
 impl TuningDialog {
@@ -140,6 +142,7 @@ impl TuningDialog {
             tone: super::super::tuner::Tone::default(),
             playing: None,
             tone_error: None,
+            open_list: None,
         }
     }
 
@@ -235,11 +238,23 @@ impl TuningDialog {
         let mut chosen = matching.map(|preset| preset.name);
         ui.horizontal(|ui| {
             ui.label(RichText::new("Common tuning").color(style::tokens(ui).text_weak));
+            // Only tunings for as many strings as the draft has: picking one never turns a
+            // 4-string bass into a 6-string (the string count is set below).
+            let strings = self.strings;
             let combo = egui::ComboBox::from_id_salt("common_tuning")
                 .selected_text(chosen.unwrap_or("Custom"))
                 .width(WIDTH - 130.0)
                 .show_ui(ui, |ui| {
-                    for preset in PRESETS {
+                    let fitting: Vec<&Preset> = PRESETS
+                        .iter()
+                        .filter(|preset| preset.pitches.len() == strings)
+                        .collect();
+                    if fitting.is_empty() {
+                        ui.label(
+                            RichText::new(format!("No common tuning for {strings} strings")).weak(),
+                        );
+                    }
+                    for preset in fitting {
                         let label = format!("{} ({} strings)", preset.name, preset.pitches.len());
                         if ui
                             .selectable_label(chosen == Some(preset.name), label)
@@ -264,6 +279,33 @@ impl TuningDialog {
         }
 
         ui.add_space(8.0);
+        // Every string a semitone up or down at once (tuning the whole instrument down to
+        // Eb, say); a step that would take a string out of range is not taken.
+        ui.horizontal(|ui| {
+            ui.label(RichText::new("All strings").color(style::tokens(ui).text_weak));
+            let (down, up) = super::super::icons::step_pair(
+                ui,
+                ("All strings a semitone lower", "A semitone lower", true),
+                ("All strings a semitone higher", "A semitone higher", true),
+            );
+            let shift = |pitches: &[u8], up: bool| -> Option<Vec<u8>> {
+                pitches
+                    .iter()
+                    .map(|&pitch| {
+                        if up {
+                            pitch.checked_add(1).filter(|pitch| *pitch <= 127)
+                        } else {
+                            pitch.checked_sub(1)
+                        }
+                    })
+                    .collect()
+            };
+            if let Some(shifted) = (down || up).then(|| shift(&self.pitches, up)).flatten() {
+                self.pitches = shifted;
+                self.error = None;
+            }
+        });
+        ui.add_space(4.0);
         self.strings_visual(ui);
         ui.add_space(8.0);
 
@@ -355,14 +397,25 @@ impl TuningDialog {
                 if down {
                     pitch = pitch.saturating_sub(1);
                 }
+                // The list opens at the string's note (it runs from B7 down to C0).
+                let just_opened = self.open_list != Some(index);
                 let combo = egui::ComboBox::from_id_salt(("tuning_note", index))
                     .selected_text(note_name(current))
                     .width(58.0)
                     .show_ui(ui, |ui| {
                         for candidate in (LOWEST..=HIGHEST).rev() {
-                            ui.selectable_value(&mut pitch, candidate, note_name(candidate));
+                            let response =
+                                ui.selectable_value(&mut pitch, candidate, note_name(candidate));
+                            if just_opened && candidate == current {
+                                response.scroll_to_me(Some(Align::Center));
+                            }
                         }
                     });
+                if combo.inner.is_some() {
+                    self.open_list = Some(index);
+                } else if self.open_list == Some(index) {
+                    self.open_list = None;
+                }
                 ui.ctx().accesskit_node_builder(combo.response.id, |node| {
                     node.set_label(format!("String {number} note"));
                 });

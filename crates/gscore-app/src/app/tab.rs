@@ -49,6 +49,9 @@ pub(super) struct Tab {
     pub(super) track: usize,
     /// The selected measure range in the song grid, if any.
     pub(super) selection: Option<MeasureSelection>,
+    /// A bar the song grid scrolls to on its next frame, if it is out of sight (a section
+    /// chosen in the Song tab's list).
+    pub(super) grid_reveal: Option<usize>,
     /// The right panel's state: the shown track, and the name being typed.
     pub(super) track_panel: TrackPanelState,
     /// The left panel's state: the chosen note length and header fields.
@@ -151,6 +154,7 @@ impl Tab {
             document,
             track: 0,
             selection: None,
+            grid_reveal: None,
             track_panel: TrackPanelState::default(),
             edit_palette: EditPaletteState::default(),
             drag_anchor: None,
