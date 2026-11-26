@@ -131,6 +131,9 @@ fn fields(ui: &mut Ui, setup: &mut PageSetup) {
     ));
 }
 
+/// The least height the page tab's scrolling part keeps, even in a very small window.
+const MIN_CONTENT_HEIGHT: f32 = 120.0;
+
 /// Width of the preview of the first page, in points.
 const PREVIEW_WIDTH: f32 = 230.0;
 
@@ -251,36 +254,53 @@ pub(super) fn page_tab(
     music: MusicFontChoice,
     actions: &mut PageTabActions,
 ) {
-    if !has_song {
-        ui.label(RichText::new("Open a song to set up its pages.").weak());
-    }
+    // The fields, the preview and the music fonts scroll in the room above the buttons,
+    // which stay in reach at the bottom. Sized from the window's room, inside a scroll
+    // area: otherwise the window grows to fit them (it is resizable, and the other tabs
+    // scroll at its size).
+    let spacing = ui.spacing().item_spacing.y;
+    let buttons =
+        ui.spacing().interact_size.y + 3.0 * spacing + super::settings_window::SEPARATOR_ROOM;
+    let room = (ui.available_height() - buttons).max(MIN_CONTENT_HEIGHT);
     let setup = &mut page.draft;
-    ui.horizontal_top(|ui| {
-        ui.vertical(|ui| fields(ui, setup));
-        ui.add_space(16.0);
-        ui.vertical(|ui| preview_panel(ui, preview, setup.check().is_ok(), music));
-    });
     let problem = setup.check().err();
-    if let Some(problem) = &problem {
-        ui.colored_label(ui.visuals().error_fg_color, problem.to_string());
-    }
-    // The music font, where its effect shows in the preview above. It is the app's, not
-    // the song's: it applies at once, to every song (Apply and Revert leave it alone).
-    if MusicFontChoice::available().len() > 1 {
-        ui.add_space(6.0);
-        ui.label(RichText::new("Music font").strong());
-        ui.label(
-            RichText::new(
-                "How notation and tablature look, on screen and in PDFs. Changes at once and \
-                 for every song.",
-            )
-            .weak(),
-        );
-        let mut chosen = music;
-        if super::music_font_picker::picker(ui, &mut chosen) {
-            actions.music = Some(chosen);
-        }
-    }
+    egui::ScrollArea::vertical()
+        .id_salt("page_tab")
+        .max_height(room)
+        .auto_shrink([false, false])
+        .show(ui, |ui| {
+            if !has_song {
+                ui.label(RichText::new("Open a song to set up its pages.").weak());
+            }
+            ui.horizontal_top(|ui| {
+                ui.vertical(|ui| fields(ui, setup));
+                ui.add_space(16.0);
+                ui.vertical(|ui| preview_panel(ui, preview, setup.check().is_ok(), music));
+            });
+            if let Some(problem) = &problem {
+                ui.colored_label(ui.visuals().error_fg_color, problem.to_string());
+            }
+            // The music font, where its effect shows in the preview above. It is the
+            // app's, not the song's: it applies at once, to every song (Apply and Revert
+            // leave it alone).
+            if MusicFontChoice::available().len() > 1 {
+                ui.add_space(6.0);
+                ui.label(RichText::new("Music font").strong());
+                ui.label(
+                    RichText::new(
+                        "How notation and tablature look, on screen and in PDFs. Changes at \
+                         once and for every song.",
+                    )
+                    .weak(),
+                );
+                let mut chosen = music;
+                if super::music_font_picker::picker(ui, &mut chosen) {
+                    actions.music = Some(chosen);
+                }
+            }
+        });
+    // The field values may have changed while drawn: check again for the buttons.
+    let problem = page.draft.check().err();
     ui.separator();
     ui.horizontal(|ui| {
         if ui

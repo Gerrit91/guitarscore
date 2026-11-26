@@ -7219,3 +7219,11 @@ first Play (`sequence`, `seek`, `tempo`, `play`); four playing reports with a mo
 position; loudest RMS 0.015; Space again sends `stop`. Choosing a tone is not driven:
 egui draws the tone list on the canvas, and clicking fixed coordinates would break with
 any layout change.
+
+## 2026-11-26 — The page layout tab no longer grows the settings window
+
+Owner: the Page layout tab made the settings window taller instead of scrolling. It was
+the one tab outside a scroll area (its fields, preview, music fonts and buttons), and a
+resizable egui window grows to fit what it holds. Its contents now scroll in the room
+above the buttons (Apply, Revert, Guitar Pro defaults, Done), as the Song tab's do. A test
+compares the Done button on both tabs: 44 points lower on the page tab before the fix.
