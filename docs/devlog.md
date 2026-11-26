@@ -7228,5 +7228,5 @@ shown track alone with the base options, so the view's choices were lost: multi-
 rests, the chosen score view's tracks and staves, hidden empty staves. The PDF export
 built those options in its own copy of the page view's code. Both now use one helper
 (`print_options`), and the preview caches on the tracks and options it was laid out
-with. On the owner's DistortedDreams.gp the preview said "Page 1 of 6" with every empty bar
+with. On a 12-track band song the preview said "Page 1 of 6" with every empty bar
 drawn; it now shows the multi-bar rests and "Page 1 of 3", as the status bar does.
