@@ -381,20 +381,32 @@ impl GuitarScoreApp {
         }
     }
 
-    /// Exports the active tab's shown track to `path` as PDF in the background, on pages
+    /// Exports the active tab's chosen view to `path` as PDF in the background, on pages
     /// with the song's page setup (whatever the view shows).
     fn start_pdf_export(&mut self, path: PathBuf, ctx: &egui::Context) {
         let Some(tab) = self.tabs.get(self.active) else {
             return;
         };
         let song = tab.document.song().clone();
-        let options = self
-            .options
-            .clone()
-            .with_page_setup(&song.page_setup())
-            .on_pages();
-        // The chosen view exactly as built (no cursor to keep): its tracks, their staves,
-        // and every empty staff may go when it says so.
+        let (tracks, options) = self.print_options(tab, &song.page_setup());
+        let music = self.view.music_font;
+        if let Err(error) = self
+            .tasks
+            .export_pdf(song, tracks, options, music, path, ctx)
+        {
+            self.notice = Some(error);
+        }
+    }
+
+    /// What `tab` prints with `setup` (the PDF, and the page layout tab's preview): the
+    /// chosen view exactly as built (no cursor to keep), its tracks and their staves, every
+    /// empty staff left out when it says so, and multi-bar rests as the view shows them.
+    pub(super) fn print_options(
+        &self,
+        tab: &Tab,
+        setup: &gscore_model::PageSetup,
+    ) -> (Vec<usize>, gscore_layout::LayoutOptions) {
+        let options = self.options.clone().with_page_setup(setup).on_pages();
         let score = tab.shown_score(false);
         let options = gscore_layout::LayoutOptions {
             empty_staves: if score
@@ -409,14 +421,7 @@ impl GuitarScoreApp {
             multi_bar_rests: self.view.multi_bar_rests,
             ..options
         };
-        let tracks = score.tracks;
-        let music = self.view.music_font;
-        if let Err(error) = self
-            .tasks
-            .export_pdf(song, tracks, options, music, path, ctx)
-        {
-            self.notice = Some(error);
-        }
+        (score.tracks, options)
     }
 
     /// `tab`'s song as Save writes it: our own state travels in the song's free-text notes

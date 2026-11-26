@@ -7245,3 +7245,13 @@ the one tab outside a scroll area (its fields, preview, music fonts and buttons)
 resizable egui window grows to fit what it holds. Its contents now scroll in the room
 above the buttons (Apply, Revert, Guitar Pro defaults, Done), as the Song tab's do. A test
 compares the Done button on both tabs: 44 points lower on the page tab before the fix.
+## 2026-11-26 — The page layout preview shows the score as it prints
+
+Owner: multi-rest bars were missing from the print preview (the Page layout tab's
+preview), which should look exactly like the score in the app. The preview laid out the
+shown track alone with the base options, so the view's choices were lost: multi-bar
+rests, the chosen score view's tracks and staves, hidden empty staves. The PDF export
+built those options in its own copy of the page view's code. Both now use one helper
+(`print_options`), and the preview caches on the tracks and options it was laid out
+with. On a 12-track band song the preview said "Page 1 of 6" with every empty bar
+drawn; it now shows the multi-bar rests and "Page 1 of 3", as the status bar does.
