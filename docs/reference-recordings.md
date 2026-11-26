@@ -54,6 +54,19 @@ Every recording has a tab in `docs/reference-recordings/` that you play along to
 | `05-coupling` | open A three times with the other strings free, three times with them damped | 1:00 |
 | `06-riff` | your own bass line, see below | |
 
+| 5-string bass (`bass5/`, B standard) | Content | Length |
+|---|---|---|
+| `01-single-notes` | as bass 01, then the low B: open, fret 5 and fret 12, p, mf and ff | 6:12 |
+| `02-pick-and-mute` | as bass 02, then the low B open and fret 5 with a pick, open palm-muted with the pick and with the thumb | 2:36 |
+| `03-lines` | as bass 03 | 2:12 |
+| `04-techniques` | as bass 04, then the low B's natural harmonics at 12, 7 and 5 | 2:52 |
+| `05-coupling` | as bass 05: open A with the other strings (the low B too) free, then damped | 1:00 |
+| `06-riff` | your own bass line | |
+
+The 5-string tabs are the 4-string ones with the fifth string added. The low B parts
+are added at the end, so every bar before them is where it is in the 4-string tab, and
+recordings of both basses line up bar by bar.
+
 How the tabs are laid out:
 
 - **60 BPM in 4/4** (one bar is 4 s), except the strumming at 90.
@@ -149,8 +162,8 @@ the same interface, so they stay sample-aligned.
 - **Gain:** the hardest note (ff open E, a slap) peaks between -10 and -6 dBFS.
 - **Through an amp modeller** (optional, as for the electric): one clean and one driven
   bass tone, amp only and amp with cab, on `01` (medium notes), `03` and `06`.
-- **A 5-string bass:** the same tabs; play the low B as well on a second pass of `01`
-  (its open, fret 5 and fret 12) and write it down.
+- **A 5-string bass:** the tabs in `bass5/` (see the table above). Write its tuning
+  in the notes if it is not B standard.
 - Leave the slap and pop bars of `04` out if you do not slap.
 
 ## Files and notes
@@ -184,6 +197,9 @@ About an hour per guitar, setup included.
 
 The tabs were written with `gscore-cli edit` scripts (one command per line: bars, frets,
 ties, effects, dynamics, texts) applied to an empty one-bar song; the bass tabs to the
-bass track of `testdata/basic/multi_staff.gp`, cut down to one empty bar and four strings. They can be changed
+bass track of `testdata/basic/multi_staff.gp`, cut down to one empty bar and four strings.
+The 5-string tabs were made from the 4-string ones (2026-11-26): `set_track_strings
+strings=5`, then each added low B bar copied from the E string's bars, fret, length,
+tie, palm mute, harmonic and text alike. They can be changed
 in GuitarScore like any song; if one is changed, keep the grid (two bars per note, 60
 BPM) so recordings made before and after still compare.

@@ -7282,3 +7282,13 @@ view) but never tested with an injected panic. `gscore_layout::testing` has a ch
 each (no-op unless the `test-support` feature is on): a panicking layout shows its message,
 the edit that caused it stands and is journaled, and the next edit lays out again; a
 panicking drawing shows its notice and the next frame draws.
+
+## 2026-11-26 — Reference recordings: tabs for a 5-string bass
+
+`docs/reference-recordings/bass5/`: the five bass tabs with a fifth string (B standard).
+The low B parts go at the end so every earlier bar is where it is in the 4-string tab:
+01 gets a "B string" section (open, fret 5, fret 12 at p, mf, ff; 93 bars), 02 "Low B"
+(open and fret 5 with a pick, palm-muted with the pick and the thumb; 39 bars), 04 the
+low B's natural harmonics at 12, 7 and 5 (43 bars); 03 and 05 only gain the string.
+Made with `gscore-cli edit` scripts and checked against the 4-string files: no earlier
+bar changed, each new bar matches the E-string bar it copies.
