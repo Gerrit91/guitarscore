@@ -14,7 +14,7 @@ use std::sync::{Arc, Mutex, PoisonError};
 use std::thread::JoinHandle;
 use std::time::Duration;
 
-use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
+use cpal::traits::{DeviceTrait, StreamTrait};
 use cpal::{FromSample, SampleFormat, SizedSample, Stream, StreamConfig};
 use gscore_play::PlayError;
 
@@ -93,12 +93,18 @@ pub struct TunerPlayer {
 impl TunerPlayer {
     /// Opens the default output device in the background.
     pub fn start() -> Result<Self, PlayError> {
+        TunerPlayer::start_on(None)
+    }
+
+    /// Opens the output `device` (an [`crate::OutputDevice`]'s id; `None`, or a device
+    /// that is not there: the default) in the background.
+    pub fn start_on(device: Option<String>) -> Result<Self, PlayError> {
         let shared = Arc::new(Shared::default());
         let (quit, quit_receiver) = mpsc::sync_channel(1);
         let worker = Arc::clone(&shared);
         let thread = std::thread::Builder::new()
             .name("gscore-tuner".to_owned())
-            .spawn(move || run(&quit_receiver, &worker))
+            .spawn(move || run(&quit_receiver, &worker, device.as_deref()))
             .map_err(|e| PlayError::Device(format!("cannot start the tuner: {e}")))?;
         Ok(TunerPlayer {
             shared,
@@ -155,8 +161,8 @@ impl Drop for TunerPlayer {
     }
 }
 
-fn run(quit: &Receiver<()>, shared: &Arc<Shared>) {
-    let stream = match open_stream(shared) {
+fn run(quit: &Receiver<()>, shared: &Arc<Shared>, device: Option<&str>) {
+    let stream = match open_stream(shared, device) {
         Ok(stream) => stream,
         Err(error) => {
             *lock(&shared.error) = Some(error.to_string());
@@ -169,16 +175,12 @@ fn run(quit: &Receiver<()>, shared: &Arc<Shared>) {
     drop(stream);
 }
 
-/// Opens the default output device and starts a stream rendering the tone.
-fn open_stream(shared: &Arc<Shared>) -> Result<Stream, PlayError> {
-    let host = cpal::default_host();
-    let device = host
-        .default_output_device()
-        .ok_or_else(|| PlayError::Device("no audio output device for the tuner".to_owned()))?;
-    let name = device
-        .description()
-        .map(|d| d.name().to_owned())
-        .unwrap_or_else(|_| "the default audio output".to_owned());
+/// Opens the output `device` (`None`: the default) and starts a stream rendering the tone.
+fn open_stream(shared: &Arc<Shared>, device: Option<&str>) -> Result<Stream, PlayError> {
+    // A chosen device that is gone falls back to the default without a word: the tuner
+    // has nowhere to say it, and playback already does.
+    let (device, _) = crate::output_device::open_output(device)?;
+    let name = crate::output_device::name_of(&device, "the default audio output");
     let supported = device
         .default_output_config()
         .map_err(|e| PlayError::Device(format!("{name}: {e}")))?;

@@ -867,6 +867,11 @@ pub struct Settings {
     /// The sample rate the built-in synthesizer asks the device for (and WAV export uses);
     /// `None`: the device's own.
     pub sample_rate: Option<u32>,
+    /// The audio output the built-in synthesizer and the tuner play through
+    /// (`gscore_audio::OutputDevice`'s id); `None`: the system's default.
+    pub output_device: Option<String>,
+    /// That output's name when it was chosen, shown while it is not connected.
+    pub output_device_name: Option<String>,
     /// How each kind of modelled string sounds (the Sound chain window's strings).
     pub string_sounds: StringSounds,
     /// Chains (with their string sound) saved under a name, by the Sound chain window.
@@ -968,6 +973,8 @@ impl Default for Settings {
             prefer_synth: true,
             modelled_guitars: true,
             sample_rate: None,
+            output_device: None,
+            output_device_name: None,
             string_sounds: StringSounds::default(),
             string_chains: crate::chain_settings::StringChains::default(),
             reverb_bus: ReverbBus::default(),

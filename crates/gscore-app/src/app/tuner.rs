@@ -38,6 +38,8 @@ enum ToneRequest {
 pub(super) struct Tone {
     /// The tone generator, once it was started.
     player: Option<gscore_audio::TunerPlayer>,
+    /// The audio output the generator plays through (`None`: the default).
+    device: Option<String>,
     /// Why the tone does not sound, if it does not.
     error: Option<String>,
 }
@@ -45,17 +47,20 @@ pub(super) struct Tone {
 impl Tone {
     /// Plays `note` (a MIDI note number), starting the output the first time and retuning
     /// it afterwards. Returns the reason when it cannot sound.
-    pub(super) fn play(&mut self, note: u8) -> Option<String> {
-        // A device that failed (unplugged, busy) is opened again on the next Play.
+    pub(super) fn play(&mut self, note: u8, device: Option<&str>) -> Option<String> {
+        // A device that failed (unplugged, busy) is opened again on the next Play, and so
+        // is one the user has since replaced in the settings.
         if self
             .player
             .as_ref()
             .is_some_and(|player| player.error().is_some())
+            || self.device.as_deref() != device
         {
             self.player = None;
         }
         if self.player.is_none() {
-            match gscore_audio::TunerPlayer::start() {
+            self.device = device.map(str::to_owned);
+            match gscore_audio::TunerPlayer::start_on(self.device.clone()) {
                 Ok(player) => self.player = Some(player),
                 Err(error) => return Some(error.to_string()),
             }
@@ -90,9 +95,9 @@ impl Tone {
             .or_else(|| self.player.as_ref().and_then(|player| player.error()))
     }
 
-    /// Plays `note` and keeps its error, if it could not sound.
-    pub(super) fn play_and_remember(&mut self, note: u8) {
-        let error = self.play(note);
+    /// Plays `note` through `device` and keeps its error, if it could not sound.
+    pub(super) fn play_and_remember(&mut self, note: u8, device: Option<&str>) {
+        let error = self.play(note, device);
         self.error = error;
     }
 
@@ -341,7 +346,9 @@ impl GuitarScoreApp {
                     });
             });
         match request {
-            Some(ToneRequest::Play(note)) => tuner.tone.play_and_remember(note),
+            Some(ToneRequest::Play(note)) => tuner
+                .tone
+                .play_and_remember(note, self.playback.output_device()),
             Some(ToneRequest::Stop) => tuner.tone.stop(),
             None => {}
         }

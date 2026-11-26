@@ -323,6 +323,8 @@ pub struct Playback {
     midi_error: Option<String>,
     /// The sample rate asked of the device; `None`: its own.
     sample_rate: Option<u32>,
+    /// The audio output's id (`gscore_audio::OutputDevice`); `None`: the default.
+    output_device: Option<String>,
     /// How each kind of modelled string sounds on a track without a tone of its own.
     string_sounds: crate::settings::StringSounds,
     /// The effect chain after each kind of string on a track without a tone of its own.
@@ -428,6 +430,7 @@ impl Default for Playback {
             midi_outs: Vec::new(),
             midi_error: None,
             sample_rate: None,
+            output_device: None,
             string_sounds: crate::settings::StringSounds::default(),
             string_chains: crate::chain_settings::StringChains::default(),
             string_presets: Vec::new(),
@@ -671,6 +674,29 @@ impl Playback {
             return;
         }
         self.sample_rate = rate;
+        self.restart_synth();
+    }
+
+    /// The audio output chosen for the built-in synthesizer and the tuner: a
+    /// [`gscore_audio::OutputDevice`]'s id (`None`: the system's default).
+    pub fn output_device(&self) -> Option<&str> {
+        self.output_device.as_deref()
+    }
+
+    /// Chooses the audio output; a running synthesizer is restarted at the next play (it
+    /// stops now). A device that is gone plays through the default output, with a notice.
+    pub fn set_output_device(&mut self, device: Option<String>) {
+        let device = device.filter(|id| !id.is_empty());
+        if device == self.output_device {
+            return;
+        }
+        self.output_device = device;
+        self.restart_synth();
+    }
+
+    /// Stops a running built-in synthesizer so the next play starts it again with the
+    /// current sample rate and output device.
+    fn restart_synth(&mut self) {
         #[cfg(not(target_arch = "wasm32"))]
         if matches!(self.player, Some(Active::Synth(_))) {
             if let Some(active) = &mut self.player {
@@ -683,6 +709,15 @@ impl Playback {
             self.midi_sequences.clear();
             self.reported = None;
             self.lead = None;
+        }
+    }
+
+    /// The name of the device the synthesizer plays through, once it runs.
+    pub fn device_name(&self) -> Option<String> {
+        match &self.player {
+            #[cfg(not(target_arch = "wasm32"))]
+            Some(Active::Synth(player)) => player.device(),
+            _ => None,
         }
     }
 
@@ -910,7 +945,8 @@ impl Playback {
             #[cfg(not(target_arch = "wasm32"))]
             let active = match &self.output {
                 Output::Synth(path) => Active::Synth(
-                    SynthPlayer::start_at(path, self.sample_rate).map_err(|e| e.to_string())?,
+                    SynthPlayer::start_on(path, self.sample_rate, self.output_device.clone())
+                        .map_err(|e| e.to_string())?,
                 ),
                 Output::Midi(port) => Active::Midi(
                     MidiOutPlayer::connect(port.as_deref()).map_err(|e| e.to_string())?,

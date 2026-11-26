@@ -343,6 +343,7 @@ impl GuitarScoreApp {
         let Some(mut dialog) = tab.track_panel.tuning.take() else {
             return;
         };
+        dialog.output_device = self.playback.output_device().map(str::to_owned);
         let mut outcome = dialog.show(ctx);
         if outcome == tuning::Outcome::Apply {
             let track = TrackIndex::new(dialog.track());

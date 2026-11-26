@@ -2,7 +2,7 @@
 //! I/O. Song changes go through commands, so they are undoable; the other settings apply at
 //! once and are remembered between runs.
 
-use std::panic::{AssertUnwindSafe, catch_unwind};
+use std::panic::catch_unwind;
 use std::path::PathBuf;
 use std::sync::mpsc::{self, Receiver, TryRecvError};
 
@@ -62,6 +62,9 @@ pub(super) struct SettingsWindow {
     pos: Option<egui::Pos2>,
     /// The SoundFonts found on disk, for the Audio I/O tab.
     soundfonts: SoundFontScan,
+    /// The audio outputs, for the Audio I/O tab.
+    #[cfg(not(target_arch = "wasm32"))]
+    outputs: OutputScan,
 }
 
 impl SettingsWindow {
@@ -74,26 +77,70 @@ impl SettingsWindow {
             preview: PagePreview::default(),
             pos: None,
             soundfonts: SoundFontScan::default(),
+            #[cfg(not(target_arch = "wasm32"))]
+            outputs: OutputScan::default(),
         }
     }
 }
 
-/// The SoundFonts in the usual folders. Searching reads directories, so it runs on a
-/// background thread (never on the UI thread): once when the Audio I/O tab is first shown,
-/// and again on "Search again".
-#[derive(Debug, Default)]
+/// A list found on a background thread (never on the UI thread): the SoundFonts in the
+/// usual folders (reading directories) or the audio outputs (asking the sound system can
+/// take a while). Searched once when the Audio I/O tab is first shown, and again on
+/// "Search again".
+#[derive(Debug)]
 #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
-struct SoundFontScan {
+struct Scan<T> {
     /// What the last search found.
-    found: Vec<PathBuf>,
+    found: Vec<T>,
     /// The search that is running.
-    pending: Option<Receiver<Vec<PathBuf>>>,
+    pending: Option<Receiver<Vec<T>>>,
     /// Whether a search was started yet.
     started: bool,
+    /// The thread's name.
+    name: &'static str,
+    /// The search.
+    search: fn() -> Vec<T>,
+}
+
+/// The SoundFonts on disk.
+type SoundFontScan = Scan<PathBuf>;
+
+impl Default for SoundFontScan {
+    fn default() -> Self {
+        Scan::new(
+            "gscore-soundfont-search",
+            gscore_audio::available_soundfonts,
+        )
+    }
+}
+
+/// The first entry of the output device list: whatever the system plays through.
+#[cfg(not(target_arch = "wasm32"))]
+const DEFAULT_OUTPUT: &str = "System default";
+
+/// This machine's audio outputs.
+#[cfg(not(target_arch = "wasm32"))]
+type OutputScan = Scan<gscore_audio::OutputDevice>;
+
+#[cfg(not(target_arch = "wasm32"))]
+impl Default for OutputScan {
+    fn default() -> Self {
+        Scan::new("gscore-output-search", gscore_audio::output_devices)
+    }
 }
 
 #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
-impl SoundFontScan {
+impl<T: Send + 'static> Scan<T> {
+    fn new(name: &'static str, search: fn() -> Vec<T>) -> Self {
+        Scan {
+            found: Vec::new(),
+            pending: None,
+            started: false,
+            name,
+            search,
+        }
+    }
+
     /// Starts the first search, and takes in a finished one.
     fn poll(&mut self, ctx: &egui::Context) {
         if !self.started {
@@ -112,21 +159,21 @@ impl SoundFontScan {
         }
     }
 
-    /// Searches the folders again in the background.
+    /// Searches again in the background.
     fn start(&mut self, ctx: &egui::Context) {
         self.started = true;
         let (sender, receiver) = mpsc::sync_channel(1);
         let ctx = ctx.clone();
+        let search = self.search;
         let spawned = std::thread::Builder::new()
-            .name("gscore-soundfont-search".to_owned())
+            .name(self.name.to_owned())
             .spawn(move || {
-                // A panic only means nothing is offered; the file chooser still works.
-                let found = catch_unwind(AssertUnwindSafe(gscore_audio::available_soundfonts))
-                    .unwrap_or_default();
+                // A panic only means nothing is offered; the other choices still work.
+                let found = catch_unwind(search).unwrap_or_default();
                 let _ = sender.send(found);
                 ctx.request_repaint();
             });
-        // Without a thread, nothing is listed; the file chooser still works.
+        // Without a thread, nothing is listed; the other choices still work.
         self.pending = spawned.is_ok().then_some(receiver);
     }
 
@@ -282,6 +329,11 @@ impl GuitarScoreApp {
                             SettingsTab::Song | SettingsTab::Page => {}
                             SettingsTab::Editor => self.editor_tab(ui),
                             SettingsTab::Metronome => self.metronome_tab(ui),
+                            #[cfg(not(target_arch = "wasm32"))]
+                            SettingsTab::Audio => {
+                                self.audio_tab(ui, &mut window.soundfonts, &mut window.outputs);
+                            }
+                            #[cfg(target_arch = "wasm32")]
                             SettingsTab::Audio => self.audio_tab(ui, &mut window.soundfonts),
                         });
                 }
@@ -351,7 +403,7 @@ impl GuitarScoreApp {
 
     /// The audio I/O tab: the output, a SoundFont for the synthesizer, and MIDI ports.
     #[cfg(not(target_arch = "wasm32"))]
-    fn audio_tab(&mut self, ui: &mut Ui, soundfonts: &mut SoundFontScan) {
+    fn audio_tab(&mut self, ui: &mut Ui, soundfonts: &mut SoundFontScan, outputs: &mut OutputScan) {
         soundfonts.poll(ui.ctx());
         ui.heading("Output");
         let current = self.playback.soundfont().map(std::path::Path::to_path_buf);
@@ -489,6 +541,7 @@ impl GuitarScoreApp {
         if let Some(error) = self.playback.new_error() {
             self.notice = Some(error);
         }
+        self.output_device_choice(ui, outputs);
         self.sample_rate_choice(ui);
         self.guitar_sound(ui);
         ui.separator();
@@ -647,6 +700,91 @@ impl GuitarScoreApp {
         ui.separator();
         ui.heading("Input");
         self.midi_input_settings(ui);
+    }
+
+    /// The audio output the built-in synthesizer and the tuner play through (desktop: the
+    /// browser plays through the system's).
+    #[cfg(not(target_arch = "wasm32"))]
+    fn output_device_choice(&mut self, ui: &mut Ui, outputs: &mut OutputScan) {
+        outputs.poll(ui.ctx());
+        let current = self.playback.output_device().map(str::to_owned);
+        let found = |id: &str| outputs.found.iter().find(|device| device.id == id);
+        let selected = match &current {
+            None => DEFAULT_OUTPUT.to_owned(),
+            Some(id) => match found(id) {
+                Some(device) => device.name.clone(),
+                None => {
+                    let name = self
+                        .settings
+                        .output_device_name
+                        .clone()
+                        .unwrap_or_else(|| "The chosen output".to_owned());
+                    if outputs.searching() {
+                        name
+                    } else {
+                        format!("{name} (not connected)")
+                    }
+                }
+            },
+        };
+        ui.horizontal(|ui| {
+            ui.label("Output device");
+            let mut chosen = None;
+            let response = egui::ComboBox::from_id_salt("settings_output_device")
+                .selected_text(selected)
+                .width(280.0)
+                .show_ui(ui, |ui| {
+                    if ui
+                        .selectable_label(current.is_none(), DEFAULT_OUTPUT)
+                        .clicked()
+                    {
+                        chosen = Some(None);
+                    }
+                    for device in &outputs.found {
+                        if ui
+                            .selectable_label(
+                                current.as_deref() == Some(device.id.as_str()),
+                                &device.name,
+                            )
+                            .on_hover_text(&device.id)
+                            .clicked()
+                        {
+                            chosen = Some(Some(device.clone()));
+                        }
+                    }
+                    if outputs.searching() {
+                        ui.label("Searching…");
+                    } else if outputs.found.is_empty() {
+                        ui.label("No other outputs found");
+                    }
+                });
+            ui.ctx()
+                .accesskit_node_builder(response.response.id, |node| {
+                    node.set_label("Output device");
+                });
+            if ui
+                .add_enabled(!outputs.searching(), egui::Button::new("Search again"))
+                .on_hover_text("Look for audio outputs plugged in since")
+                .clicked()
+            {
+                outputs.start(ui.ctx());
+            }
+            if let Some(device) = chosen {
+                self.settings.output_device_name = device.as_ref().map(|d| d.name.clone());
+                self.playback.set_output_device(device.map(|d| d.id));
+            }
+        });
+        let now = self
+            .playback
+            .device_name()
+            .map_or_else(String::new, |name| format!("Playing through {name}. "));
+        ui.label(
+            RichText::new(format!(
+                "{now}For the built-in synthesizer and the tuner; MIDI output goes to its \
+                 port. Takes effect at the next play."
+            ))
+            .weak(),
+        );
     }
 
     /// The sample rate of the built-in synthesizer (desktop: the browser sets its own).

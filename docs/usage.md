@@ -67,6 +67,12 @@ the toolbar's "Output" menu switches between the synthesizer, "Choose SoundFontâ
 MIDI ports. Play starts at the cursor's note; after a pause it resumes, unless the cursor
 was moved meanwhile.
 
+Settings â†’ Audio I/O, "Output device" chooses where the synthesizer and the tuner play:
+"System default", or one of this machine's outputs (speakers, headphones, HDMI, a USB
+interface, a Bluetooth speaker; on Linux as PulseAudio or PipeWire names them). "Search
+again" lists outputs plugged in since. The choice takes effect at the next play; an output
+that is not connected then plays through the system default and says so.
+
 ### Modelled guitars and basses
 
 Guitar and bass tracks (General MIDI programs 24 to 39) are played by modelled strings

@@ -120,6 +120,9 @@ pub(super) struct TuningDialog {
     tone_error: Option<String>,
     /// The string whose note list is open, so it scrolls to the note once, as it opens.
     open_list: Option<usize>,
+    /// The audio output the reference tone plays through (the settings'; `None`: the
+    /// default), set before each frame.
+    pub(super) output_device: Option<String>,
 }
 
 impl TuningDialog {
@@ -143,6 +146,7 @@ impl TuningDialog {
             playing: None,
             tone_error: None,
             open_list: None,
+            output_device: None,
         }
     }
 
@@ -443,7 +447,8 @@ impl TuningDialog {
                         self.playing = None;
                     } else {
                         let note = pitch.saturating_add(self.capo).min(127);
-                        self.tone.play_and_remember(note);
+                        self.tone
+                            .play_and_remember(note, self.output_device.as_deref());
                         self.tone_error = self.tone.error();
                         self.playing = if self.tone.playing() {
                             Some(index)
