@@ -480,7 +480,8 @@ impl Writer {
     fn spec(&mut self, spec: &ChainSpec) {
         for block in &spec.blocks {
             match block {
-                None => self.u8(0),
+                // The browser has no plugins: an external block's place goes empty.
+                None | Some(BlockKind::External(_)) => self.u8(0),
                 Some(BlockKind::Impulse(response)) => {
                     self.u8(1);
                     self.response(response);

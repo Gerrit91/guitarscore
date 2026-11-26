@@ -17,6 +17,7 @@ use crate::convolver::{Convolver, PARTITION, Spectra};
 use crate::drive::Drive;
 use crate::echo::Echo;
 use crate::eq::Eq;
+use crate::external::{External, Instance};
 use crate::filters::Biquad;
 use crate::impulse::ImpulseResponse;
 use crate::knobs::BlockSettings;
@@ -25,7 +26,7 @@ use crate::reverb::Reverb;
 /// The places for blocks after the strings.
 pub const BLOCKS: usize = 5;
 /// Below this level the chain's output counts as silent...
-const SILENCE: f32 = 1e-6;
+pub(crate) const SILENCE: f32 = 1e-6;
 /// ...and after this long of silence (seconds) the tail is over: a room's response may
 /// have quiet stretches (a pre-delay) shorter than this.
 const QUIET_HOLD: f32 = 0.5;
@@ -58,6 +59,8 @@ pub enum BlockKind {
     Chorus,
     /// A digital delay, its time free or synced to the tempo ([`Chain::set_tempo`]).
     Delay,
+    /// A block made outside this crate (a plugin): stereo from here on.
+    External(External),
 }
 
 impl BlockKind {
@@ -93,6 +96,7 @@ enum PreparedBlock {
     Eq,
     Chorus,
     Delay,
+    External(External),
 }
 
 impl ChainSpec {
@@ -124,6 +128,7 @@ impl ChainSpec {
                 BlockKind::Eq => PreparedBlock::Eq,
                 BlockKind::Chorus => PreparedBlock::Chorus,
                 BlockKind::Delay => PreparedBlock::Delay,
+                BlockKind::External(external) => PreparedBlock::External(external),
             })
         });
         PreparedChain {
@@ -177,6 +182,11 @@ impl PreparedChain {
             Some(PreparedBlock::Drive) => Block::Drive(Box::new(
                 [(); 2].map(|()| Drive::new(rate, crate::DriveKnobs::default())),
             )),
+            // One that cannot be made leaves its place empty: the sound passes.
+            Some(PreparedBlock::External(external)) => external
+                .0
+                .instance(self.sample_rate)
+                .map_or(Block::Empty, |instance| Block::External(Instance(instance))),
         });
         let mut chain = Chain {
             rate,
@@ -192,19 +202,19 @@ impl PreparedChain {
 }
 
 #[derive(Debug)]
-struct ImpulseBlock {
+pub(crate) struct ImpulseBlock {
     /// Left and right (for a cabinet or body the right only once the signal is stereo;
     /// for a room the room's two sides).
-    convolvers: [Convolver; 2],
+    pub(crate) convolvers: [Convolver; 2],
     /// The dry signal delayed by the convolvers' latency, so dry and wet line up.
-    dry: [Vec<f32>; 2],
-    at: usize,
+    pub(crate) dry: [Vec<f32>; 2],
+    pub(crate) at: usize,
     /// Low cut and high cut, left and right.
-    cuts: [[Biquad; 2]; 2],
+    pub(crate) cuts: [[Biquad; 2]; 2],
 }
 
 #[derive(Debug)]
-enum Block {
+pub(crate) enum Block {
     Empty,
     Impulse(Box<ImpulseBlock>),
     Room(Box<ImpulseBlock>),
@@ -221,26 +231,28 @@ enum Block {
     Chorus(Box<Chorus>),
     /// Both sides at once.
     Delay(Box<Echo>),
+    /// A plugin: whole buffers at once, stereo (see `chain_run`).
+    External(Instance),
 }
 
 /// The computed reverb and the cut filters on its sound, left and right.
 #[derive(Debug)]
-struct ReverbBlock {
-    reverb: Reverb,
-    cuts: [[Biquad; 2]; 2],
+pub(crate) struct ReverbBlock {
+    pub(crate) reverb: Reverb,
+    pub(crate) cuts: [[Biquad; 2]; 2],
 }
 
 /// One track's chain.
 #[derive(Debug)]
 pub struct Chain {
     rate: f32,
-    blocks: [Block; BLOCKS],
-    settings: [BlockSettings; BLOCKS],
+    pub(crate) blocks: [Block; BLOCKS],
+    pub(crate) settings: [BlockSettings; BLOCKS],
     /// The output level of the chain, linear (a scalar after every block, before the
     /// mixer's fader).
-    output: f32,
+    pub(crate) output: f32,
     /// Samples of silent output in a row, to know when the tail has died away.
-    quiet: usize,
+    pub(crate) quiet: usize,
 }
 
 impl Chain {
@@ -296,7 +308,7 @@ impl Chain {
                     echo.set_knobs(new.delay);
                     (None, (0.0, 0.0))
                 }
-                Block::Empty => (None, (0.0, 0.0)),
+                Block::Empty | Block::External(_) => (None, (0.0, 0.0)),
             };
             if let Some(filters) = filters {
                 let low = Biquad::highpass(self.rate, cuts.0, CUT_Q);
@@ -395,186 +407,9 @@ impl Chain {
                         filter.reset();
                     }
                 }
+                Block::External(instance) => instance.0.reset(),
             }
         }
         self.quiet = usize::MAX;
-    }
-
-    /// Runs `input` (mono, from the strings) through the chain into `left` and `right`
-    /// (overwritten). The slices should be equally long; the shortest decides.
-    pub fn process(&mut self, input: &[f32], left: &mut [f32], right: &mut [f32]) {
-        for ((&x, l), r) in input.iter().zip(left.iter_mut()).zip(right.iter_mut()) {
-            *l = x;
-            *r = x;
-        }
-        let frames = input.len().min(left.len()).min(right.len());
-        if let (Some(left), Some(right)) = (left.get_mut(..frames), right.get_mut(..frames)) {
-            self.process_in_place(left, right, false);
-        }
-    }
-
-    /// Runs a stereo signal (a SoundFont track's) through the chain, in place.
-    pub fn process_stereo(&mut self, left: &mut [f32], right: &mut [f32]) {
-        self.process_in_place(left, right, true);
-    }
-
-    /// The chain on `left` and `right`, in place: mono (`stereo_in` false: only `left` is
-    /// read, as from the strings) until a block makes it stereo, or stereo from the start.
-    pub fn process_in_place(&mut self, left: &mut [f32], right: &mut [f32], stereo_in: bool) {
-        let frames = left.len().min(right.len());
-        let mut peak = 0.0_f32;
-        for (l, r) in left.iter_mut().zip(right.iter_mut()) {
-            let mut signal = if stereo_in { [*l, *r] } else { [*l, *l] };
-            let mut stereo = stereo_in;
-            for (block, settings) in self.blocks.iter_mut().zip(&self.settings) {
-                if settings.bypass {
-                    continue;
-                }
-                match block {
-                    Block::Empty => {}
-                    Block::Amp(sides) => {
-                        let [left, right] = &mut **sides;
-                        signal[0] = left.process(signal[0]);
-                        signal[1] = if stereo {
-                            right.process(signal[1])
-                        } else {
-                            signal[0]
-                        };
-                    }
-                    Block::Compressor(compressor) => {
-                        let (left, right) = compressor.process(signal[0], signal[1], stereo);
-                        signal = [left, right];
-                    }
-                    Block::Eq(sides) => {
-                        let [left, right] = &mut **sides;
-                        signal[0] = left.process(signal[0]);
-                        signal[1] = if stereo {
-                            right.process(signal[1])
-                        } else {
-                            signal[0]
-                        };
-                    }
-                    Block::Chorus(chorus) => {
-                        // The chorus needs both sides: a mono signal is made stereo first.
-                        let mut left = [signal[0]];
-                        let mut right = [signal[1]];
-                        chorus.process(&mut left, &mut right);
-                        signal = [left[0], right[0]];
-                        stereo = true;
-                    }
-                    Block::Drive(sides) => {
-                        let [left, right] = &mut **sides;
-                        signal[0] = left.process(signal[0]);
-                        signal[1] = if stereo {
-                            right.process(signal[1])
-                        } else {
-                            signal[0]
-                        };
-                    }
-                    Block::Delay(echo) => {
-                        let (left, right) = echo.process(signal[0], signal[1], stereo);
-                        // Ping-pong makes the sides differ; without it a mono signal stays
-                        // mono.
-                        stereo = stereo || settings.delay.ping_pong > 0.0;
-                        signal = [left, right];
-                    }
-                    Block::Impulse(impulse) => {
-                        let knobs = settings.impulse;
-                        let gain = 10.0_f32.powf(knobs.gain_db / 20.0);
-                        let at = impulse.at;
-                        for side in 0..if stereo { 2 } else { 1 } {
-                            let (
-                                Some(convolver),
-                                Some(dry),
-                                Some([low_cut, high_cut]),
-                                Some(value),
-                            ) = (
-                                impulse.convolvers.get_mut(side),
-                                impulse.dry.get_mut(side),
-                                impulse.cuts.get_mut(side),
-                                signal.get_mut(side),
-                            )
-                            else {
-                                continue;
-                            };
-                            let wet = high_cut.process(low_cut.process(convolver.process(*value)));
-                            let delayed = dry.get(at).copied().unwrap_or(0.0);
-                            if let Some(slot) = dry.get_mut(at) {
-                                *slot = *value;
-                            }
-                            *value = (delayed * (1.0 - knobs.mix) + wet * knobs.mix) * gain;
-                        }
-                        impulse.at = (at.saturating_add(1)) % PARTITION;
-                        if !stereo {
-                            signal[1] = signal[0];
-                        }
-                    }
-                    Block::Room(room) => {
-                        let knobs = settings.room;
-                        let gain = 10.0_f32.powf(knobs.gain_db / 20.0);
-                        let at = room.at;
-                        // Both sides of the room hear the guitar (its two channels summed).
-                        let input = 0.5 * (signal[0] + signal[1]);
-                        let mut wet = [0.0_f32; 2];
-                        for (side, out) in wet.iter_mut().enumerate() {
-                            let (Some(convolver), Some([low_cut, high_cut])) =
-                                (room.convolvers.get_mut(side), room.cuts.get_mut(side))
-                            else {
-                                continue;
-                            };
-                            *out =
-                                high_cut.process(low_cut.process(convolver.process(input))) * gain;
-                        }
-                        let a = 0.5 + 0.5 * knobs.width;
-                        let b = 0.5 - 0.5 * knobs.width;
-                        let wet = [wet[0] * a + wet[1] * b, wet[1] * a + wet[0] * b];
-                        for ((value, dry), wet) in signal.iter_mut().zip(&mut room.dry).zip(wet) {
-                            let delayed = dry.get(at).copied().unwrap_or(0.0);
-                            if let Some(slot) = dry.get_mut(at) {
-                                *slot = *value;
-                            }
-                            *value = delayed * (1.0 - knobs.mix) + wet * knobs.mix;
-                        }
-                        room.at = (at.saturating_add(1)) % PARTITION;
-                        stereo = true;
-                    }
-                    Block::Reverb(block) => {
-                        let knobs = settings.reverb;
-                        let (wet_l, wet_r) = block.reverb.process(signal[0], signal[1]);
-                        let [[low_l, high_l], [low_r, high_r]] = &mut block.cuts;
-                        let wet_l = high_l.process(low_l.process(wet_l));
-                        let wet_r = high_r.process(low_r.process(wet_r));
-                        // Width blends the sides: 1 keeps them apart, 0 makes them one.
-                        let a = 0.5 + 0.5 * knobs.width;
-                        let b = 0.5 - 0.5 * knobs.width;
-                        let (wl, wr) = (wet_l * a + wet_r * b, wet_r * a + wet_l * b);
-                        signal = [
-                            signal[0] * (1.0 - knobs.mix) + wl * knobs.mix,
-                            signal[1] * (1.0 - knobs.mix) + wr * knobs.mix,
-                        ];
-                        stereo = true;
-                    }
-                }
-            }
-            let [out_l, out_r] = if signal.iter().all(|v| v.is_finite()) {
-                signal
-            } else {
-                [0.0, 0.0]
-            };
-            let out_l = out_l * self.output;
-            let out_r = out_r * self.output;
-            *l = out_l;
-            *r = out_r;
-            peak = peak.max(out_l.abs()).max(out_r.abs());
-        }
-        if !peak.is_finite() {
-            self.reset();
-            return;
-        }
-        self.quiet = if peak > SILENCE {
-            0
-        } else {
-            self.quiet.saturating_add(frames)
-        };
     }
 }
