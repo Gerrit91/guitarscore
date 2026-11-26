@@ -16,6 +16,7 @@ mod file_types;
 mod fonts;
 mod keys;
 mod playback;
+mod plugins;
 mod rse_sound;
 mod settings;
 mod song_store;

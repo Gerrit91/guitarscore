@@ -97,7 +97,9 @@ impl GuitarScoreApp {
                             window.selected,
                             MASTER_BOARD,
                             clipboard.as_ref(),
-                            None,
+                            // No trim or output boxes; plugins on the master come later
+                            // (M24).
+                            super::sound_chain::BoardExtras::default(),
                         );
                         if let Some(index) = shown.select {
                             window.selected = index;

@@ -397,12 +397,17 @@ impl Playback {
     }
 
     /// The engine's chain for `setting`: its blocks (an impulse response that cannot be
-    /// read leaves its place empty, and says why once).
-    fn chain_spec(&mut self, setting: &ChainSetting) -> ChainSpec {
+    /// read leaves its place empty, and says why once). `track`: the track it plays on,
+    /// whose plugins the parameter view then reaches while they play.
+    fn chain_spec(&mut self, track: Option<usize>, setting: &ChainSetting) -> ChainSpec {
         let mut spec = ChainSpec::default();
-        for (place, block) in spec.blocks.iter_mut().zip(&setting.blocks) {
+        for (index, (place, block)) in spec.blocks.iter_mut().zip(&setting.blocks).enumerate() {
             *place = match (block.choice, &block.file) {
                 (BlockChoice::Empty, _) => None,
+                (BlockChoice::Plugin, _) => block.plugin.as_ref().and_then(|plugin| {
+                    self.plugins
+                        .block_kind(plugin, track.map(|track| (track, index)))
+                }),
                 (BlockChoice::Reverb, _) => Some(BlockKind::Reverb),
                 (BlockChoice::Amp, _) => Some(BlockKind::Amp),
                 (BlockChoice::Drive, _) => Some(BlockKind::Drive),
@@ -489,7 +494,7 @@ impl Playback {
                         knobs.push((key, chain.chain_knobs()));
                     }
                     _ => {
-                        let spec = self.chain_spec(&chain);
+                        let spec = self.chain_spec(None, &chain);
                         prepare.push((key, spec, chain.chain_knobs()));
                     }
                 }
@@ -520,6 +525,27 @@ impl Playback {
     }
 
     /// Forgets what the synthesizer was given (a new one starts with nothing).
+    /// Whether chains may hold plugins (M24, experimental).
+    pub fn plugins_enabled(&self) -> bool {
+        self.plugins.enabled()
+    }
+
+    /// The plugins in the chains (M24).
+    pub(crate) fn plugins(&mut self) -> &mut crate::plugins::Plugins {
+        &mut self.plugins
+    }
+
+    /// Lets chains hold plugins, or plays them without (their places pass the sound):
+    /// every track's chain is made again.
+    pub fn set_plugins_enabled(&mut self, enabled: bool) {
+        if self.plugins.enabled() == enabled {
+            return;
+        }
+        self.plugins.set_enabled(enabled);
+        self.sent_tones.clear();
+        self.send_tones();
+    }
+
     pub(super) fn forget_sent_tones(&mut self) {
         self.sent_tones.clear();
         self.sent_parts.clear();
@@ -671,7 +697,7 @@ impl Playback {
 
     /// Sends the chain `setting` for `track`, to be prepared on the synthesizer's thread.
     fn send_chain(&mut self, track: usize, setting: &ChainSetting) {
-        let spec = self.chain_spec(setting);
+        let spec = self.chain_spec(Some(track), setting);
         let knobs = setting.chain_knobs();
         if let Some(player) = sound_player!(self)
             && let Err(error) = player.set_chain(track, spec, knobs)
@@ -682,6 +708,12 @@ impl Playback {
 
     /// Sends the knob values of `setting` for `track`.
     fn send_chain_knobs(&mut self, track: usize, setting: &ChainSetting) {
+        // A plugin's parameters go to it directly (they are not knobs of the engine).
+        for (place, block) in setting.blocks.iter().enumerate() {
+            if let Some(plugin) = &block.plugin {
+                self.plugins.set_values((track, place), &plugin.values);
+            }
+        }
         let knobs = setting.chain_knobs();
         if let Some(player) = sound_player!(self) {
             let _ = player.set_chain_settings(track, knobs);
@@ -698,7 +730,7 @@ impl Playback {
         let own = track_tones
             .into_iter()
             .map(|(track, tone)| {
-                let spec = self.chain_spec(&tone.chain);
+                let spec = self.chain_spec(None, &tone.chain);
                 (
                     track,
                     tone.kind,
@@ -714,7 +746,7 @@ impl Playback {
                 let mut tone = self.default_tone_for(0, kind);
                 let target_level = self.string_sounds.get(kind).level;
                 crate::tone_library::normalize_string_level(&mut tone, target_level);
-                let spec = self.chain_spec(&tone.chain);
+                let spec = self.chain_spec(None, &tone.chain);
                 (kind, tone.sound.model(), spec, tone.chain.chain_knobs())
             })
             .collect();
@@ -726,7 +758,7 @@ impl Playback {
                 let mut tone = self.default_tone_for(program, kind);
                 let target_level = self.string_sounds.get(kind).level;
                 crate::tone_library::normalize_string_level(&mut tone, target_level);
-                let spec = self.chain_spec(&tone.chain);
+                let spec = self.chain_spec(None, &tone.chain);
                 Some((
                     program,
                     kind,
@@ -748,7 +780,7 @@ impl Playback {
             .map(|(track, mut tone)| {
                 let target_level = self.string_sounds.get(tone.kind).level;
                 crate::tone_library::normalize_string_level(&mut tone, target_level);
-                let spec = self.chain_spec(&tone.chain);
+                let spec = self.chain_spec(None, &tone.chain);
                 (
                     track,
                     tone.kind,
@@ -880,7 +912,9 @@ impl Playback {
             | BlockChoice::Drive
             | BlockChoice::Eq
             | BlockChoice::Chorus
-            | BlockChoice::Delay => None,
+            | BlockChoice::Delay
+            // Plugins on buses come later (M24).
+            | BlockChoice::Plugin => None,
         };
         if let Some(slot) = spec.blocks.first_mut() {
             *slot = prepared;
@@ -950,7 +984,7 @@ impl Playback {
         if self.master_sent.as_ref() == Some(&chain) {
             return;
         }
-        let spec = self.chain_spec(&chain);
+        let spec = self.chain_spec(None, &chain);
         if let Some(player) = sound_player!(self) {
             match &self.master_sent {
                 Some(sent) if sent.same_structure(&chain) => {
@@ -1091,7 +1125,7 @@ impl Playback {
             for part in crate::chain_settings::DrumPart::ALL {
                 let chain = self.track_drum_part_chain(track, part);
                 let (level, pan, _, _, room) = self.track_drum_part_mix(track, part);
-                let spec = self.chain_spec(&chain);
+                let spec = self.chain_spec(None, &chain);
                 parts.push((
                     track,
                     part.index(),
@@ -1123,7 +1157,8 @@ impl Playback {
             let mut spec = ChainSpec::default();
             for (slot, block) in spec.blocks.iter_mut().zip(&master.blocks) {
                 *slot = match (block.choice, &block.file) {
-                    (BlockChoice::Empty, _) => None,
+                    // Plugins on the master come later (M24).
+                    (BlockChoice::Empty | BlockChoice::Plugin, _) => None,
                     (BlockChoice::Chorus, _) => Some(BlockKind::Chorus),
                     (BlockChoice::Delay, _) => Some(BlockKind::Delay),
                     (BlockChoice::Compressor, _) => Some(BlockKind::Compressor),
@@ -1231,7 +1266,7 @@ mod tests {
         let mut setting = ChainSetting::default();
         setting.blocks[0] = BlockSetting::of(BlockChoice::Cabinet);
         setting.blocks[1] = BlockSetting::of(BlockChoice::Room);
-        let spec = playback.chain_spec(&setting);
+        let spec = playback.chain_spec(None, &setting);
         match &spec.blocks[0] {
             Some(BlockKind::Impulse(response)) => {
                 assert!(Arc::ptr_eq(response, &gscore_guitar::built_in_cabinet()))
@@ -1251,7 +1286,7 @@ mod tests {
             !acoustic.same_structure(&setting),
             "another response, prepared again"
         );
-        match &playback.chain_spec(&acoustic).blocks[0] {
+        match &playback.chain_spec(None, &acoustic).blocks[0] {
             Some(BlockKind::Impulse(response)) => assert!(Arc::ptr_eq(
                 response,
                 &gscore_guitar::body_response(gscore_guitar::BodyKind::Classical).unwrap()
@@ -1264,7 +1299,7 @@ mod tests {
         let file = dir.join("cab.wav");
         std::fs::write(&file, wav()).unwrap();
         setting.blocks[0].file = Some(file);
-        match &playback.chain_spec(&setting).blocks[0] {
+        match &playback.chain_spec(None, &setting).blocks[0] {
             Some(BlockKind::Impulse(response)) => {
                 assert!(!Arc::ptr_eq(response, &gscore_guitar::built_in_cabinet()))
             }

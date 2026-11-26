@@ -120,6 +120,15 @@ pub(super) fn paint(painter: &Painter, rect: Rect, choice: BlockChoice, color: C
                 painter.rect_filled(handle, size * 0.03, color);
             }
         }
+        BlockChoice::Plugin => {
+            // A plug: its body, two prongs above it and the cable leaving below.
+            let body = Rect::from_min_max(at(-0.26, -0.14), at(0.26, 0.2));
+            painter.rect_stroke(body, size * 0.06, stroke, egui::StrokeKind::Middle);
+            for x in [-0.12_f32, 0.12] {
+                painter.line_segment([at(x, -0.42), at(x, -0.14)], stroke);
+            }
+            painter.line_segment([at(0.0, 0.2), at(0.0, 0.44)], thin);
+        }
     }
 }
 
@@ -141,6 +150,7 @@ mod tests {
             BlockChoice::Delay,
             BlockChoice::Reverb,
             BlockChoice::Room,
+            BlockChoice::Plugin,
         ];
         let mut harness = egui_kittest::Harness::builder()
             .with_size(vec2(choices.len() as f32 * 64.0 + 16.0, 2.0 * 84.0))

@@ -111,6 +111,10 @@ pub(super) struct SoundChainWindow {
     rect: Option<Rect>,
     /// A tone just imported from a file: the track switches to it on the next frame.
     imported: Option<ChainPreset>,
+    /// A Plugin block's filter text (its list of plugins or its parameters).
+    plugin_filter: String,
+    /// A Plugin block that holds a plugin shows the list to choose another.
+    plugin_choosing: bool,
 }
 
 /// A key the board handles while it has the keyboard.
@@ -149,6 +153,8 @@ fn next_box(selected: usize, forward: bool) -> usize {
 #[derive(Default)]
 struct Actions {
     close: bool,
+    /// Look for installed plugins again.
+    plugin_rescan: bool,
     listen: bool,
     load: Option<usize>,
     chain: Option<ChainSetting>,
@@ -265,6 +271,10 @@ fn box_text(block: &BlockSetting) -> (String, String) {
         BlockChoice::Chorus => "stereo".to_owned(),
         BlockChoice::Delay if block.delay_sync => block.delay_note.note().label().to_owned(),
         BlockChoice::Delay => format!("{:.0} ms", block.delay_ms),
+        BlockChoice::Plugin => block
+            .plugin
+            .as_ref()
+            .map_or_else(|| "none chosen".to_owned(), |plugin| plugin.vendor.clone()),
         BlockChoice::Cabinet | BlockChoice::Room => block
             .file
             .as_ref()
@@ -284,6 +294,10 @@ fn box_text(block: &BlockSetting) -> (String, String) {
     let title = match block.choice {
         BlockChoice::Empty => "+".to_owned(),
         BlockChoice::Compressor => "Comp".to_owned(),
+        BlockChoice::Plugin => block
+            .plugin
+            .as_ref()
+            .map_or_else(|| "Plugin".to_owned(), |plugin| plugin.name.clone()),
         other => other.label().to_owned(),
     };
     (title, detail)
@@ -938,6 +952,16 @@ pub(super) fn board_origin(track: usize, part: Option<DrumPart>) -> usize {
         .saturating_add(part.map_or(7, DrumPart::index))
 }
 
+/// What a board has besides its blocks.
+#[derive(Debug, Clone, Copy, Default)]
+pub(super) struct BoardExtras {
+    /// The input trim's and the output's boxes (`None`: a board without them, the
+    /// master's).
+    pub(super) ends: Option<ChainEnds>,
+    /// An empty place's menu offers a plugin (M24, a track's own chain).
+    pub(super) plugins: bool,
+}
+
 /// What the board asked for.
 #[derive(Default)]
 pub(super) struct BoardActions {
@@ -1328,8 +1352,9 @@ pub(super) fn board(
     selected: usize,
     origin: usize,
     clipboard: Option<&SoundClip>,
-    ends: Option<ChainEnds>,
+    extras: BoardExtras,
 ) -> BoardActions {
+    let BoardExtras { ends, plugins } = extras;
     let tokens = style::tokens(ui);
     let count = BLOCKS.saturating_add(1);
     // The slots left to right, with their widths.
@@ -1584,6 +1609,18 @@ pub(super) fn board(
                             actions.fill = Some((place, choice));
                             ui.close();
                         }
+                    }
+                    if plugins
+                        && block_menu_item(
+                            ui,
+                            BlockChoice::Plugin,
+                            "Plugin",
+                            "A CLAP effect installed on this computer (experimental)",
+                        )
+                        .clicked()
+                    {
+                        actions.fill = Some((place, BlockChoice::Plugin));
+                        ui.close();
                     }
                 });
                 // A right-click on an empty place pastes what the clipboard holds, as a
@@ -2057,6 +2094,8 @@ pub(super) fn block_knobs(
                 moved.changed |= super::amp_knobs::chorus_knobs(ui, block, all_wet);
             }
             BlockChoice::Delay => moved.changed |= super::delay_knobs::delay_knobs(ui, block),
+            // A plugin's parameters have a view of their own (`plugin_view`).
+            BlockChoice::Plugin => {}
             BlockChoice::Cabinet | BlockChoice::Room => {
                 // First the room itself: how long it lasts.
                 if block.choice == BlockChoice::Room {
@@ -2282,6 +2321,8 @@ impl GuitarScoreApp {
                     pending_keys: Vec::new(),
                     rect: None,
                     imported: None,
+                    plugin_filter: String::new(),
+                    plugin_choosing: false,
                 });
             }
         }
@@ -2710,6 +2751,25 @@ impl GuitarScoreApp {
         let output = meters
             .as_ref()
             .map_or_else(Default::default, |meters| meters.chain_output(window.track));
+        // Plugins are offered in a track's own chain (not a drum part's yet), and what
+        // the plugin thread knows of a selected Plugin block is read now: drawing never
+        // waits for it.
+        let plugins_allowed = self.playback.plugins_enabled() && window.part.is_none();
+        let plugin_panel = match (window.part, window.selected.checked_sub(1)) {
+            (None, Some(place)) => {
+                self.plugin_panel(window.track, &tone.chain, place, window.plugin_choosing)
+            }
+            _ => None,
+        };
+        if plugin_panel.is_none() {
+            window.plugin_choosing = false;
+        }
+        if plugin_panel
+            .as_ref()
+            .is_some_and(super::plugin_view::PluginPanel::waiting)
+        {
+            ctx.request_repaint_after(std::time::Duration::from_millis(100));
+        }
         let shown = egui::Window::new(&title)
             .id(egui::Id::unique(WINDOW_ID))
             .title_bar(false)
@@ -2847,10 +2907,13 @@ impl GuitarScoreApp {
                                     window.selected,
                                     board_origin(window.track, window.part),
                                     clipboard.as_ref(),
-                                    Some(ChainEnds {
-                                        input_db: trim_db,
-                                        output_db: chain.output_db,
-                                    }),
+                                    BoardExtras {
+                                        ends: Some(ChainEnds {
+                                            input_db: trim_db,
+                                            output_db: chain.output_db,
+                                        }),
+                                        plugins: plugins_allowed,
+                                    },
                                 );
                                 let mut board = board;
                                 // The board's keys, as the clicks they stand for.
@@ -3097,6 +3160,27 @@ impl GuitarScoreApp {
                                                     &mut actions,
                                                 ) {
                                                     actions.sound = Some(sound);
+                                                }
+                                            }
+                                            Some(place)
+                                                if plugin_panel
+                                                    .as_ref()
+                                                    .is_some_and(|panel| panel.place == place) =>
+                                            {
+                                                if let Some(panel) = &plugin_panel {
+                                                    let edit = super::plugin_view::show(
+                                                        ui,
+                                                        &chain,
+                                                        panel,
+                                                        &mut window.plugin_filter,
+                                                    );
+                                                    if let Some(changed) = edit.chain {
+                                                        actions.chain = Some(changed);
+                                                    }
+                                                    actions.plugin_rescan |= edit.rescan;
+                                                    if let Some(choosing) = edit.choosing {
+                                                        window.plugin_choosing = choosing;
+                                                    }
                                                 }
                                             }
                                             Some(place) => {
@@ -3363,6 +3447,9 @@ impl GuitarScoreApp {
             != revision
         {
             ctx.request_repaint();
+        }
+        if actions.plugin_rescan {
+            self.playback.plugins().rescan();
         }
         if actions.close {
             self.save_settings();

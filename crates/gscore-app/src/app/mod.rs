@@ -49,6 +49,7 @@ mod note_tools;
 mod page;
 mod page_menu;
 mod paste;
+mod plugin_view;
 mod practice;
 pub use practice::PracticeChoice;
 mod recent;
@@ -431,6 +432,7 @@ impl GuitarScoreApp {
         );
         app.playback
             .store_modelled_guitars(app.settings.modelled_guitars);
+        app.playback.plugins().set_enabled(app.settings.plugins);
         app.playback.set_sample_rate(app.settings.sample_rate);
         app.playback
             .set_output_device(app.settings.output_device.clone());
@@ -539,6 +541,7 @@ impl GuitarScoreApp {
         settings.soundfont_path = self.playback.soundfont().map(std::path::Path::to_path_buf);
         settings.prefer_synth = matches!(self.playback.output(), Output::Synth(_));
         settings.modelled_guitars = self.playback.modelled_guitars();
+        settings.plugins = self.playback.plugins_enabled();
         settings.sample_rate = self.playback.sample_rate();
         settings.output_device = self.playback.output_device().map(str::to_owned);
         if settings.output_device.is_none() {

@@ -17,8 +17,9 @@ use crate::state::{MeasureSelection, ViewState};
 pub(super) enum MenuChoice {
     /// An editor or palette action, as if its key was pressed.
     Action(ActionId),
-    /// A track or bar command, or a track window, like the track grid's menu.
-    Grid(GridAction),
+    /// A track or bar command, or a track window, like the track grid's menu (boxed: a
+    /// grid action can carry a whole block).
+    Grid(Box<GridAction>),
 }
 
 /// One of the menus.
@@ -157,7 +158,7 @@ impl GuitarScoreApp {
                 MenuChoice::Action(action) => {
                     self.perform_action(gscore_edit::Action::Plain(action), ctx);
                 }
-                MenuChoice::Grid(action) => self.apply_grid_action(action),
+                MenuChoice::Grid(action) => self.apply_grid_action(*action),
             }
         }
     }
@@ -234,7 +235,7 @@ impl Menu<'_> {
     /// An entry that runs a grid action.
     fn grid(&mut self, ui: &mut egui::Ui, label: &str, enabled: bool, action: GridAction) {
         if ui.add_enabled(enabled, egui::Button::new(label)).clicked() {
-            self.choices.push(MenuChoice::Grid(action));
+            self.choices.push(MenuChoice::Grid(Box::new(action)));
             ui.close();
         }
     }
@@ -252,10 +253,11 @@ impl Menu<'_> {
             .add_enabled(enabled, egui::Button::selectable(on, label))
             .clicked()
         {
-            self.choices.push(MenuChoice::Grid(GridAction::Command {
-                command,
-                merge: false,
-            }));
+            self.choices
+                .push(MenuChoice::Grid(Box::new(GridAction::Command {
+                    command,
+                    merge: false,
+                })));
             ui.close();
         }
     }

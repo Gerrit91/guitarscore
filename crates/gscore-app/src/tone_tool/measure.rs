@@ -117,7 +117,8 @@ fn chain_spec(
     let mut skipped = Vec::new();
     for (place, block) in spec.blocks.iter_mut().zip(&setting.blocks) {
         *place = match (block.choice, &block.file) {
-            (BlockChoice::Empty, _) => None,
+            // The tone tool measures the built-in blocks only.
+            (BlockChoice::Empty | BlockChoice::Plugin, _) => None,
             (BlockChoice::Reverb, _) => Some(BlockKind::Reverb),
             (BlockChoice::Amp, _) => Some(BlockKind::Amp),
             (BlockChoice::Drive, _) => Some(BlockKind::Drive),

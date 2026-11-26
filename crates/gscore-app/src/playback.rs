@@ -408,6 +408,8 @@ pub struct Playback {
     /// A beat to play once the synthesizer has loaded its SoundFont (it was chosen while
     /// it loaded).
     pending_preview: Option<Arc<Sequence>>,
+    /// Plugins in the chains (M24, experimental).
+    plugins: crate::plugins::Plugins,
 }
 
 impl Default for Playback {
@@ -470,6 +472,7 @@ impl Default for Playback {
             preview_sequence: None,
             monitor: None,
             pending_preview: None,
+            plugins: crate::plugins::Plugins::default(),
         }
     }
 }

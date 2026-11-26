@@ -96,6 +96,32 @@ amp model, an impulse response, a sample library).
 2. The plugin block in a sound chain (in process, "experimental" in Settings): the chain
    trait, the plugin thread, choosing a plugin, the egui parameter view, saving the blob
    with the tone, latency made up, WAV export and `gscore-cli wav` rendering offline.
+   *2a-2c done 2026-11-26* (see below); open: latency, export, the master and buses,
+   drum parts, the plugin's own value texts.
+
+## Step 2 as built
+
+- `gscore-guitar`: `ExternalSource` (makes one instance per chain, off the audio thread)
+  and `ExternalBlock` (runs whole stereo buffers on the audio thread), `BlockKind::External`.
+  The chain runs in stretches: the built-in blocks sample by sample as before, an external
+  block on the whole buffer between them, never fed NaN, stereo after it. Bit-identical
+  output for chains without one; the engine bench is unchanged.
+- `gscore-plugin`: `PluginThread` owns every plugin (CLAP's main thread for them) and answers
+  start, stop, describe and scan on channels.
+- `gscore-audio` (native): `PluginSource` is the chain's source; `PluginControl` carries the
+  parameter values set while it plays (taken on the audio thread without waiting), its
+  latency and why it does not play.
+- The app: Settings › Audio I/O "CLAP plugins (experimental)", off by default. A track's
+  board offers "Plugin" in an empty place's menu; the block lists the installed effects
+  (scanned in the background on the plugin thread), then shows the chosen plugin's
+  parameters as sliders with a filter, "Reset" and "Change…". The tone keeps the plugin
+  (library, id, name, maker), its saved settings (base64, empty for its defaults) and the
+  parameters set in GuitarScore (`PluginBlock` in `chain_settings.rs`). Moving a slider does
+  not make the chain again: the value goes to the playing plugin. Another plugin or other
+  saved settings make it again. Plugins off, or a plugin that cannot start: the place
+  passes the sound, and the block says why.
+- Not yet: a drum part's chain, the master and the buses offer no plugin; the plugin's own
+  texts for values ("-6.0 dB") are not shown; its latency is not made up.
 3. The host process, the watchdog and background scanning with the blocklist. Plugins
    leave "experimental" only after this step.
 4. Plugin editors in the host process (X11 through XWayland on Linux).

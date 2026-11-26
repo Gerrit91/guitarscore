@@ -37,6 +37,8 @@ pub enum BlockChoice {
     Chorus,
     /// The digital delay, free or synced to the tempo.
     Delay,
+    /// A CLAP plugin (M24, experimental): see [`PluginBlock`].
+    Plugin,
 }
 
 impl BlockChoice {
@@ -53,6 +55,7 @@ impl BlockChoice {
             BlockChoice::Eq => "EQ",
             BlockChoice::Chorus => "Chorus",
             BlockChoice::Delay => "Delay",
+            BlockChoice::Plugin => "Plugin",
         }
     }
 
@@ -343,6 +346,59 @@ pub struct BlockSetting {
     pub delay_feedback: f32,
     /// A Cab block's built-in response, played while no file is loaded.
     pub cabinet: CabinetSetting,
+    /// A Plugin block's plugin and its settings (boxed: every other block is without).
+    pub plugin: Option<Box<PluginBlock>>,
+}
+
+/// The plugin a Plugin block plays (M24): which one, its own saved settings, and the
+/// parameters turned since in GuitarScore's parameter view.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct PluginBlock {
+    /// The plugin library (`.clap`) it was chosen from.
+    pub library: PathBuf,
+    /// The plugin's id in it ("com.example.reverb").
+    pub id: String,
+    /// Its name and maker, shown while it is missing too.
+    pub name: String,
+    pub vendor: String,
+    /// The plugin's own settings, as it saved them (base64); empty: its defaults.
+    pub state: String,
+    /// Parameters set in the parameter view: (parameter id, value), applied after the
+    /// settings are loaded.
+    pub values: Vec<(u32, f64)>,
+}
+
+impl PluginBlock {
+    /// The settings blob (empty when there is none or it is damaged).
+    pub fn state_bytes(&self) -> Vec<u8> {
+        crate::base64::decode(&self.state).unwrap_or_default()
+    }
+
+    /// The value set for parameter `id`, if any.
+    pub fn value(&self, id: u32) -> Option<f64> {
+        self.values
+            .iter()
+            .find(|(param, _)| *param == id)
+            .map(|&(_, value)| value)
+    }
+
+    /// Sets parameter `id` to `value` (kept finite; the list stays one entry per id).
+    pub fn set_value(&mut self, id: u32, value: f64) {
+        if !value.is_finite() {
+            return;
+        }
+        match self.values.iter_mut().find(|(param, _)| *param == id) {
+            Some(slot) => slot.1 = value,
+            None => self.values.push((id, value)),
+        }
+    }
+
+    /// Whether `other` is the same plugin with the same saved settings (its parameter
+    /// values may differ: they change while it plays).
+    pub fn same_plugin(&self, other: &PluginBlock) -> bool {
+        self.library == other.library && self.id == other.id && self.state == other.state
+    }
 }
 
 impl Default for BlockSetting {
@@ -399,7 +455,7 @@ impl BlockSetting {
                     delay.ping_pong,
                 )
             }
-            BlockChoice::Cabinet | BlockChoice::Empty => {
+            BlockChoice::Cabinet | BlockChoice::Empty | BlockChoice::Plugin => {
                 let impulse = ImpulseKnobs::default();
                 (
                     impulse.mix,
@@ -454,6 +510,7 @@ impl BlockSetting {
             delay_ms: DelayKnobs::default().time_ms,
             delay_feedback: DelayKnobs::default().feedback,
             cabinet: CabinetSetting::default(),
+            plugin: None,
         }
     }
 
@@ -557,6 +614,12 @@ impl BlockSetting {
             && (self.choice != BlockChoice::Cabinet
                 || self.file.is_some()
                 || self.cabinet == other.cabinet)
+            // Another plugin, or other saved settings, is another block.
+            && (self.choice != BlockChoice::Plugin
+                || match (&self.plugin, &other.plugin) {
+                    (Some(a), Some(b)) => a.same_plugin(b),
+                    (a, b) => a.is_none() && b.is_none(),
+                })
     }
 
     /// The built-in response a Cab block plays: its chosen one while it has no file.

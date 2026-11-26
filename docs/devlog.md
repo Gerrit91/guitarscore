@@ -7311,3 +7311,27 @@ all of LSP).
 
 Open: step 2, the plugin block in a sound chain (plugin thread, choosing a plugin, egui
 parameter view, the blob with the tone, latency made up, offline WAV export).
+
+## 2026-11-26 — M24 step 2a-2c: plugins in a track's sound chain
+
+- **2a, the chain:** `gscore-guitar` gets `ExternalSource`/`ExternalBlock` and
+  `BlockKind::External`. The chain's processing moved to `chain_run.rs` and runs in
+  stretches around external blocks (whole buffers, stereo after them, NaN never fed in).
+  Output of chains without one is bit-identical (hashed over every block kind, mono and
+  stereo, before and after). Engine bench: 328 ms per second of audio (336 before; budget
+  500).
+- **2b, the plumbing:** `gscore_plugin::PluginThread` (one thread owns every plugin;
+  start, stop, describe with values, scan; panics in a request caught) and, native only,
+  `gscore_audio::{PluginSource, PluginControl}`. Tests with the test plugin: a chain
+  playing it, its gain changed while it plays, two chains sharing a control, saved
+  settings loaded, a missing library reported and the sound passed.
+- **2c, the app:** Settings › Audio I/O "CLAP plugins (experimental)" (off by default).
+  The Sound chain board's "+" menu offers "Plugin" in a track's chain; the block lists the
+  installed effects, then the chosen one's parameters (`app/plugin_view.rs`; plugin state in
+  `plugins.rs`, a stand-in for the browser). The tone saves `PluginBlock` (library, id,
+  name, maker, settings blob in base64, parameters set). A slider sends the value to the
+  playing plugin through its control; another plugin rebuilds the chain. New plug symbol
+  in `block_symbols.png`. Looked at offscreen with Dragonfly Room Reverb: list of the four
+  Dragonfly reverbs, then 17 parameters.
+- Open: latency compensation, WAV export, the master, buses and drum parts, the plugin's
+  own value texts, and the owner's look and listen.

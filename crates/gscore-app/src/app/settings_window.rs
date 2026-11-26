@@ -547,6 +547,7 @@ impl GuitarScoreApp {
         self.output_device_choice(ui, outputs);
         self.sample_rate_choice(ui);
         self.guitar_sound(ui);
+        self.plugins_switch(ui);
         ui.separator();
         ui.heading("Input");
         self.midi_input_settings(ui);
@@ -849,6 +850,27 @@ impl GuitarScoreApp {
                  the SoundFont. Each track can also choose its own source in the track panel \
                  or the Sound chain window. Also used for audio export. MIDI output is \
                  unchanged.",
+            )
+            .weak(),
+        );
+    }
+
+    /// Plugins in the sound chains (M24, experimental; desktop only).
+    fn plugins_switch(&mut self, ui: &mut Ui) {
+        ui.add_space(4.0);
+        let mut enabled = self.playback.plugins_enabled();
+        if ui
+            .add(style::switch(&mut enabled, "CLAP plugins (experimental)"))
+            .changed()
+        {
+            self.playback.set_plugins_enabled(enabled);
+        }
+        ui.label(
+            RichText::new(
+                "A track's sound chain can hold CLAP effects installed on this computer \
+                 (~/.clap, /usr/lib/clap, or the folders in CLAP_PATH). They run inside \
+                 GuitarScore for now: a plugin that crashes takes the app with it, so save \
+                 often. Off, their places pass the sound unchanged.",
             )
             .weak(),
         );

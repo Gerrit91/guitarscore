@@ -1918,6 +1918,7 @@ dependencies = [
  "gscore-layout",
  "gscore-model",
  "gscore-play",
+ "gscore-plugin",
  "gscore-session",
  "gscore-version",
  "image",

@@ -864,6 +864,8 @@ pub struct Settings {
     /// Whether the built-in synthesizer plays guitar and bass tracks with the modelled
     /// strings instead of the SoundFont (experimental, M22).
     pub modelled_guitars: bool,
+    /// Whether sound chains may hold CLAP plugins (experimental, M24; desktop only).
+    pub plugins: bool,
     /// The sample rate the built-in synthesizer asks the device for (and WAV export uses);
     /// `None`: the device's own.
     pub sample_rate: Option<u32>,
@@ -972,6 +974,7 @@ impl Default for Settings {
             soundfont_path: None,
             prefer_synth: true,
             modelled_guitars: true,
+            plugins: false,
             sample_rate: None,
             output_device: None,
             output_device_name: None,
