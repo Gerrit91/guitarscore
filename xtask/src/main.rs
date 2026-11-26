@@ -6,6 +6,7 @@ mod layers;
 mod sha256;
 mod source_scan;
 mod tones;
+mod unsafe_check;
 mod wasm;
 mod web;
 

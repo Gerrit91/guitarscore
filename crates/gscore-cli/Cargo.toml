@@ -20,6 +20,7 @@ gscore-layout = { path = "../gscore-layout", features = ["extra-music-fonts"] }
 gscore-play = { path = "../gscore-play" }
 gscore-guitar = { path = "../gscore-guitar" }
 gscore-audio = { path = "../gscore-audio" }
+gscore-plugin = { path = "../gscore-plugin" }
 clap = { version = "4.6.7", features = ["derive"] }
 
 [dev-dependencies]

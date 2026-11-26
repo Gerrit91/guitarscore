@@ -42,5 +42,7 @@ This file documents all third-party assets used in the GuitarScore project.
 | crc32fast | 1.5.3 | MIT OR Apache-2.0 | CRC-32 of that block, so a damaged or edited line is noticed and never half-applied (only `gscore-app`) |
 | cpal's `pulseaudio` feature: pulseaudio (with futures, mio, enum-primitive-derive) | 0.3.2 | MIT | Linux only: lists the real audio outputs (PulseAudio, or PipeWire's PulseAudio server) for Settings › Audio I/O and plays through the chosen one; a pure-Rust protocol client, no C library (only `gscore-audio`; owner approval 2026-11-26) |
 | lewton (with ogg, byteorder, tinyvec) | 0.10.2 | MIT OR Apache-2.0 | Decoding the Ogg Vorbis samples of SF3 SoundFonts, the browser build's compressed font (pure Rust; only `gscore-audio`) |
+| clack-host, clack-extensions (with clack-common, clap-sys, libloading) | 0.2.0 (libloading 0.8) | MIT OR Apache-2.0 (libloading: ISC) | Hosting CLAP plugins: safe wrappers around the CLAP C API, loading `.clap` libraries (desktop builds; only `gscore-plugin`, the one crate allowed `unsafe`; owner approval 2026-11-26, `docs/plugin-hosting.md`) |
+| clack-plugin (dev) | 0.2.0 | MIT OR Apache-2.0 | Building GuitarScore's test plugin for the plugin tests (never shipped) |
 
 > Add new entries when adding third-party assets or dependencies to the project.

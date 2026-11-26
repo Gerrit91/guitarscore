@@ -28,7 +28,7 @@ A malformed file, a bad command parameter, a corrupt settings file, an odd keyst
 ### Rules for code
 1. **Non-test code never panics.** No `unwrap()`, `expect()`, `panic!`, `unreachable!`, `todo!`, or `unimplemented!`. Return the crate's error type and propagate with `?`; use `ok_or(..)?`, `let .. else { return Err(..) }`, `if let`, or `unwrap_or*` only where the fallback is truly correct (never one that silently corrupts a document). **Unfinished or unsupported features return an "unsupported" error.** The only exception is a provably infallible literal: `#[allow(clippy::expect_used)]` plus `.expect("why it cannot fail")`.
 2. **Enforced by tooling.** The workspace `Cargo.toml` defines `[workspace.lints]` (denying `clippy::unwrap_used`, `expect_used`, `panic`, `todo`, `unimplemented`, `unreachable`, `indexing_slicing`; enabling `arithmetic_side_effects` in parsing, layout, and sequencing code). **Every crate must contain `[lints] workspace = true`.** `clippy.toml` allows these in tests only (verify the option names for the pinned toolchain). CI and the definition of done run clippy with `-D warnings`.
-3. **No `unsafe`.** `unsafe_code = "forbid"` workspace-wide. Any exception needs a written design note, an isolated crate, and the owner's approval.
+3. **No `unsafe`.** `unsafe_code = "forbid"` workspace-wide. Any exception needs a written design note, an isolated crate, and the owner's approval. The one exception: `gscore-plugin` loads native plugin libraries (owner, 2026-11-26; `docs/plugin-hosting.md`), allowed in `src/library.rs` and its test plugin only, checked by `cargo xtask layers`.
 4. **Input-derived numbers are hostile.** This covers file contents, command parameters, selections, and arithmetic on them. Use `get()` instead of `[i]` or `[a..b]`; slice strings only at char boundaries; use `checked_*` and `saturating_*` for lengths, offsets, durations, and counts; guard division by zero and NaN/inf-to-integer casts; cap allocations that are sized by input.
 5. **Bound all recursion and loops** over input-derived structures with depth limits or seen-sets (files can be deep, cyclic, or enormous).
 6. **Do not cascade failures.** Handle lock poisoning (`lock().unwrap_or_else(PoisonError::into_inner)`) and treat thread joins as `Result`s.
@@ -120,6 +120,7 @@ guitarscore/
     gscore-layout/            # L2: model -> positioned draw ops (pages, systems, notation, tab), SVG and PDF. No GUI imports.
     gscore-play/              # L2: performance (engine-neutral notes), MIDI sequence derived from it, channel allocator, metronome, SMF export, Player trait. No device crates.
     gscore-guitar/            # L2: modelled strings (digital waveguides, M22); no dependencies, render never allocates.
+    gscore-plugin/            # L2: CLAP plugin hosting (native only, M24); the one crate allowed `unsafe` (docs/plugin-hosting.md).
     gscore-edit/              # L3: cursor, selection, clipboard, commands, undo/redo, keymap
     gscore-audio/             # L3: output backends (midir, cpal, rustysynth) implementing Player; the tuner
     gscore-session/           # L4: open, safe save and export, recovery journal, autosave, settings files
@@ -128,7 +129,7 @@ guitarscore/
     gscore-app/               # L5: egui/eframe application (desktop and browser); the `guitarscore` binary
 ```
 
-Dependency restrictions enforced by the layers check: only `gscore-app` may use egui, eframe, winit, or rfd; only `gscore-audio` may use `cpal`, `midir`, or `rustysynth`; nothing below `gscore-app` may use a GUI crate; only `gscore-model` and `gscore-io` may use `gscore-gp` (and only `gscore-io` may use `gscore_model::interop`).
+Dependency restrictions enforced by the layers check: only `gscore-app` may use egui, eframe, winit, or rfd; only `gscore-audio` may use `cpal`, `midir`, or `rustysynth`; only `gscore-plugin` may use `clack-*` or `libloading`; nothing below `gscore-app` may use a GUI crate; only `gscore-model` and `gscore-io` may use `gscore-gp` (and only `gscore-io` may use `gscore_model::interop`).
 
 ### Key design decisions
 
@@ -237,8 +238,8 @@ Each stage plugs in behind the `Player` trait:
 2. **Internal synth:** `cpal` + `rustysynth` (SoundFont) for sound without external setup;
    also in the browser as an AudioWorklet. Done (M9, browser 2026-11-04). It stays for
    drums, other instruments and as the fallback.
-3. ~~Sampled libraries (SFZ) or plugin hosting~~: set aside (owner, 2026-11-03) in favour
-   of stage 4. Plugin hosting is written down as M24 (2026-11-17).
+3. ~~Sampled libraries (SFZ)~~: set aside (owner, 2026-11-03) in favour of stage 4.
+   Plugin hosting (CLAP, later VST3) is M24, the current milestone (2026-11-26).
 4. **Physically modelled guitars and basses:** a pure-Rust string model (digital
    waveguide) that plays every technique, with pickup, amp, cabinet and body stages.
    Design note: `docs/guitar-modelling.md`; milestone M22, the current one.
@@ -284,6 +285,43 @@ commands. Details of every step are in `docs/devlog.md`; known shortfalls in
 - **Release v0.1.0** (2026-11-06).
 
 ### Current
+
+- **M24: Plugin hosting** (owner, 2026-11-26: now; M22 waits for the owner's ear, M23
+  for the owner to try it). Design note: `docs/plugin-hosting.md`. Plugins as the sound
+  source of a track (an instrument fed the track's notes, beside SoundFont, modelled
+  strings and MIDI out) and as blocks of a sound chain (track, drum part, bus, master).
+  Desktop only.
+  - Formats: CLAP first, VST3 later (its SDK is MIT since VST 3.8; check again then). Not
+    VST2 (its SDK cannot be licensed).
+  - `unsafe` approved by the owner (2026-11-26) for this, in the isolated crate
+    `gscore-plugin` only, with a comment at each place saying it is the exception and
+    why. Dependencies approved: clack (`clack-host`, `clack-extensions`; `clack-plugin`
+    for the test plugin), MIT/Apache-2.0, on crates.io.
+  - Never crash: a plugin that faults must not take the app down, so plugins run in a
+    separate host process (shared-memory audio, a watchdog, a plugin that died is
+    bypassed with a message and can be restarted). Scanning runs in the background, in
+    that process too, and plugins that crash while scanned go on a blocklist.
+  - Plugin editors (owner, 2026-11-26, replacing "no editor windows"; users expect them):
+    a floating window owned by the host process, X11 through XWayland on Linux (the app
+    stays native Wayland), a native window on Windows and macOS. The plugin's parameters
+    are also drawn in egui in the Sound chain window, styled like the built-in blocks,
+    with search and favourites, always available (the fallback without an editor or an X
+    server).
+  - Engine: `gscore-guitar` stays pure and wasm-clean (the plugin block comes in from
+    `gscore-audio` on native builds); the plugin's latency is compensated so buses and
+    sends stay in time; tempo and transport go to the plugin; WAV export and
+    `gscore-cli wav` render offline; changes of sample rate and block size handled.
+  - Saving: the plugin's state is an opaque blob kept with the tone or the song state,
+    not in the GP file. A song opened where the plugin is missing falls back
+    (SoundFont, or the block bypassed) with a message the user can act on, as a missing
+    SoundFont does.
+  - Steps: 1 a CLAP effect, headless (*done 2026-11-26*: `gscore-plugin`,
+    `gscore-cli plugins --check`); 2 the plugin block in a sound chain (in process,
+    experimental); 3 the host process, watchdog and scanning; 4 editors; 5 a CLAP
+    instrument; 6 VST3.
+  - **Done when:** the owner plays a song through CLAP effects and an instrument of their
+    choice, opens their editors, saves and reopens it with the same sound, and a crashing
+    plugin only bypasses itself.
 
 - **M22: Modelled guitar sound** (owner, 2026-11-03, made urgent 2026-11-06: the band's
   songs sound bad on General MIDI; without playback comparable to Guitar Pro's RSE nobody
@@ -361,37 +399,6 @@ commands. Details of every step are in `docs/devlog.md`; known shortfalls in
   - *Steps 1-4 implemented 2026-11-20* (branch `m23-step-entry`, `docs/devlog.md`);
     waiting for the owner to try it. Keys chosen for the step-entry layer are listed in
     the default keymap; `toggle_step_entry` is `N` (owner, 2026-11-20).
-
-- **M24: Plugin hosting** (owner, 2026-11-17: written down so the idea is not lost, not
-  scheduled; comes after M23 at the earliest). Plugins as the sound source of a track
-  (an instrument fed the track's notes, beside SoundFont, modelled strings and MIDI out)
-  and as blocks of a sound chain (track, drum part, bus, master). Desktop only.
-  - Formats: CLAP first (C ABI, MIT), VST3 later (check the SDK's license then). Not
-    VST2 (its SDK cannot be licensed).
-  - Owner approval needed first: hosting calls native code through FFI, which
-    `unsafe_code = "forbid"` rules out (section 2, rule 3: design note, isolated crate,
-    owner's approval). New dependencies (a host crate such as `clack`) per section 10.
-  - Never crash: a plugin that faults must not take the app down, so plugins run in a
-    separate host process (shared-memory audio, a watchdog, a plugin that died is
-    bypassed with a message and can be restarted). Scanning runs in the background, in
-    that process too, and plugins that crash while scanned go on a blocklist.
-  - No plugin editor windows (owner, 2026-11-17: no XWayland). Plugin editors on Linux
-    are X11-only (VST3 has no Wayland type; CLAP's Wayland is floating-only and rare).
-    The plugin's parameters are drawn in egui in the Sound chain window instead, styled
-    like the built-in blocks, with search and favourites for plugins with many
-    parameters. Known limit: what only a plugin's own editor offers (loading a model, an
-    impulse response or a sample library) is not reachable unless its presets or saved
-    state cover it.
-  - Engine: `gscore-guitar` stays pure and wasm-clean (the plugin block comes in from
-    `gscore-audio` on native builds); the plugin's latency is compensated so buses and
-    sends stay in time; tempo and transport go to the plugin; WAV export and
-    `gscore-cli wav` render offline; changes of sample rate and block size handled.
-  - Saving: the plugin's state is an opaque blob kept with the tone or the song state,
-    not in the GP file. A song opened where the plugin is missing falls back
-    (SoundFont, or the block bypassed) with a message the user can act on, as a missing
-    SoundFont does.
-  - Rough order: a CLAP effect block, then a CLAP instrument, then the separate host
-    process before it leaves "experimental", then VST3.
 
 - **M25: Practice on phones and tablets** (owner, 2026-11-20: people may practise away
   from home with a tablet or phone; written down, not scheduled). In the browser build

@@ -17,6 +17,7 @@ mod input;
 mod keymap;
 mod legend;
 mod play;
+mod plugins;
 mod render;
 mod report;
 mod roundtrip;
@@ -269,6 +270,20 @@ enum Command {
         #[arg(long)]
         check: Option<PathBuf>,
     },
+    /// List the CLAP plugins installed, or check them
+    ///
+    /// Without paths: the folders CLAP plugins are installed in (`CLAP_PATH`, then the
+    /// user's and the system's). A path may be a `.clap` library or a folder. Opening a
+    /// library runs its code: a broken plugin can crash this command (the app will scan in
+    /// a separate process). With `--check`, every effect is started and a second of sound
+    /// runs through it.
+    Plugins {
+        /// Libraries or folders to look in instead of the system's plugin folders
+        paths: Vec<PathBuf>,
+        /// Start every effect, run sound through it, save and load its settings
+        #[arg(long)]
+        check: bool,
+    },
     /// Start the desktop application
     ///
     /// Runs the `guitarscore` application, opening <FILE> if one is given, and waits until
@@ -450,6 +465,7 @@ where
         Command::Bench { files, check } => bench::run(&files, check),
         Command::Legend => Ok(legend::run()),
         Command::Keymap { check } => keymap::run(check.as_deref()),
+        Command::Plugins { paths, check } => plugins::run(&paths, check),
         Command::Gui { file } => gui::run(file.as_deref()),
         Command::Audit {
             paths,

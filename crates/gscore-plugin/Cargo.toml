@@ -1,0 +1,51 @@
+[package]
+name = "gscore-plugin"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Hosting CLAP audio plugins (native builds only; the workspace's one unsafe exception)"
+
+[dependencies]
+clack-host = "0.2.0"
+thiserror = "2.0.18"
+clack-extensions = { version = "0.2.0", features = ["clack-host", "audio-ports", "latency", "log", "params", "state"] }
+
+[dev-dependencies]
+# The test plugin (`examples/test_plugin.rs`), built as a CLAP library for the tests.
+clack-plugin = "0.2.0"
+clack-extensions = { version = "0.2.0", features = ["clack-plugin", "params", "state", "latency", "audio-ports"] }
+
+[[example]]
+name = "test_plugin"
+crate-type = ["cdylib"]
+
+# UNSAFE EXCEPTION (owner's approval, 2026-11-26; design note docs/plugin-hosting.md).
+# This is the only crate that does not take `[workspace.lints]` as they are: loading a
+# plugin's native library is unsafe in Rust and cannot be written without `unsafe`. The
+# table below is the workspace's, word for word, except `unsafe_code`, which is "deny"
+# instead of "forbid" so that the two places named in the design note may allow it
+# (`src/library.rs`, `examples/test_plugin.rs`). `cargo xtask layers` checks that this
+# table matches the workspace's and that no other file allows `unsafe_code`.
+[lints.rust]
+unsafe_code = "deny"
+unused_imports = "warn"
+unused_variables = "warn"
+unused_must_use = "warn"
+unused_qualifications = "warn"
+nonstandard_style = { level = "warn", priority = -1 }
+missing_debug_implementations = "warn"
+unused_crate_dependencies = "warn"
+unreachable_pub = "warn"
+
+[lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+todo = "deny"
+unimplemented = "deny"
+unreachable = "deny"
+indexing_slicing = "deny"
+# Every unsafe block says why it is sound.
+undocumented_unsafe_blocks = "deny"

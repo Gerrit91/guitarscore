@@ -8,12 +8,14 @@
 //!    work on wasm, `gscore-app` keeps the eframe integrations it needs (`links`), and
 //!    restricted modules (`gscore_model::interop`) are used only where allowed (see
 //!    [`crate::source_scan`]);
-//! 5. the core crates build for `wasm32-unknown-unknown` (see [`crate::wasm`]).
+//! 5. `unsafe_code` is allowed only where the design note says (see
+//!    [`crate::unsafe_check`]);
+//! 6. the core crates build for `wasm32-unknown-unknown` (see [`crate::wasm`]).
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
-use crate::{TaskResult, cmd, source_scan, wasm};
+use crate::{TaskResult, cmd, source_scan, unsafe_check, wasm};
 
 /// Layer of every workspace crate, lowest first. Register new crates here.
 pub(crate) const LAYERS: &[(&str, u8)] = &[
@@ -24,6 +26,7 @@ pub(crate) const LAYERS: &[(&str, u8)] = &[
     ("gscore-layout", 2),
     ("gscore-play", 2),
     ("gscore-guitar", 2),
+    ("gscore-plugin", 2),
     ("gscore-edit", 3),
     ("gscore-audio", 3),
     ("gscore-worklet", 4),
@@ -58,6 +61,16 @@ const RESTRICTED: &[(&[&str], &[&str])] = &[
         &["gscore-audio"],
         &["cpal", "midir", "rustysynth", "lewton"],
     ),
+    // Native plugin hosting: the one crate allowed `unsafe` (docs/plugin-hosting.md).
+    (
+        &["gscore-plugin"],
+        &[
+            "clack-host",
+            "clack-extensions",
+            "clack-plugin",
+            "libloading",
+        ],
+    ),
     // Guitar Pro file internals: the model wraps them, gscore-io is the safe entry point.
     (&["gscore-model", "gscore-io"], &["gscore-gp"]),
 ];
@@ -80,7 +93,14 @@ pub(crate) fn run(root: &Path, skip_wasm: bool) -> TaskResult {
     }
 
     let mut errors = check_graph(&members, &deps);
-    errors.extend(source_scan::check_manifests(root, &members));
+    // The plugin crate copies the workspace's lints instead (`unsafe_check`).
+    let layered: Vec<String> = members
+        .iter()
+        .filter(|m| m.as_str() != unsafe_check::UNSAFE_CRATE)
+        .cloned()
+        .collect();
+    errors.extend(source_scan::check_manifests(root, &layered));
+    errors.extend(unsafe_check::check_lints(root));
     errors.extend(source_scan::check_gui_integrations(root));
     errors.extend(source_scan::check_wasm_std_usage(root, WASM_CRATES));
     // Tools (xtask) mention restricted modules in their own test data; skip them.
@@ -90,6 +110,7 @@ pub(crate) fn run(root: &Path, skip_wasm: bool) -> TaskResult {
         .cloned()
         .collect();
     errors.extend(source_scan::check_restricted_modules(root, &app_members));
+    errors.extend(unsafe_check::check_sources(root, &app_members));
     if !errors.is_empty() {
         return Err(format!(
             "layers check found {} problem(s):\n  - {}",

@@ -9,6 +9,7 @@ members = [
     "crates/gscore-play",
     "crates/gscore-guitar",
     "crates/gscore-edit",
+    "crates/gscore-plugin",
     "crates/gscore-audio",
     "crates/gscore-worklet",
     "crates/gscore-session",

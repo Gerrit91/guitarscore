@@ -46,7 +46,7 @@ crates/
 
 ## Branching Strategy
 
-- `main` branch contains stable code (v0.1.0 released 2026-11-06; current milestone M22, see AGENTS.md section 9)
+- `main` branch contains stable code (v0.1.0 released 2026-11-06; current milestone M24, see AGENTS.md section 9)
 - Feature branches should be used for implementation
 - Pull requests should include test coverage and validation with:
   - `cargo test --workspace`

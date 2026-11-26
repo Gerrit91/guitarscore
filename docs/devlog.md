@@ -7282,3 +7282,32 @@ view) but never tested with an injected panic. `gscore_layout::testing` has a ch
 each (no-op unless the `test-support` feature is on): a panicking layout shows its message,
 the edit that caused it stands and is journaled, and the next edit lays out again; a
 panicking drawing shows its notice and the next frame draws.
+
+## 2026-11-26 — M24 step 1: hosting a CLAP effect, headless
+
+M24 is the current milestone (owner). The owner approved `unsafe` for plugin hosting in
+one isolated crate, and the clack crates (now on crates.io). Plugin editors are in again,
+as floating windows of the host process (X11 through XWayland on Linux). Design note:
+`docs/plugin-hosting.md`.
+
+New crate `gscore-plugin` (layer 2, native only): `default_dirs`/`bundles_in` find `.clap`
+libraries (CLAP's folders, `CLAP_PATH` first, depth and count capped), `Library` opens one
+and lists its `PluginInfo`s, `Effect` makes a plugin with stereo or mono ports (parameters,
+value texts, settings blob capped at 64 MiB, latency, the plugin's requests and log), and
+`Processor` runs sound through it in place: split into blocks, parameter changes as
+events, mono plugins given the mix, side-chain ports silence, a failure bypasses it from
+then on. The only `unsafe` is the `PluginEntry::load` block in `src/library.rs` (and the
+test plugin's exported entry). The crate copies the workspace lints with `unsafe_code =
+"deny"`; `cargo xtask layers` (`unsafe_check.rs`) fails if the copy drifts or another file
+allows `unsafe_code`.
+
+Tests use our own test plugin (`examples/test_plugin.rs`, a gain effect with a parameter,
+settings and 64 frames of latency, built as a cdylib by `cargo test`): listing, sound and
+parameter, settings round trip, restarts at three rates, missing and junk libraries.
+`gscore-cli plugins [--check] [PATHS]` lists the installed plugins and runs every effect.
+By hand on 2026-11-26: all 4 Dragonfly reverbs and the 179 LSP effects (198 plugins in one
+library) start, process a second of sound, and save and load their settings (1.4 s for
+all of LSP).
+
+Open: step 2, the plugin block in a sound chain (plugin thread, choosing a plugin, egui
+parameter view, the blob with the tone, latency made up, offline WAV export).
