@@ -7229,10 +7229,10 @@ cpal's `DeviceId` text plus the name to show while it is unplugged. A device tha
 at the next play falls back to the default with a notice. Changing it stops the running
 synthesizer, as changing the sample rate does.
 
-On Linux, cpal's ALSA host listed 31 entries on the owner's laptop (resampler and mixing
+On Linux, cpal's ALSA host listed 31 entries on a test machine (resampler and mixing
 plugins, each card as `hw`, `plughw`, `sysdefault`...). With the owner's approval cpal's
 `pulseaudio` feature is on (Linux only; the `pulseaudio` crate, MIT, pure Rust): the list
-then has the laptop speaker, three HDMI outputs and a Bluetooth speaker, by name. Without a
+then has the real outputs (speakers, HDMI, Bluetooth), by name. Without a
 PulseAudio or PipeWire server the ALSA list is filtered (no plugins, no raw `hw` names).
 The default output deliberately stays on ALSA: with the feature built in, cpal's own
 `default_host()` would switch everyone to PulseAudio. Checked here: every listed device

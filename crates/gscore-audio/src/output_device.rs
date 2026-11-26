@@ -38,7 +38,7 @@ pub fn output_devices() -> Vec<OutputDevice> {
             .into_iter()
             .filter(|device| useful_alsa(&device.id))
             .map(|mut device| {
-                // ALSA names a card's main output "sof-soundwire, " (an empty second part).
+                // ALSA names a card's main output "<card>, " (an empty second part).
                 device.name = device.name.trim_end_matches([',', ' ']).to_owned();
                 device
             })
