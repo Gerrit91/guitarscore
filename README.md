@@ -11,9 +11,8 @@
 [![Release](https://img.shields.io/github/v/release/Gerrit91/guitarscore?include_prereleases)](https://github.com/Gerrit91/guitarscore/releases)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-**A fast, free guitar tablature editor.** Write tabs at the speed you think, hear them as
-you type, and open the Guitar Pro files you already have. Native, written in Rust, and
-built never to lose your work.
+**A fast, free guitar tablature editor.** Native, written in Rust, and
+built never to lose your work. Compatible with G
 
 <p align="center">
   <a href="https://gerrit91.github.io/guitarscore/"><img src="https://img.shields.io/badge/%E2%96%B6%20Open%20in%20your%20browser-nothing%20to%20install-2f81f7?style=for-the-badge" alt="Open GuitarScore in your browser, nothing to install"></a>

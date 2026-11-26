@@ -7219,3 +7219,22 @@ first Play (`sequence`, `seek`, `tempo`, `play`); four playing reports with a mo
 position; loudest RMS 0.015; Space again sends `stop`. Choosing a tone is not driven:
 egui draws the tone list on the canvas, and clicking fixed coordinates would break with
 any layout change.
+
+## 2026-11-26 — Settings › Audio I/O: choose the output device
+
+The synthesizer and the tuner always played through the system's default output. Settings
+› Audio I/O now has "Output device": "System default" or one of the machine's outputs,
+listed on a background thread (`gscore_audio::output_devices`), kept in the settings as
+cpal's `DeviceId` text plus the name to show while it is unplugged. A device that is gone
+at the next play falls back to the default with a notice. Changing it stops the running
+synthesizer, as changing the sample rate does.
+
+On Linux, cpal's ALSA host listed 31 entries on the owner's laptop (resampler and mixing
+plugins, each card as `hw`, `plughw`, `sysdefault`...). With the owner's approval cpal's
+`pulseaudio` feature is on (Linux only; the `pulseaudio` crate, MIT, pure Rust): the list
+then has the laptop speaker, three HDMI outputs and a Bluetooth speaker, by name. Without a
+PulseAudio or PipeWire server the ALSA list is filtered (no plugins, no raw `hw` names).
+The default output deliberately stays on ALSA: with the feature built in, cpal's own
+`default_host()` would switch everyone to PulseAudio. Checked here: every listed device
+reopens by its id, and a synthesizer stream runs on the PulseAudio speaker (48 kHz, no
+error). Not heard: the owner's ear is the check.

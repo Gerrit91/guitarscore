@@ -11,6 +11,11 @@ pub struct TunerPlayer;
 impl TunerPlayer {
     /// Always fails: the browser build has no tuning tone yet.
     pub fn start() -> Result<Self, PlayError> {
+        TunerPlayer::start_on(None)
+    }
+
+    /// Always fails, for the same reason (the browser chooses its own output).
+    pub fn start_on(_device: Option<String>) -> Result<Self, PlayError> {
         Err(PlayError::Device(
             "the tuner is not available in the browser build yet".to_owned(),
         ))

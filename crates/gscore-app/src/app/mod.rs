@@ -432,6 +432,8 @@ impl GuitarScoreApp {
         app.playback
             .store_modelled_guitars(app.settings.modelled_guitars);
         app.playback.set_sample_rate(app.settings.sample_rate);
+        app.playback
+            .set_output_device(app.settings.output_device.clone());
         app.playback.store_string_sounds(app.settings.string_sounds);
         app.playback
             .store_string_chains(app.settings.string_chains.clone());
@@ -538,6 +540,10 @@ impl GuitarScoreApp {
         settings.prefer_synth = matches!(self.playback.output(), Output::Synth(_));
         settings.modelled_guitars = self.playback.modelled_guitars();
         settings.sample_rate = self.playback.sample_rate();
+        settings.output_device = self.playback.output_device().map(str::to_owned);
+        if settings.output_device.is_none() {
+            settings.output_device_name = None;
+        }
         settings.string_sounds = self.playback.string_sounds();
         settings.string_chains = self.playback.string_chains().clone();
         settings.drum_parts = self.playback.drum_parts().to_vec();

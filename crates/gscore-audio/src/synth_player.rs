@@ -15,7 +15,7 @@ use std::sync::{Arc, Mutex, PoisonError};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
-use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
+use cpal::traits::{DeviceTrait, StreamTrait};
 use cpal::{FromSample, Sample, SampleFormat, SizedSample, Stream, StreamConfig};
 use gscore_play::{MidiEvent, PlayError, PlayState, Player, Sequence};
 
@@ -155,6 +155,17 @@ impl SynthPlayer {
     /// default). A rate the device does not offer falls back to its default, and
     /// [`SynthPlayer::notice`] says so.
     pub fn start_at(soundfont: &Path, sample_rate: Option<u32>) -> Result<Self, PlayError> {
+        SynthPlayer::start_on(soundfont, sample_rate, None)
+    }
+
+    /// Like [`SynthPlayer::start_at`], playing through the output `device` (an
+    /// [`crate::OutputDevice`]'s id; `None`: the system's default). A device that is not
+    /// there falls back to the default, and [`SynthPlayer::notice`] says so.
+    pub fn start_on(
+        soundfont: &Path,
+        sample_rate: Option<u32>,
+        device: Option<String>,
+    ) -> Result<Self, PlayError> {
         let (commands, receiver) = mpsc::sync_channel(QUEUE);
         let (chains, chain_requests) = mpsc::sync_channel(QUEUE);
         let (bus, bus_requests) = mpsc::sync_channel(QUEUE);
@@ -171,6 +182,7 @@ impl SynthPlayer {
                     run(
                         &path,
                         sample_rate,
+                        device.as_deref(),
                         receiver,
                         &Housekeeping {
                             quit: quit_receiver,
@@ -647,6 +659,7 @@ fn contain(shared: &Arc<Shared>, work: impl FnOnce()) {
 fn run(
     path: &Path,
     sample_rate: Option<u32>,
+    device: Option<&str>,
     commands: Receiver<Command>,
     house: &Housekeeping,
     shared: &Arc<Shared>,
@@ -654,7 +667,7 @@ fn run(
     let (retired_sender, retired) = mpsc::sync_channel::<Retired>(RETIRED);
     let stream = SoundBank::open(path).and_then(|bank| {
         *lock(&shared.bank) = Some(bank.name().to_owned());
-        open_stream(&bank, sample_rate, commands, retired_sender, shared)
+        open_stream(&bank, sample_rate, device, commands, retired_sender, shared)
     });
     // The error first: whoever sees loading end must also see why it failed.
     let _stream = match stream {
@@ -729,22 +742,20 @@ fn run(
     }
 }
 
-/// Opens the default output device and starts a stream rendering `bank`.
+/// Opens the output `device` (`None`: the default) and starts a stream rendering `bank`.
 fn open_stream(
     bank: &SoundBank,
     sample_rate: Option<u32>,
+    device: Option<&str>,
     commands: Receiver<Command>,
     retired: SyncSender<Retired>,
     shared: &Arc<Shared>,
 ) -> Result<Stream, PlayError> {
-    let host = cpal::default_host();
-    let device = host
-        .default_output_device()
-        .ok_or_else(|| PlayError::Device("no audio output device found".to_owned()))?;
-    let name = device
-        .description()
-        .map(|d| d.name().to_owned())
-        .unwrap_or_else(|_| "the default audio output".to_owned());
+    let (device, missing) = crate::output_device::open_output(device)?;
+    let name = crate::output_device::name_of(&device, "the default audio output");
+    if missing.is_some() {
+        *lock(&shared.notice) = missing;
+    }
     let default = device
         .default_output_config()
         .map_err(|e| PlayError::Device(format!("{name}: {e}")))?;

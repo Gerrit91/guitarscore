@@ -47,7 +47,9 @@ in AGENTS.md section 9.
    in again (fixed 2026-11-06).
 4. **Player limits.** Pause and resume do not re-trigger notes that were sounding;
    stopping `gscore-cli play --port` with Ctrl+C can leave notes hanging in an external
-   synth. The synthesizer always uses the default audio device; `.sf3` SoundFonts are not
+   synth. The output device can be chosen since 2026-11-26 (on Linux from PulseAudio's
+   list, or a filtered ALSA list without a PulseAudio or PipeWire server); switching it
+   while playing stops playback until the next play; `.sf3` SoundFonts are not
    supported; a source build has no SoundFont of its own. External MIDI synths play their
    own sound for the metronome (GM keys 33/34), which a GM1-only synth may not have.
    A per-track MIDI-out route lives in the open tab, not in the song, and the hardware's

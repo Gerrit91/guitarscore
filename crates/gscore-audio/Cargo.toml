@@ -28,6 +28,13 @@ midir = "0.11"
 # Audio output to the default device (ALSA on Linux, which PipeWire and PulseAudio serve).
 cpal = "0.18.2"
 
+# Linux: cpal's PulseAudio host (a pure-Rust client of the PulseAudio protocol, which
+# PipeWire serves too) lists the real outputs for Settings › Audio I/O; ALSA alone lists
+# every plugin and each card several times. Playback through "System default" stays on
+# ALSA (`output_device.rs`). Owner approval 2026-11-26.
+[target.'cfg(target_os = "linux")'.dependencies]
+cpal = { version = "0.18.2", features = ["pulseaudio"] }
+
 # The browser output: an AudioWorklet node in the Web Audio graph.
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-bindgen = "0.2.130"
