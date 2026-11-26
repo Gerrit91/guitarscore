@@ -7219,3 +7219,14 @@ first Play (`sequence`, `seek`, `tempo`, `play`); four playing reports with a mo
 position; loudest RMS 0.015; Space again sends `stop`. Choosing a tone is not driven:
 egui draws the tone list on the canvas, and clicking fixed coordinates would break with
 any layout change.
+
+## 2026-11-26 — The page layout preview shows the score as it prints
+
+Owner: multi-rest bars were missing from the print preview (the Page layout tab's
+preview), which should look exactly like the score in the app. The preview laid out the
+shown track alone with the base options, so the view's choices were lost: multi-bar
+rests, the chosen score view's tracks and staves, hidden empty staves. The PDF export
+built those options in its own copy of the page view's code. Both now use one helper
+(`print_options`), and the preview caches on the tracks and options it was laid out
+with. On the owner's DistortedDreams.gp the preview said "Page 1 of 6" with every empty bar
+drawn; it now shows the multi-bar rests and "Page 1 of 3", as the status bar does.

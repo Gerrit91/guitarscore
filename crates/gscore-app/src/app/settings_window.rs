@@ -197,16 +197,18 @@ impl GuitarScoreApp {
             .pos
             .unwrap_or_else(|| style::centered_window_pos(ctx, SETTINGS_SIZE));
         // The preview is laid out only on the Page layout tab, and only for a valid draft.
-        let preview = match (self.document(), &self.fonts) {
-            (Some(document), Ok(fonts))
+        // It shows what the PDF export would print: the chosen view's tracks and staves,
+        // multi-bar rests and empty staves as the score shows them.
+        let preview = match (self.tabs.get(self.active), &self.fonts) {
+            (Some(tab), Ok(fonts))
                 if window.tab == SettingsTab::Page && window.page.draft.check().is_ok() =>
             {
+                let (tracks, options) = self.print_options(tab, &window.page.draft);
                 window.preview.layout(
-                    document.song(),
-                    document.editor().revision(),
-                    self.shown_track(),
-                    window.page.draft,
-                    &self.options,
+                    tab.document.song(),
+                    tab.document.editor().revision(),
+                    tracks,
+                    options,
                     fonts,
                     self.view.music_font,
                 )

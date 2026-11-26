@@ -183,50 +183,65 @@ fn preview_panel(ui: &mut Ui, layout: Option<&Layout>, valid: bool, music: Music
     );
 }
 
-/// The draft's pages, laid out again only when the draft, the track or the song changed.
+/// The draft's pages as they would print: the same tracks and options as the PDF export
+/// (`print_options`), laid out again only when those, the song or the music font change.
 /// Its own cache: the score's view keeps its layout.
 #[derive(Debug, Default)]
 pub(super) struct PagePreview {
     cache: LayoutCache,
-    shown: Option<(PageSetup, usize, u64, MusicFontChoice, Arc<Layout>)>,
+    shown: Option<Shown>,
+}
+
+/// What the preview shows and what it was laid out from.
+#[derive(Debug)]
+struct Shown {
+    tracks: Vec<usize>,
+    options: LayoutOptions,
+    revision: u64,
+    music: MusicFontChoice,
+    layout: Arc<Layout>,
 }
 
 impl PagePreview {
-    /// The pages of `track` (editor `revision`) laid out with `setup` on top of `base`.
-    #[allow(clippy::too_many_arguments)]
+    /// The pages of `tracks` (editor `revision`, the first track leading) laid out with
+    /// `options` (the print options with the draft's page setup).
     pub(super) fn layout(
         &mut self,
         song: &Song,
         revision: u64,
-        track: usize,
-        setup: PageSetup,
-        base: &LayoutOptions,
+        tracks: Vec<usize>,
+        options: LayoutOptions,
         fonts: &Fonts,
         music: MusicFontChoice,
     ) -> Option<Arc<Layout>> {
-        let fresh = self
-            .shown
-            .as_ref()
-            .is_some_and(|(shown, at, done, font, _)| {
-                *shown == setup && *at == track && *done == revision && *font == music
-            });
+        let fresh = self.shown.as_ref().is_some_and(|shown| {
+            shown.tracks == tracks
+                && shown.options == options
+                && shown.revision == revision
+                && shown.music == music
+        });
         if !fresh {
-            let options = base.clone().with_page_setup(&setup).on_pages();
+            let indices: Vec<TrackIndex> = tracks.iter().copied().map(TrackIndex::new).collect();
+            let first = *indices.first()?;
             let cache = &mut self.cache;
             // A bug in layout must not take the settings window down.
             let laid_out = catch_unwind(AssertUnwindSafe(|| {
-                cache.layout(song, TrackIndex::new(track), &options, fonts)
+                cache.layout_tracks(song, &indices, first, &options, fonts)
             }));
             let Ok(Ok(layout)) = laid_out else {
                 self.cache = LayoutCache::default();
                 self.shown = None;
                 return None;
             };
-            self.shown = Some((setup, track, revision, music, Arc::new(layout)));
+            self.shown = Some(Shown {
+                tracks,
+                options,
+                revision,
+                music,
+                layout: Arc::new(layout),
+            });
         }
-        self.shown
-            .as_ref()
-            .map(|(_, _, _, _, layout)| Arc::clone(layout))
+        self.shown.as_ref().map(|shown| Arc::clone(&shown.layout))
     }
 }
 
@@ -309,37 +324,60 @@ mod tests {
     fn the_preview_is_laid_out_again_only_when_something_changed() {
         let song = gscore_model::testing::song(&[gscore_model::testing::GUITAR_6], 60).unwrap();
         let fonts = Fonts::bundled().unwrap();
-        let base = LayoutOptions::default();
+        let on = |setup: PageSetup| LayoutOptions::default().with_page_setup(&setup).on_pages();
         let mut preview = PagePreview::default();
         let a4 = PageSetup::default();
         let bravura = MusicFontChoice::Bravura;
         let first = preview
-            .layout(&song, 1, 0, a4, &base, &fonts, bravura)
+            .layout(&song, 1, vec![0], on(a4), &fonts, bravura)
             .unwrap();
         let again = preview
-            .layout(&song, 1, 0, a4, &base, &fonts, bravura)
+            .layout(&song, 1, vec![0], on(a4), &fonts, bravura)
             .unwrap();
         assert!(
             Arc::ptr_eq(&first, &again),
             "nothing changed: the same layout"
         );
         let landscape = preview
-            .layout(&song, 1, 0, a4.turned(), &base, &fonts, bravura)
+            .layout(&song, 1, vec![0], on(a4.turned()), &fonts, bravura)
             .unwrap();
         assert!(landscape.pages[0].width > landscape.pages[0].height);
         assert!(landscape.pages.len() >= first.pages.len());
         let edited = preview
-            .layout(&song, 2, 0, a4.turned(), &base, &fonts, bravura)
+            .layout(&song, 2, vec![0], on(a4.turned()), &fonts, bravura)
             .unwrap();
         assert!(
             !Arc::ptr_eq(&landscape, &edited),
             "an edit lays it out again"
         );
+        let rests = LayoutOptions {
+            multi_bar_rests: true,
+            ..on(a4.turned())
+        };
+        let with_rests = preview
+            .layout(&song, 2, vec![0], rests, &fonts, bravura)
+            .unwrap();
+        assert!(
+            !Arc::ptr_eq(&edited, &with_rests),
+            "another view option lays it out again"
+        );
+        assert!(
+            with_rests.pages.len() < edited.pages.len(),
+            "60 empty bars as one multi-bar rest take fewer pages ({} vs {})",
+            with_rests.pages.len(),
+            edited.pages.len()
+        );
         assert!(
             preview
-                .layout(&song, 2, 7, a4, &base, &fonts, bravura)
+                .layout(&song, 2, vec![7], on(a4), &fonts, bravura)
                 .is_none(),
             "no track 8"
+        );
+        assert!(
+            preview
+                .layout(&song, 2, Vec::new(), on(a4), &fonts, bravura)
+                .is_none(),
+            "no track at all"
         );
     }
 
