@@ -3475,6 +3475,36 @@ fn the_music_font_can_be_chosen_in_the_page_layout_settings() {
 }
 
 #[test]
+fn the_page_layout_tab_scrolls_instead_of_growing_the_settings_window() {
+    // The page tab's fields, preview and music fonts are taller than the window's usual
+    // size: they scroll above the buttons, and the window keeps the size every other tab
+    // has (its Done button where the Song tab's is).
+    let mut harness = app_with(Some(testdata("basic/multi_staff.gp")));
+    harness.get_by_label("File").click();
+    harness.run();
+    harness.get_by_label("Settings… ctrl+,").click();
+    harness.run();
+    harness.get_by_label("Song").click();
+    harness.run();
+    let song_done = harness.get_by_label("Done").rect();
+    harness.get_by_label("Page layout").click();
+    harness.run();
+    let page_done = harness.get_by_label("Done").rect();
+    assert!(
+        (page_done.bottom() - song_done.bottom()).abs() < 1.0,
+        "the window grew on the page tab: Done at {page_done:?}, on the Song tab {song_done:?}"
+    );
+    // Switching back and forth does not grow it either.
+    harness.get_by_label("Song").click();
+    harness.run();
+    let again = harness.get_by_label("Done").rect();
+    assert!(
+        (again.bottom() - song_done.bottom()).abs() < 1.0,
+        "{again:?} {song_done:?}"
+    );
+}
+
+#[test]
 fn the_metronome_tab_sets_the_click_and_the_count_in() {
     let mut harness = app_with(Some(testdata("basic/note_lengths.gp")));
     harness.get_by_label("File").click();

@@ -7238,3 +7238,10 @@ The default output deliberately stays on ALSA: with the feature built in, cpal's
 `default_host()` would switch everyone to PulseAudio. Checked here: every listed device
 reopens by its id, and a synthesizer stream runs on the PulseAudio speaker (48 kHz, no
 error). Not heard: the owner's ear is the check.
+## 2026-11-26 — The page layout tab no longer grows the settings window
+
+Owner: the Page layout tab made the settings window taller instead of scrolling. It was
+the one tab outside a scroll area (its fields, preview, music fonts and buttons), and a
+resizable egui window grows to fit what it holds. Its contents now scroll in the room
+above the buttons (Apply, Revert, Guitar Pro defaults, Done), as the Song tab's do. A test
+compares the Done button on both tabs: 44 points lower on the page tab before the fix.

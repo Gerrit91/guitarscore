@@ -23,8 +23,9 @@ const SETTINGS_SIZE: egui::Vec2 = egui::vec2(780.0, 580.0);
 const SETTINGS_MIN_SIZE: egui::Vec2 = egui::vec2(560.0, 400.0);
 /// The song notes' field at its smallest; it takes the room the fields leave.
 const NOTES_MIN_HEIGHT: f32 = 80.0;
-/// What a separator takes between the Song tab's notes and its buttons (egui's default).
-const SEPARATOR_ROOM: f32 = 6.0;
+/// What a separator takes between a tab's scrolling part and its buttons (egui's
+/// default): the Song and Page layout tabs keep their buttons below it.
+pub(super) const SEPARATOR_ROOM: f32 = 6.0;
 /// The Song tab's field labels' column, and its fields' narrowest and widest.
 const FIELD_LABEL: f32 = 84.0;
 const FIELD_MIN: f32 = 200.0;
@@ -300,9 +301,9 @@ impl GuitarScoreApp {
                     }
                 });
                 ui.separator();
-                // Every tab but the page layout (whose preview fills the window)
-                // scrolls inside the window, so the window keeps one size whichever
-                // tab is shown.
+                // Every tab scrolls inside the window, so the window keeps one size
+                // whichever tab is shown. The Song and Page layout tabs keep their
+                // buttons below the scrolling part.
                 let tab = window.tab;
                 if tab == SettingsTab::Page {
                     let has_song = self.document().is_some();
