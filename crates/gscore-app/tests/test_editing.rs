@@ -228,6 +228,52 @@ fn keys_move_the_cursor_enter_frets_and_undo() {
 }
 
 #[test]
+fn undoing_back_to_the_saved_state_makes_the_song_saved_again() {
+    let (dir, file) = scratch_copy("steel_guitar_dadgad.gp", "undo_saved");
+    let mut harness = app_with(&file);
+    let dirty = |h: &Harness<'static, GuitarScoreApp>| h.state().document().unwrap().is_dirty();
+    // Opened, an edit, undone: as opened.
+    type_char(&mut harness, "5", Modifiers::NONE);
+    assert!(dirty(&harness));
+    harness.key_press_modifiers(Modifiers::COMMAND, Key::Z);
+    harness.run();
+    assert!(!dirty(&harness), "undone back to the opened song");
+    harness.get_by_label("steel_guitar_dadgad.gp");
+    // Redone: changed again.
+    harness.key_press_modifiers(Modifiers::COMMAND, Key::Y);
+    harness.run();
+    assert!(dirty(&harness), "redone");
+
+    // Saved with that edit; another edit and its undo end at the saved state.
+    harness.key_press_modifiers(Modifiers::COMMAND, Key::S);
+    settle(&mut harness);
+    assert_eq!(harness.state().notice(), None);
+    assert!(!dirty(&harness), "saved");
+    press(&mut harness, Key::ArrowRight);
+    type_char(&mut harness, "7", Modifiers::NONE);
+    assert!(dirty(&harness));
+    harness.key_press_modifiers(Modifiers::COMMAND, Key::Z);
+    harness.run();
+    assert!(!dirty(&harness), "back at the saved state");
+    // One more undo goes behind the save: that differs from the file.
+    harness.key_press_modifiers(Modifiers::COMMAND, Key::Z);
+    harness.run();
+    assert!(
+        dirty(&harness),
+        "the state before the save is not what is on disk"
+    );
+    // Closing now asks; redone to the saved state, it closes at once.
+    harness.key_press_modifiers(Modifiers::COMMAND, Key::Y);
+    harness.run();
+    assert!(!dirty(&harness));
+    harness.key_press_modifiers(Modifiers::COMMAND, Key::W);
+    harness.run();
+    assert!(!harness.state().has_dialog(), "nothing to ask about");
+    assert_eq!(harness.state().tab_count(), 0);
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
 fn plus_typed_with_or_without_shift_shortens_the_note() {
     let (dir, file) = scratch_copy("note_lengths.gp", "plus");
     let mut harness = app_with(&file);

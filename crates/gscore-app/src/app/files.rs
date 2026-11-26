@@ -436,16 +436,21 @@ impl GuitarScoreApp {
     /// Saves the tab being saved to `path` in the background.
     fn start_save(&mut self, path: PathBuf, allow_losses: bool, ctx: &egui::Context) {
         // The tab may have been closed meanwhile (while the file dialog was open).
-        let Some(tab) = self
-            .saving_tab
-            .and_then(|id| self.tab_index(id))
-            .and_then(|index| self.tabs.get(index))
-        else {
+        let Some(index) = self.saving_tab.and_then(|id| self.tab_index(id)) else {
+            self.abandon_save();
+            return;
+        };
+        let Some(tab) = self.tabs.get(index) else {
             self.abandon_save();
             return;
         };
         let song = self.song_with_state(tab);
-        let revision = tab.document.editor().revision();
+        // Which state is written, so undoing back to it later counts as saved.
+        let Some(tab) = self.tabs.get_mut(index) else {
+            self.abandon_save();
+            return;
+        };
+        let revision = tab.document.save_started();
         if let Err(error) = self.tasks.save(song, path, revision, allow_losses, ctx) {
             self.notice = Some(error);
             self.abandon_save();

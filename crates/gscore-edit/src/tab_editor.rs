@@ -208,6 +208,13 @@ impl TabEditor {
         self.revision
     }
 
+    /// Identifies the song's content as the history reached it: undoing back to a state
+    /// gives the mark it had then ([`crate::Editor::content_mark`]). Whether the song is
+    /// unsaved is a comparison with the mark taken when it was saved.
+    pub fn content_mark(&self) -> u64 {
+        self.editor.content_mark()
+    }
+
     /// The command the last edit ran (or the command undone or redone), if any.
     pub fn last_command(&self) -> Option<&Command> {
         self.last_command.as_ref()

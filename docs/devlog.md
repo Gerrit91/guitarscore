@@ -7255,3 +7255,13 @@ built those options in its own copy of the page view's code. Both now use one he
 (`print_options`), and the preview caches on the tracks and options it was laid out
 with. On a 12-track band song the preview said "Page 1 of 6" with every empty bar
 drawn; it now shows the multi-bar rests and "Page 1 of 3", as the status bar does.
+
+## 2026-11-26 — Undo back to the saved state counts as saved
+
+A song stayed "changed" after undoing back to what was opened or saved, so closing it
+asked about changes that did not exist. "Unsaved" compared editor revisions, which every
+undo increases. The editor now gives each state a content mark (`Editor::content_mark`):
+each history entry carries one, kept through undo and redo; a merged drag step takes a new
+one; undoing the whole history ends at the mark of the opened song, or of the last entry
+trimmed off. A document is unsaved when its mark differs from the one taken when the save
+started (`Document::save_started`), so edits made during a background save stay unsaved.
