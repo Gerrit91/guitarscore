@@ -14,8 +14,8 @@ use gscore_io::{FileFormat, export_to_bytes};
 use gscore_model::Song;
 
 use super::{
-    BASE, JOURNAL, LOCK, META, SAVED, SNAPSHOT_EVERY, SNAPSHOT_INFO, SNAPSHOT_INTERVAL,
-    SNAPSHOT_SONG, checksum, journal_line,
+    BASE, JOURNAL, LOCK, META, PLACE, PLACE_EVERY, PLACE_MAX, SAVED, SNAPSHOT_EVERY, SNAPSHOT_INFO,
+    SNAPSHOT_INTERVAL, SNAPSHOT_SONG, checksum, journal_line,
 };
 
 /// Jobs queued before entries wait in the journal's own buffer.
@@ -50,6 +50,8 @@ enum Job {
     Snapshot { song: Box<Song>, entries: usize },
     /// The document now belongs to this file (after Save As).
     Source(PathBuf),
+    /// Where the user is now (written at most every [`PLACE_EVERY`]).
+    Place(String),
     /// The document was closed normally: remove the folder.
     Close,
 }
@@ -73,6 +75,8 @@ pub struct Journal {
     snapshot_entries: usize,
     last_snapshot: Instant,
     options: RecoveryOptions,
+    /// The place last handed to the writer, so an unchanged one is not sent every frame.
+    place: String,
 }
 
 /// `Job` is not `Debug` (it holds a song); this wrapper keeps the channel type printable.
@@ -151,6 +155,7 @@ impl Journal {
             snapshot_entries: 0,
             last_snapshot: Instant::now(),
             options,
+            place: String::new(),
         })
     }
 
@@ -201,6 +206,24 @@ impl Journal {
         self.entries = self.entries.saturating_add(1);
         self.flush();
         self.send(Job::Source(path.to_path_buf()));
+    }
+
+    /// Records where the user is (`text`: the app's own description, at most 4 KiB), so a
+    /// recovered document opens there. Cheap to call every frame: an unchanged place is
+    /// not sent, and the writer writes at most every [`PLACE_EVERY`].
+    pub fn place(&mut self, text: &str) {
+        if text == self.place || text.len() > PLACE_MAX {
+            return;
+        }
+        let Some(jobs) = &self.jobs else {
+            return;
+        };
+        match jobs.try_send(JobBox(Job::Place(text.to_owned()))) {
+            Ok(()) => text.clone_into(&mut self.place),
+            // Sent again on the next call, while it still differs.
+            Err(TrySendError::Full(_)) => {}
+            Err(TrySendError::Disconnected(_)) => self.report("the writer stopped".to_owned()),
+        }
     }
 
     /// Writes a snapshot of `song` now (for example after a contained panic).
@@ -317,32 +340,32 @@ impl Writer<'_> {
 
     /// The writer thread. It holds the folder's lock until it ends.
     fn run(&self, lock: File, mut journal: File, jobs: &Receiver<JobBox>) {
-        while let Ok(JobBox(job)) = jobs.recv() {
+        // A place waiting for its turn, and when one was last written.
+        let mut place: Option<String> = None;
+        let mut place_written: Option<Instant> = None;
+        loop {
+            let job = if place.is_some() {
+                let since = place_written.map_or(PLACE_EVERY, |at| at.elapsed());
+                match jobs.recv_timeout(PLACE_EVERY.saturating_sub(since)) {
+                    Ok(JobBox(job)) => Some(job),
+                    Err(mpsc::RecvTimeoutError::Timeout) => None,
+                    Err(mpsc::RecvTimeoutError::Disconnected) => {
+                        // Not closed: the folder stays for recovery, with the last place.
+                        self.write_place(place.as_deref());
+                        return;
+                    }
+                }
+            } else {
+                match jobs.recv() {
+                    Ok(JobBox(job)) => Some(job),
+                    Err(_) => return,
+                }
+            };
             match job {
-                Job::Append(lines) => {
-                    let written = journal
-                        .write_all(lines.as_bytes())
-                        .and_then(|()| journal.sync_data());
-                    match written {
-                        Ok(()) => {
-                            let count = lines.matches('\n').count();
-                            self.written.fetch_add(count, Ordering::Release);
-                        }
-                        Err(e) => self.report(format!("recovery journal: cannot write: {e}")),
-                    }
-                }
-                Job::Snapshot { song, entries } => {
-                    if let Err(e) = write_snapshot(self.dir, &song, entries) {
-                        self.report(format!("recovery snapshot: {e}"));
-                    }
-                }
-                Job::Source(path) => {
-                    let meta = meta_text(Some(&path));
-                    if let Err(e) = write_atomic(self.dir, META, meta.as_bytes()) {
-                        self.report(format!("recovery journal: cannot write the metadata: {e}"));
-                    }
-                }
-                Job::Close => {
+                Some(Job::Place(text)) => place = Some(text),
+                Some(Job::Close) => {
+                    // The files are closed before the folder goes (Windows cannot remove a
+                    // folder with open files).
                     drop(journal);
                     let _ = lock.unlock();
                     drop(lock);
@@ -351,7 +374,53 @@ impl Writer<'_> {
                     }
                     return;
                 }
+                Some(job) => self.handle(job, &mut journal),
+                None => {}
             }
+            let due = place_written.is_none_or(|at| at.elapsed() >= PLACE_EVERY);
+            if due && let Some(text) = place.take() {
+                self.write_place(Some(&text));
+                place_written = Some(Instant::now());
+            }
+        }
+    }
+
+    /// Writes the place file.
+    fn write_place(&self, text: Option<&str>) {
+        if let Some(text) = text
+            && let Err(e) = write_atomic(self.dir, PLACE, text.as_bytes())
+        {
+            self.report(format!("recovery journal: cannot write the place: {e}"));
+        }
+    }
+
+    /// Carries out `job` (anything but a place or the close, which [`Writer::run`] does).
+    fn handle(&self, job: Job, journal: &mut File) {
+        match job {
+            Job::Append(lines) => {
+                let written = journal
+                    .write_all(lines.as_bytes())
+                    .and_then(|()| journal.sync_data());
+                match written {
+                    Ok(()) => {
+                        let count = lines.matches('\n').count();
+                        self.written.fetch_add(count, Ordering::Release);
+                    }
+                    Err(e) => self.report(format!("recovery journal: cannot write: {e}")),
+                }
+            }
+            Job::Snapshot { song, entries } => {
+                if let Err(e) = write_snapshot(self.dir, &song, entries) {
+                    self.report(format!("recovery snapshot: {e}"));
+                }
+            }
+            Job::Source(path) => {
+                let meta = meta_text(Some(&path));
+                if let Err(e) = write_atomic(self.dir, META, meta.as_bytes()) {
+                    self.report(format!("recovery journal: cannot write the metadata: {e}"));
+                }
+            }
+            Job::Place(_) | Job::Close => {}
         }
     }
 }

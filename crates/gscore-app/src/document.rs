@@ -161,6 +161,14 @@ impl Document {
         ))
     }
 
+    /// Tells the recovery journal where the user is (`place`: a `FilePosition` as JSON), so
+    /// a recovered document opens there. Cheap when nothing changed.
+    pub fn record_place(&mut self, place: &str) {
+        if let Some(journal) = &mut self.journal {
+            journal.place(place);
+        }
+    }
+
     /// Writes a recovery snapshot of the song now (after a contained panic).
     pub fn snapshot(&mut self) {
         let _ = self.record_changes();

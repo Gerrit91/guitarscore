@@ -326,3 +326,60 @@ fn a_killed_process_is_recovered() {
     }
     assert_same_history(expected, recovered.editor);
 }
+
+#[test]
+fn a_crashed_document_comes_back_where_the_user_was() {
+    let root = temp_dir("place");
+    let mut journal = Journal::start(&root, None, &base_bytes()).unwrap();
+    let mut editor = TabEditor::new(base_song(), TrackIndex::new(0));
+    edit(&mut editor, &mut journal, 3);
+    // Many places in quick succession (a held arrow key): the last one counts.
+    for measure in 0..50 {
+        journal.place(&format!("measure={measure}"));
+    }
+    drop(journal); // a crash: the writer still writes the last place before it ends
+    let recovered = recover(&only_session(&root)).unwrap();
+    assert_eq!(recovered.place.as_deref(), Some("measure=49"));
+    std::fs::remove_dir_all(&root).unwrap();
+}
+
+#[test]
+fn a_resting_place_is_written_without_further_calls() {
+    let root = temp_dir("place-rest");
+    let mut journal = Journal::start(&root, None, &base_bytes()).unwrap();
+    journal.place("first");
+    journal.place("second");
+    // No more calls (the app draws no frames while idle): the writer writes it on its own
+    // within about a second.
+    let file = journal.dir().join("place");
+    let started = Instant::now();
+    while std::fs::read_to_string(&file).ok().as_deref() != Some("second") {
+        assert!(
+            started.elapsed() < Duration::from_secs(5),
+            "the resting place was not written: {:?}",
+            std::fs::read_to_string(&file)
+        );
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    journal.close();
+    std::fs::remove_dir_all(&root).ok();
+}
+
+#[test]
+fn a_damaged_or_oversized_place_is_ignored() {
+    let root = temp_dir("place-bad");
+    let mut journal = Journal::start(&root, None, &base_bytes()).unwrap();
+    let mut editor = TabEditor::new(base_song(), TrackIndex::new(0));
+    edit(&mut editor, &mut journal, 2);
+    drop(journal);
+    let session = only_session(&root);
+    for bytes in [vec![0xff_u8, 0xfe, 0x00], vec![b'x'; 10_000]] {
+        std::fs::write(session.dir.join("place"), &bytes).unwrap();
+        let recovered = recover(&session).unwrap();
+        assert_eq!(recovered.place, None, "{} bytes", bytes.len());
+    }
+    // Without a place file the document still recovers.
+    std::fs::remove_file(session.dir.join("place")).unwrap();
+    assert_eq!(recover(&session).unwrap().place, None);
+    std::fs::remove_dir_all(&root).unwrap();
+}

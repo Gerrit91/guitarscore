@@ -76,6 +76,11 @@ impl GuitarScoreApp {
                 // Without a file name, a format other than `.gp` makes Save ask for one. A
                 // recovered document with a source file can be reopened next time.
                 let reopenable = recovered.source.is_some();
+                // Where the user was when it crashed, checked against the song below.
+                let place = recovered
+                    .place
+                    .as_deref()
+                    .and_then(super::file_position::recorded_place);
                 let (path, format) = match &recovered.source {
                     Some(path) => (path.clone(), recovered.format),
                     None => (
@@ -97,6 +102,9 @@ impl GuitarScoreApp {
                     journal,
                     reopenable,
                 ));
+                if let Some(place) = place {
+                    self.apply_position(&place);
+                }
                 self.status = Some(status);
                 self.notice = problem;
             }

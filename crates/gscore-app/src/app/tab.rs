@@ -94,6 +94,9 @@ pub(super) struct Tab {
     pub(super) page_info: Option<(usize, usize)>,
     /// The track being renamed, while the rename window is open.
     pub(super) renaming: Option<RenameTrack>,
+    /// The place last handed to the recovery journal, so an unchanged one is not sent
+    /// again ([`Tab::record_place`]).
+    pub(super) recorded_place: Option<crate::settings::FilePosition>,
     /// A song text of the score's header being typed in place (the title, the artist, a
     /// credit).
     pub(super) song_text: Option<super::page::SongTextEdit>,
@@ -173,6 +176,7 @@ impl Tab {
             grid_rows: None,
             page_info: None,
             renaming: None,
+            recorded_place: None,
             song_text: None,
             mixer: MixerState::default(),
             history_stamps: HashMap::new(),

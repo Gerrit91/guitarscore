@@ -7265,3 +7265,20 @@ each history entry carries one, kept through undo and redo; a merged drag step t
 one; undoing the whole history ends at the mark of the opened song, or of the last entry
 trimmed off. A document is unsaved when its mark differs from the one taken when the save
 started (`Document::save_started`), so edits made during a background save stay unsaved.
+
+## 2026-11-26 — Recovery: back to the cursor; layout and drawing panic-tested
+
+A recovered document opened at the start of the song. The recovery folder now holds a
+`place` file: the app's `FilePosition` (cursor, shown track, selection) as JSON, the same
+the settings remember per file. It is not a journal line (moving the cursor is not an
+edit, and lines count as edits); the journal's writer replaces it atomically at most once a
+second, writes a resting place without further calls (an idle app draws no frames), and
+writes the last one before it ends. Restore applies it like reopening a file does, clamped
+to the song. A playing or paused position is not kept: a restarted app plays from the
+cursor.
+
+Layout and drawing were contained (`catch_unwind` in `Document::layout` and around the page
+view) but never tested with an injected panic. `gscore_layout::testing` has a checkpoint for
+each (no-op unless the `test-support` feature is on): a panicking layout shows its message,
+the edit that caused it stands and is journaled, and the next edit lays out again; a
+panicking drawing shows its notice and the next frame draws.

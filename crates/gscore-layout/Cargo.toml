@@ -9,6 +9,8 @@ repository.workspace = true
 [features]
 # Petaluma and Leland besides Bravura (the desktop builds; the browser's stays small).
 extra-music-fonts = []
+# A layout or drawing that panics on demand, for the app's panic-injection tests.
+test-support = []
 
 [dependencies]
 gscore-model = { path = "../gscore-model" }

@@ -132,9 +132,11 @@ in AGENTS.md section 9.
     goes through `webbrowser` (xdg-open, open, ShellExecute): a Linux box with no
     xdg-utils and no desktop handler opens nothing, and the app cannot tell.
 14. **Recovery.** Edits reach the journal within milliseconds; a crash in that window loses
-    the last edit. The cursor, shown track and playback position are not journaled; SIGTERM
-    and shutdown rely on the journal, not a final snapshot. Only commands are panic-tested
-    with injection; layout and drawing are contained without an injection test.
+    the last edit. The cursor, shown track and selection are journaled (2026-11-26, at most
+    once a second, so a crash can lose the last second of moving); a playing or paused
+    position is not, since a restarted app plays from the cursor anyway. SIGTERM and
+    shutdown rely on the journal, not a final snapshot. Commands, layout and drawing are
+    panic-tested with injection.
 
 ## Tests
 

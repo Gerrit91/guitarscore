@@ -166,6 +166,8 @@ fn page_scroll(
 impl GuitarScoreApp {
     /// The page, scrollable, centered horizontally.
     pub(super) fn page_view(&mut self, ui: &mut egui::Ui) {
+        // Where the panic-injection test makes drawing fail (a no-op otherwise).
+        gscore_layout::testing::checkpoint(gscore_layout::testing::Stage::Draw);
         let page_key = self.page_scroll.take();
         if self.tabs.get(self.active).is_none() {
             self.empty_workspace(ui);
