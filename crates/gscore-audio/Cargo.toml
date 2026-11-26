@@ -27,6 +27,8 @@ lewton = "0.10.2"
 midir = "0.11"
 # Audio output to the default device (ALSA on Linux, which PipeWire and PulseAudio serve).
 cpal = "0.18.2"
+# Plugin hosting (M24): CLAP plugins as blocks of a sound chain.
+gscore-plugin = { path = "../gscore-plugin" }
 
 # Linux: cpal's PulseAudio host (a pure-Rust client of the PulseAudio protocol, which
 # PipeWire serves too) lists the real outputs for Settings › Audio I/O; ALSA alone lists

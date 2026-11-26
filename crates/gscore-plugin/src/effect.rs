@@ -360,6 +360,13 @@ impl Processor {
         }
     }
 
+    /// Forgets the sound so far (a stop, a jump): tails and delay lines are cleared.
+    pub fn reset(&mut self) {
+        if let Ok(started) = self.audio.as_started_mut() {
+            started.reset();
+        }
+    }
+
     /// Whether the plugin failed while processing: it is bypassed from then on.
     pub fn failed(&self) -> bool {
         self.failed

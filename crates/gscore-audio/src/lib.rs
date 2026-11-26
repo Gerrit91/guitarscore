@@ -38,6 +38,10 @@ mod stem_names;
 pub use stem_names::{BUS_STEM_NAMES, stem_names};
 #[cfg(not(target_arch = "wasm32"))]
 mod output_device;
+#[cfg(not(target_arch = "wasm32"))]
+mod plugin_block;
+#[cfg(not(target_arch = "wasm32"))]
+pub use plugin_block::{PluginControl, PluginSource};
 mod synth;
 #[cfg(not(target_arch = "wasm32"))]
 pub use output_device::{OutputDevice, output_devices};

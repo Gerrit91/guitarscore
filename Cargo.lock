@@ -1942,6 +1942,7 @@ dependencies = [
  "gscore-guitar",
  "gscore-model",
  "gscore-play",
+ "gscore-plugin",
  "js-sys",
  "lewton",
  "midir",
