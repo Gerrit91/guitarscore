@@ -241,3 +241,81 @@ fn a_panicking_command_changes_nothing_and_editing_goes_on() {
     type_digit(&mut harness, "3");
     assert_eq!(fret_at_cursor(harness.state()), Some(3));
 }
+
+#[test]
+fn a_crashed_document_comes_back_where_the_cursor_was() {
+    let (file, recovery) = scratch("place");
+    let mut harness = app(Some(&file), &recovery);
+    // An edit, then the cursor moves on: two measures right and a string down.
+    type_digit(&mut harness, "7");
+    for key in [
+        egui::Key::ArrowRight,
+        egui::Key::ArrowRight,
+        egui::Key::ArrowDown,
+    ] {
+        harness.key_press(key);
+        harness.run();
+    }
+    let left = harness.state().document().unwrap().editor().cursor();
+    assert!(left.measure.get() > 0, "{left:?}");
+    drop(harness); // a crash: the journal's writer still writes the last place
+
+    let mut harness = app(None, &recovery);
+    harness.get_by_label("Restore").click();
+    settle(&mut harness);
+    let cursor = harness.state().document().unwrap().editor().cursor();
+    assert_eq!(
+        (cursor.measure, cursor.beat, cursor.string),
+        (left.measure, left.beat, left.string),
+        "the recovered document opens where the cursor was"
+    );
+}
+
+#[test]
+fn a_panicking_layout_is_contained_and_the_next_one_works() {
+    use gscore_layout::testing::{Stage, panic_next};
+
+    let (file, recovery) = scratch("panic-layout");
+    let mut harness = app(Some(&file), &recovery);
+    // The edit changes a measure, so the page is laid out again: that layout panics.
+    panic_next(Stage::Layout);
+    type_digit(&mut harness, "5");
+    harness.get_by_label("drawing this track failed unexpectedly; a crash report was written");
+    let app = harness.state();
+    assert_eq!(fret_at_cursor(app), Some(5), "the edit itself stands");
+    assert!(app.document().unwrap().is_dirty());
+    // The next edit lays the page out again, from a fresh cache, and editing goes on.
+    type_digit(&mut harness, "3");
+    assert_eq!(fret_at_cursor(harness.state()), Some(3));
+    assert!(
+        harness
+            .query_by_label("drawing this track failed unexpectedly; a crash report was written")
+            .is_none(),
+        "the page is back"
+    );
+    // The journal kept recording throughout: a crash now would recover both edits.
+    drop(harness);
+    let recovered = gscore_session::recover(&find_sessions(&recovery)[0]).unwrap();
+    assert_eq!(recovered.replayed, 2);
+}
+
+#[test]
+fn a_panicking_drawing_is_contained_and_the_next_frame_draws() {
+    use gscore_layout::testing::{Stage, panic_next};
+
+    let (file, recovery) = scratch("panic-draw");
+    let mut harness = app(Some(&file), &recovery);
+    let before = harness.state().document().unwrap().song().clone();
+    panic_next(Stage::Draw);
+    harness.run();
+    let app = harness.state();
+    assert_eq!(
+        app.notice(),
+        Some("Drawing the page failed unexpectedly; a crash report was written")
+    );
+    assert!(differences(&before, app.document().unwrap().song()).is_empty());
+    // The next frames draw the page again, and editing goes on.
+    type_digit(&mut harness, "4");
+    assert_eq!(fret_at_cursor(harness.state()), Some(4));
+    harness.get_by_label("Measure 1, beat 1, string 1");
+}

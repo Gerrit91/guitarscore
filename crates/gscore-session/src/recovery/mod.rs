@@ -15,6 +15,9 @@
 //! - `snapshot.gp` and `snapshot`: the song every [`SNAPSHOT_EVERY`] entries (or
 //!   [`SNAPSHOT_INTERVAL`]), as Guitar Pro 7, and how many journal entries it includes;
 //!   written to temporary files and renamed into place, so a snapshot is whole or absent.
+//! - `place`: where the user was (the app's own text: cursor, shown track, selection),
+//!   replaced atomically at most every [`PLACE_EVERY`], so a recovered document opens
+//!   there. Not part of the journal: moving the cursor is not an edit.
 //!
 //! Recovery replays the journal on the base, which also restores the undo history; if
 //! that fails, it starts from the snapshot. Autosave never touches the user's file: all of
@@ -42,6 +45,13 @@ const BASE: &str = "base";
 const JOURNAL: &str = "journal";
 const SNAPSHOT_SONG: &str = "snapshot.gp";
 const SNAPSHOT_INFO: &str = "snapshot";
+/// The place is written at most this often while it keeps changing (the last one is
+/// written once it rests, and before the writer ends).
+pub(crate) const PLACE_EVERY: Duration = Duration::from_secs(1);
+
+const PLACE: &str = "place";
+/// The longest place text kept; a longer one is not written.
+const PLACE_MAX: usize = 4096;
 /// The journal entry written after a save.
 const SAVED: &str = "!saved";
 

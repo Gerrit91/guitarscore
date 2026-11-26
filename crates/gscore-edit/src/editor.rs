@@ -31,6 +31,11 @@ pub struct Editor {
     /// Set by [`Editor::break_merge`]: the next command starts a new undo entry even if it
     /// would otherwise continue the previous one.
     merge_barrier: bool,
+    /// Next content mark (see [`Editor::content_mark`]; never reused).
+    next_mark: u64,
+    /// The content mark of the song with the whole undo history undone: the opened song,
+    /// or the state after the last entry trimmed off the history.
+    base_mark: u64,
 }
 
 /// One applied command and the change that undoes it.
@@ -41,6 +46,8 @@ struct Applied {
     /// Identifies this history entry across undo and redo, so the app can attach a
     /// timestamp without the core crates needing a clock.
     id: u64,
+    /// The content mark of the song after this entry (a merged command takes a new one).
+    mark: u64,
 }
 
 /// One undone command, waiting to be redone.
@@ -49,6 +56,8 @@ struct Redone {
     command: Command,
     /// The history entry's id (the same it had when it was applied).
     id: u64,
+    /// Its content mark: redoing it brings back the same song.
+    mark: u64,
 }
 
 /// One row of the edit history, as the app shows it.
@@ -138,6 +147,8 @@ impl Editor {
             history_bytes: 0,
             next_id: 1,
             merge_barrier: false,
+            next_mark: 1,
+            base_mark: 0,
         }
     }
 
@@ -147,6 +158,23 @@ impl Editor {
         self.history_bytes_limit = bytes;
         self.trim_history();
         self
+    }
+
+    /// Identifies the song's content as this editor's history reached it: two equal marks
+    /// mean the same song (undoing back to a saved state gives the mark it had then), and
+    /// every edit, merged step or undo to another state gives a different one. Compare it
+    /// with the mark taken when the song was saved to tell whether it is unsaved.
+    pub fn content_mark(&self) -> u64 {
+        self.undo
+            .back()
+            .map_or(self.base_mark, |applied| applied.mark)
+    }
+
+    /// A fresh content mark.
+    fn new_mark(&mut self) -> u64 {
+        let mark = self.next_mark;
+        self.next_mark = self.next_mark.wrapping_add(1);
+        mark
     }
 
     /// About how many bytes the undo history takes.
@@ -268,7 +296,10 @@ impl Editor {
                 {
                     // One slider drag: keep the change from before it, so undo goes back to
                     // the value the drag started from, and keep only the latest command.
+                    // The song differs from before this command: a new mark.
                     last.command = command;
+                    last.mark = self.next_mark;
+                    self.next_mark = self.next_mark.wrapping_add(1);
                     return Ok(true);
                 }
                 let id = self.next_id;
@@ -276,10 +307,12 @@ impl Editor {
                 if self.next_id == 0 {
                     self.next_id = 1;
                 }
+                let mark = self.new_mark();
                 self.push_undo(Applied {
                     command,
                     change,
                     id,
+                    mark,
                 });
                 Ok(false)
             }
@@ -302,6 +335,7 @@ impl Editor {
         self.redo.push(Redone {
             command: command.clone(),
             id: applied.id,
+            mark: applied.mark,
         });
         Ok(Some(command))
     }
@@ -316,6 +350,7 @@ impl Editor {
                     command: redone.command.clone(),
                     change,
                     id: redone.id,
+                    mark: redone.mark,
                 });
                 Ok(Some(redone.command))
             }
@@ -346,6 +381,8 @@ impl Editor {
                     self.history_bytes = self
                         .history_bytes
                         .saturating_sub(dropped.change.size_estimate());
+                    // Undoing everything now ends at the song after the dropped entry.
+                    self.base_mark = dropped.mark;
                 }
                 None => break,
             }

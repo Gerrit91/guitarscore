@@ -1141,12 +1141,14 @@ impl eframe::App for GuitarScoreApp {
         self.show_updates(&ctx);
         #[cfg(not(target_arch = "wasm32"))]
         self.show_desktop_menu_question(&ctx);
-        // Every edit of this frame goes to the recovery journal (one per open document).
+        // Every edit of this frame goes to the recovery journal (one per open document),
+        // and so does where the user is, so a recovered document opens there.
         let mut journal_error = None;
         for tab in &mut self.tabs {
             if let Some(error) = tab.document.record_changes() {
                 journal_error.get_or_insert(error);
             }
+            tab.record_place();
         }
         if let Some(error) = journal_error {
             self.notice = Some(error);

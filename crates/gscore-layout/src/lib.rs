@@ -42,6 +42,7 @@ mod score_mark;
 mod staff;
 mod svg;
 mod system;
+pub mod testing;
 mod theme;
 
 use std::sync::Arc;

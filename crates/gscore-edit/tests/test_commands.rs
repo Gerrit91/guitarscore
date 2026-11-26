@@ -1250,3 +1250,100 @@ fn a_tracks_short_name_is_set_and_undone() {
     };
     assert!(editor.execute(long).is_err());
 }
+
+fn set_fret(beat: usize, value: u8) -> Command {
+    Command::SetFret {
+        at: pos(0, 0, beat),
+        string: string(1),
+        fret: fret(value),
+    }
+}
+
+#[test]
+fn undoing_back_to_a_state_gives_its_content_mark_again() {
+    let song = testing::song(&[testing::GUITAR_6], 1).unwrap();
+    let mut editor = Editor::new(song);
+    let opened = editor.content_mark();
+    editor.execute(set_fret(0, 5)).unwrap();
+    let one = editor.content_mark();
+    assert_ne!(one, opened);
+    editor.execute(set_fret(1, 7)).unwrap();
+    let two = editor.content_mark();
+    assert_ne!(two, one);
+    editor.undo().unwrap();
+    assert_eq!(
+        editor.content_mark(),
+        one,
+        "undo returns to the state's mark"
+    );
+    editor.undo().unwrap();
+    assert_eq!(
+        editor.content_mark(),
+        opened,
+        "all the way back to the opened song"
+    );
+    editor.redo().unwrap();
+    editor.redo().unwrap();
+    assert_eq!(
+        editor.content_mark(),
+        two,
+        "redo brings the same state back"
+    );
+    // A failed command changes nothing.
+    let failed = editor.execute(Command::SetFret {
+        at: pos(0, 0, 99),
+        string: string(1),
+        fret: fret(1),
+    });
+    assert!(failed.is_err());
+    assert_eq!(editor.content_mark(), two);
+}
+
+#[test]
+fn a_new_edit_after_undo_never_reuses_an_old_mark() {
+    let song = testing::song(&[testing::GUITAR_6], 1).unwrap();
+    let mut editor = Editor::new(song);
+    editor.execute(set_fret(0, 5)).unwrap();
+    let five = editor.content_mark();
+    editor.undo().unwrap();
+    // The same edit again is a new history entry, but the same song: a different mark is
+    // fine (it errs towards "unsaved"); the old one must never come back.
+    editor.execute(set_fret(0, 7)).unwrap();
+    assert_ne!(editor.content_mark(), five);
+}
+
+#[test]
+fn a_merged_drag_step_changes_the_mark() {
+    let song = testing::song(&[testing::GUITAR_6], 1).unwrap();
+    let mut editor = Editor::new(song);
+    let volume = |volume| Command::SetTrackVolume {
+        track: TrackIndex::new(0),
+        volume,
+    };
+    editor.execute_with_merge(volume(100), true).unwrap();
+    let first = editor.content_mark();
+    assert!(
+        editor.execute_with_merge(volume(80), true).unwrap(),
+        "merged"
+    );
+    assert_ne!(
+        editor.content_mark(),
+        first,
+        "the song changed although the history did not grow"
+    );
+}
+
+#[test]
+fn trimming_the_history_moves_the_state_undo_can_reach() {
+    let song = testing::song(&[testing::GUITAR_6], 1).unwrap();
+    let mut editor = Editor::with_history_limit(song, 1);
+    let opened = editor.content_mark();
+    editor.execute(set_fret(0, 1)).unwrap();
+    let after_first = editor.content_mark();
+    editor.execute(set_fret(1, 2)).unwrap();
+    editor.undo().unwrap();
+    // Only one step can be undone: the song is the one after the first edit, not the
+    // opened one.
+    assert_eq!(editor.content_mark(), after_first);
+    assert_ne!(editor.content_mark(), opened);
+}

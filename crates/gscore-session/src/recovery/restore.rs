@@ -9,7 +9,8 @@ use gscore_io::{FileFormat, detect_format, import_guitar_pro_from_bytes};
 use gscore_model::TrackIndex;
 
 use super::{
-    BASE, JOURNAL, LOCK, META, SAVED, SNAPSHOT_INFO, SNAPSHOT_SONG, checksum, journal_entries,
+    BASE, JOURNAL, LOCK, META, PLACE, PLACE_MAX, SAVED, SNAPSHOT_INFO, SNAPSHOT_SONG, checksum,
+    journal_entries,
 };
 
 /// How old a recovery folder without its metadata must be to count as left half made by a
@@ -48,6 +49,10 @@ pub struct Recovered {
     pub lost: usize,
     /// Whether the snapshot was the starting point (the undo history before it is gone).
     pub from_snapshot: bool,
+    /// Where the user was, as the app recorded it ([`super::Journal::place`]), if it was
+    /// recorded and is readable. The app checks it against the song: it may name a place
+    /// the replayed song no longer has.
+    pub place: Option<String>,
 }
 
 /// Recovery folders in `root` that no running GuitarScore holds and that have edits to
@@ -121,6 +126,7 @@ pub fn recover(session: &FoundSession) -> Result<Recovered, String> {
     });
 
     let total = commands.len();
+    let place = read_place(dir);
     match (from_base, from_snapshot) {
         (Ok((editor, replayed)), _) if replayed == total => Ok(Recovered {
             editor,
@@ -130,6 +136,7 @@ pub fn recover(session: &FoundSession) -> Result<Recovered, String> {
             replayed,
             lost: damaged_count,
             from_snapshot: false,
+            place: place.clone(),
         }),
         (base_result, Some((Ok((editor, replayed)), bytes, skip)))
             if base_result.as_ref().map_or(true, |(_, from_base)| {
@@ -145,6 +152,7 @@ pub fn recover(session: &FoundSession) -> Result<Recovered, String> {
                 replayed,
                 lost: total.saturating_sub(replayed).saturating_add(damaged_count),
                 from_snapshot: true,
+                place: place.clone(),
             })
         }
         (Ok((editor, replayed)), _) => Ok(Recovered {
@@ -155,6 +163,7 @@ pub fn recover(session: &FoundSession) -> Result<Recovered, String> {
             replayed,
             lost: total.saturating_sub(replayed).saturating_add(damaged_count),
             from_snapshot: false,
+            place: place.clone(),
         }),
         (Err(error), _) => Err(error),
     }
@@ -214,6 +223,15 @@ fn edits_since_save(entries: &[String]) -> usize {
         .rev()
         .take_while(|entry| entry.as_str() != SAVED)
         .count()
+}
+
+/// The recorded place, if there is one of a sane size in UTF-8.
+fn read_place(dir: &Path) -> Option<String> {
+    let bytes = std::fs::read(dir.join(PLACE)).ok()?;
+    if bytes.len() > PLACE_MAX {
+        return None;
+    }
+    String::from_utf8(bytes).ok()
 }
 
 /// The file the document came from, from the metadata.

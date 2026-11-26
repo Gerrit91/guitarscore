@@ -31,15 +31,43 @@ impl FilePosition {
     }
 }
 
+impl Tab {
+    /// Hands the recovery journal where this tab is now (its cursor, shown track and
+    /// selection), when that changed since the last frame.
+    pub(super) fn record_place(&mut self) {
+        if !self.document.is_journaled() {
+            return;
+        }
+        let place = FilePosition::of_tab(Path::new(""), self);
+        if self.recorded_place.as_ref() == Some(&place) {
+            return;
+        }
+        if let Ok(text) = serde_json::to_string(&place) {
+            self.document.record_place(&text);
+        }
+        self.recorded_place = Some(place);
+    }
+}
+
+/// The place a recovery journal recorded ([`Tab::record_place`]), if it reads.
+pub(super) fn recorded_place(text: &str) -> Option<FilePosition> {
+    serde_json::from_str(text).ok()
+}
+
 impl GuitarScoreApp {
     /// Puts the active tab's cursor and selection back where `path` was left last time (if
-    /// the settings remember it). Parts of the stored place that no longer exist in the song
-    /// are clamped or dropped, as an edit or another version of the file may have removed
-    /// them.
+    /// the settings remember it).
     pub(super) fn restore_position(&mut self, path: &Path) {
         let Some(stored) = self.settings.position_for(path).cloned() else {
             return;
         };
+        self.apply_position(&stored);
+    }
+
+    /// Puts the active tab's cursor, shown track and selection where `stored` says. Parts
+    /// of the place that no longer exist in the song are clamped or dropped, as an edit or
+    /// another version of the file may have removed them.
+    pub(super) fn apply_position(&mut self, stored: &FilePosition) {
         let Some(tab) = self.tabs.get_mut(self.active) else {
             return;
         };

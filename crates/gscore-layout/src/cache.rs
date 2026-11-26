@@ -91,6 +91,7 @@ impl LayoutCache {
         options: &LayoutOptions,
         fonts: &Fonts,
     ) -> Result<Layout, LayoutError> {
+        crate::testing::checkpoint(crate::testing::Stage::Layout);
         // A measure's layout does not depend on the pages: switching between pages and the
         // endless page, or changing the page setup, keeps the cache.
         let measure_options = options.for_measures();

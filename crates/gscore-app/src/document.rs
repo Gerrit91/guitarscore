@@ -51,8 +51,13 @@ pub struct Document {
     /// brand-new or recovered-without-a-file song is not).
     reopenable: bool,
     editor: TabEditor,
-    /// The editor revision last saved (or opened).
-    saved_revision: u64,
+    /// The content mark of the song as last saved (or opened); `None` while nothing of it
+    /// is saved (a recovered document). Undoing back to that state makes the document
+    /// saved again ([`gscore_edit::TabEditor::content_mark`]).
+    saved_mark: Option<u64>,
+    /// The save running in the background: the revision it writes and that revision's
+    /// content mark, so edits made meanwhile stay unsaved.
+    saving: Option<(u64, u64)>,
     /// The shown layout and the measure cache. An edit makes the layout stale; it is laid
     /// out again on the next frame, reusing every measure that did not change.
     layouts: Layouts,
@@ -113,8 +118,8 @@ impl Document {
         reopenable: bool,
     ) -> Self {
         let mut document = Document::with_editor(path, editor, format, journal, reopenable);
-        // Nothing of it is saved: no revision ever matches.
-        document.saved_revision = u64::MAX;
+        // Nothing of it is saved: no state ever matches.
+        document.saved_mark = None;
         document
     }
 
@@ -129,7 +134,8 @@ impl Document {
             path,
             format,
             reopenable,
-            saved_revision: editor.revision(),
+            saved_mark: Some(editor.content_mark()),
+            saving: None,
             editor,
             layouts: Layouts::default(),
             grid: None,
@@ -153,6 +159,14 @@ impl Document {
         Some(format!(
             "{error}. Edits are not protected against a crash; save often."
         ))
+    }
+
+    /// Tells the recovery journal where the user is (`place`: a `FilePosition` as JSON), so
+    /// a recovered document opens there. Cheap when nothing changed.
+    pub fn record_place(&mut self, place: &str) {
+        if let Some(journal) = &mut self.journal {
+            journal.place(place);
+        }
     }
 
     /// Writes a recovery snapshot of the song now (after a contained panic).
@@ -211,9 +225,18 @@ impl Document {
         &mut self.editor
     }
 
-    /// Whether the song changed since it was opened or last saved.
+    /// Whether the song differs from what was opened or last saved. Undoing back to that
+    /// state makes it saved again.
     pub fn is_dirty(&self) -> bool {
-        self.editor.revision() != self.saved_revision
+        self.saved_mark != Some(self.editor.content_mark())
+    }
+
+    /// A save of the current revision starts (in the background): remembers which state
+    /// it writes, for [`Document::mark_saved`]. Returns the revision to report back.
+    pub fn save_started(&mut self) -> u64 {
+        let revision = self.editor.revision();
+        self.saving = Some((revision, self.editor.content_mark()));
+        revision
     }
 
     /// Whether Save can write back to the same file: only Guitar Pro 7+ files can be
@@ -236,7 +259,15 @@ impl Document {
         self.format = FileFormat::Gp;
         // It is a real file now (a new song saved to disk can be reopened next time).
         self.reopenable = true;
-        self.saved_revision = revision;
+        // The state that was written: the one the save started from. Without a record of
+        // it (a save not started through `save_started`), only the current revision can
+        // be vouched for.
+        let saving = self.saving.take();
+        self.saved_mark = match saving {
+            Some((started, mark)) if started == revision => Some(mark),
+            _ if revision == self.editor.revision() => Some(self.editor.content_mark()),
+            _ => None,
+        };
     }
 
     /// The title to show: the song's title, or the file name.

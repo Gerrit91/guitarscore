@@ -119,8 +119,7 @@ in AGENTS.md section 9.
     and systems); pasting measures needs room inside the song; chord diagrams and lyrics
     cannot be edited; the GP7 instrument name is shown but not editable; the program list
     has no search field and a per-track SoundFont bank beyond the program is not stored.
-    Undo back to the saved state still counts as changed, and the undo history is kept
-    across a crash (journal) but not across a normal close. Step entry (M23, 2026-11-20):
+    The undo history is kept across a crash (journal) but not across a normal close. Step entry (M23, 2026-11-20):
     palette effects act on the cursor's beat, which is the next one after a note entered
     by name or from MIDI, not on the note just entered; MIDI input is desktop only (no Web
     MIDI), and a track played by a hardware MIDI out is monitored on the built-in
@@ -133,9 +132,11 @@ in AGENTS.md section 9.
     goes through `webbrowser` (xdg-open, open, ShellExecute): a Linux box with no
     xdg-utils and no desktop handler opens nothing, and the app cannot tell.
 14. **Recovery.** Edits reach the journal within milliseconds; a crash in that window loses
-    the last edit. The cursor, shown track and playback position are not journaled; SIGTERM
-    and shutdown rely on the journal, not a final snapshot. Only commands are panic-tested
-    with injection; layout and drawing are contained without an injection test.
+    the last edit. The cursor, shown track and selection are journaled (2026-11-26, at most
+    once a second, so a crash can lose the last second of moving); a playing or paused
+    position is not, since a restarted app plays from the cursor anyway. SIGTERM and
+    shutdown rely on the journal, not a final snapshot. Commands, layout and drawing are
+    panic-tested with injection.
 
 ## Tests
 
