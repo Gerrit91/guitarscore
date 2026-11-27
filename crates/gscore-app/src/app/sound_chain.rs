@@ -297,13 +297,64 @@ fn box_text(block: &BlockSetting) -> (String, String) {
         BlockChoice::Plugin => block
             .plugin
             .as_ref()
-            .map_or_else(|| "Plugin".to_owned(), |plugin| plugin.name.clone()),
+            .map_or_else(|| "Plugin".to_owned(), |plugin| box_name(plugin)),
         other => other.label().to_owned(),
     };
     (title, detail)
 }
 
 /// `text` cut to fit about `chars` characters.
+/// A plugin's name for its box: without a leading brand word that its id names too
+/// ("Dragonfly Room Reverb", id `michaelwillis.dragonfly.room`: "Room Reverb"), so the
+/// box shows what tells the maker's plugins apart.
+fn box_name(plugin: &crate::chain_settings::PluginBlock) -> String {
+    let brands: Vec<String> = plugin
+        .id
+        .split('.')
+        .rev()
+        .skip(1)
+        .map(str::to_lowercase)
+        .collect();
+    match plugin.name.split_once(' ') {
+        Some((first, rest))
+            if !rest.trim().is_empty()
+                && brands
+                    .iter()
+                    .any(|brand| brand.contains(&first.to_lowercase())) =>
+        {
+            rest.trim().to_owned()
+        }
+        _ => plugin.name.clone(),
+    }
+}
+
+/// `text` cut (with "…") to fit `width` points in `font`.
+fn fitted(painter: &egui::Painter, text: &str, font: &FontId, width: f32) -> String {
+    let fits = |candidate: &str| {
+        painter
+            .layout_no_wrap(candidate.to_owned(), font.clone(), Color32::WHITE)
+            .size()
+            .x
+            <= width
+    };
+    if fits(text) {
+        return text.to_owned();
+    }
+    let mut chars: Vec<char> = text.chars().collect();
+    while !chars.is_empty() {
+        chars.pop();
+        // No space before the ellipsis ("Dragonfly…", not "Dragonfly …").
+        while chars.last().is_some_and(|c| c.is_whitespace()) {
+            chars.pop();
+        }
+        let candidate: String = chars.iter().chain(std::iter::once(&'…')).collect();
+        if fits(&candidate) {
+            return candidate;
+        }
+    }
+    "…".to_owned()
+}
+
 fn short(text: &str, chars: usize) -> String {
     if text.chars().count() <= chars {
         return text.to_owned();
@@ -1259,19 +1310,24 @@ fn paint_box(
         }
         None => (rect.center().y - 8.0, rect.center().y + 12.0),
     };
+    // Names are cut to the box's width as drawn (a plugin's name is often long, and
+    // wide letters fill a box sooner than narrow ones).
+    let room = rect.width() - 10.0;
+    let title_font = FontId::proportional(if narrow { 12.0 } else { 13.0 });
     inside.text(
         pos2(rect.center().x, title_y),
         Align2::CENTER_CENTER,
-        short(face.title, if narrow { 5 } else { 12 }),
-        FontId::proportional(if narrow { 12.0 } else { 13.0 }),
+        fitted(painter, face.title, &title_font, room),
+        title_font.clone(),
         text,
     );
     if !face.detail.is_empty() {
+        let detail_font = FontId::proportional(10.0);
         inside.text(
             pos2(rect.center().x, detail_y),
             Align2::CENTER_CENTER,
-            short(face.detail, if narrow { 7 } else { 12 }),
-            FontId::proportional(10.0),
+            fitted(painter, face.detail, &detail_font, room),
+            detail_font,
             tokens.text_weak,
         );
     }
@@ -3539,6 +3595,31 @@ mod tests {
             .collect();
         assert_eq!(board_layout(&slots, WIDTH).wrap, None);
         assert_eq!(board_layout(&slots, MIN_WIDTH).wrap, Some(3));
+    }
+
+    #[test]
+    fn a_plugin_box_leaves_out_the_brand_its_id_names() {
+        let plugin = |name: &str, id: &str| crate::chain_settings::PluginBlock {
+            name: name.to_owned(),
+            id: id.to_owned(),
+            ..Default::default()
+        };
+        assert_eq!(
+            box_name(&plugin(
+                "Dragonfly Room Reverb",
+                "michaelwillis.dragonfly.room"
+            )),
+            "Room Reverb"
+        );
+        // A name whose first word is not a brand stays whole, as does a one-word name.
+        assert_eq!(
+            box_name(&plugin(
+                "Compressor Stereo",
+                "in.lsp-plug.compressor_stereo"
+            )),
+            "Compressor Stereo"
+        );
+        assert_eq!(box_name(&plugin("Dragonfly", "x.dragonfly.y")), "Dragonfly");
     }
 
     #[test]
