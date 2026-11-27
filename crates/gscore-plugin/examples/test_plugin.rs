@@ -1,6 +1,8 @@
 //! GuitarScore's test plugin: a CLAP library the tests open as they would a user's plugin.
 //! A gain effect with one parameter ("Gain", 0 to 2), settings (the gain) and a fixed
-//! latency, so hosting can be tested without any plugin installed.
+//! latency, so hosting can be tested without any plugin installed. Two more parameters
+//! misbehave on purpose, for the crash tests: "Crash" ends the process as a faulty
+//! plugin would, "Hang" stops answering.
 //!
 //! UNSAFE EXCEPTION (owner's approval, 2026-11-26, design note `docs/plugin-hosting.md`):
 //! a CLAP library must export its entry symbol `clap_entry` unmangled, which Rust counts as
@@ -29,6 +31,10 @@ const ID: &str = "org.guitarscore.test.gain";
 const GAIN: u32 = 1;
 /// The latency it reports, in frames.
 const LATENCY: u32 = 64;
+/// Set to 1: the next block ends the process (as a segfault would).
+const CRASH: u32 = 2;
+/// Set to 1: the next block never ends.
+const HANG: u32 = 3;
 
 struct TestGain;
 
@@ -57,6 +63,7 @@ impl DefaultPluginFactory for TestGain {
     fn new_shared(_host: HostSharedHandle<'_>) -> Result<Shared, PluginError> {
         Ok(Shared {
             gain: AtomicU64::new(1.0_f64.to_bits()),
+            misbehave: std::sync::atomic::AtomicU32::new(0),
         })
     }
 
@@ -70,6 +77,7 @@ impl DefaultPluginFactory for TestGain {
 
 struct Shared {
     gain: AtomicU64,
+    misbehave: std::sync::atomic::AtomicU32,
 }
 
 impl Shared {
@@ -84,10 +92,14 @@ impl Shared {
 
     fn apply(&self, events: &InputEvents) {
         for event in events {
-            if let Some(change) = event.as_event::<ParamValueEvent>()
-                && change.param_id().map(|id| id.get()) == Some(GAIN)
-            {
-                self.set_gain(change.value());
+            if let Some(change) = event.as_event::<ParamValueEvent>() {
+                match change.param_id().map(|id| id.get()) {
+                    Some(GAIN) => self.set_gain(change.value()),
+                    Some(id @ (CRASH | HANG)) if change.value() >= 1.0 => {
+                        self.misbehave.store(id, Ordering::Relaxed);
+                    }
+                    _ => {}
+                }
             }
         }
     }
@@ -184,6 +196,13 @@ impl<'a> PluginAudioProcessor<'a, Shared, MainThread<'a>> for Processor<'a> {
         events: Events,
     ) -> Result<ProcessStatus, PluginError> {
         self.shared.apply(events.input);
+        match self.shared.misbehave.load(Ordering::Relaxed) {
+            CRASH => std::process::abort(),
+            HANG => loop {
+                std::thread::sleep(std::time::Duration::from_secs(1));
+            },
+            _ => {}
+        }
         let gain = self.shared.gain() as f32;
         for mut pair in &mut audio {
             let Some(channels) = pair.channels()?.into_f32() else {

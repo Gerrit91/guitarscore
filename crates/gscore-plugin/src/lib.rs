@@ -17,13 +17,17 @@ mod effect;
 mod error;
 mod host;
 mod library;
+pub mod remote;
 mod scan;
+mod serve;
 mod thread;
+mod wire;
 
 pub use effect::{AudioConfig, Effect, Param, Processor, Requests};
 pub use error::PluginError;
 pub use library::{Library, PluginInfo};
 pub use scan::{bundles_in, default_dirs};
+pub use serve::serve;
 pub use thread::{Description, PluginHandle, PluginThread, Scanned, Started};
 
 /// How the host introduces itself to plugins.
