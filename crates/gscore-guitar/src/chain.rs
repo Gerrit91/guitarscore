@@ -334,6 +334,19 @@ impl Chain {
         self.output = 10.0_f32.powf(db / 20.0);
     }
 
+    /// How many frames late the chain's sound comes out: the latencies of its external
+    /// blocks that play (a bypassed one's sound does not pass it, so is not late).
+    pub fn latency(&self) -> u32 {
+        self.blocks
+            .iter()
+            .zip(&self.settings)
+            .filter_map(|(block, settings)| match block {
+                Block::External(instance) if !settings.bypass => Some(instance.0.latency()),
+                _ => None,
+            })
+            .fold(0, u32::saturating_add)
+    }
+
     /// The deepest gain reduction of its compressors since the last call, in dB (0 or
     /// below): what a compressor's meter shows.
     pub fn take_gain_reduction(&mut self) -> f32 {

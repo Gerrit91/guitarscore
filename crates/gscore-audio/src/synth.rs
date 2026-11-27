@@ -130,6 +130,8 @@ pub struct SynthEngine {
     frames: u64,
     /// The metronome's own click (keys 33 and 34 on the percussion channel).
     click: ClickVoice,
+    /// The click held back as the mix is, for the plugins' latency.
+    click_delay: crate::compensation::Delay,
     /// The modelled strings, for tracks the sequence gives to them.
     guitars: Guitars,
     /// Every track's strip: chain, fader, pan, sends; the buses and the meters.
@@ -173,6 +175,7 @@ impl SynthEngine {
             sample_rate,
             frames: 0,
             click: ClickVoice::new(sample_rate),
+            click_delay: crate::compensation::Delay::default(),
             guitars: Guitars::new(sample_rate),
             mixer: Mixer::new(sample_rate),
             limiter: Limiter::new(sample_rate),
@@ -645,7 +648,26 @@ impl SynthEngine {
                 frames,
             );
             self.mixer.mix(frames, &self.guitars, &self.synth, l, r);
-            self.click.add(l, r);
+            // The click, as late as the mix (a plugin's latency holds every track back).
+            let latency = self.mixer.latency();
+            if latency == 0 && !self.click_delay.holds(BLOCK) {
+                self.click.add(l, r);
+            } else {
+                let mut click_left = [0.0_f32; BLOCK];
+                let mut click_right = [0.0_f32; BLOCK];
+                if let (Some(cl), Some(cr)) =
+                    (click_left.get_mut(..frames), click_right.get_mut(..frames))
+                {
+                    self.click.add(cl, cr);
+                    self.click_delay.process(cl, cr, latency);
+                    for (out, sample) in l.iter_mut().zip(cl.iter()) {
+                        *out += sample;
+                    }
+                    for (out, sample) in r.iter_mut().zip(cr.iter()) {
+                        *out += sample;
+                    }
+                }
+            }
             // The meter shows the mix as it is, overs included; the limiter then keeps
             // what is heard below full scale.
             self.mixer.meter_master(l, r);

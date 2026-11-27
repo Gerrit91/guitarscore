@@ -107,6 +107,14 @@ impl TrackTones {
         }
     }
 
+    /// How many frames late `track`'s chain hands its sound back (its plugins').
+    pub(crate) fn latency(&self, track: usize) -> u32 {
+        self.chains
+            .get(track)
+            .and_then(Option::as_deref)
+            .map_or(0, Chain::latency)
+    }
+
     /// The chain of `track`, if it has one.
     pub(crate) fn chain(&mut self, track: usize) -> Option<&mut Chain> {
         self.chains.get_mut(track).and_then(Option::as_deref_mut)

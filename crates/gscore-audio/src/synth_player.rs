@@ -233,11 +233,24 @@ impl SynthPlayer {
     /// How long the sound takes to leave the audio device, once a callback has reported
     /// it. A hardware synthesizer's MIDI can be held back by as much so both line up.
     /// A device that reports an implausible figure is ignored.
+    ///
+    /// The plugins' latency is added: the mix is held back by it as well (see
+    /// [`crate::Meters::compensation`]).
     pub fn latency(&self) -> Option<Duration> {
         /// The most a MIDI-out track is held back; longer is a broken timestamp.
         const MAX_LATENCY: u64 = 250_000;
         let micros = self.shared.latency.load(Ordering::Acquire);
-        (micros > 0 && micros <= MAX_LATENCY).then(|| Duration::from_micros(micros))
+        let device = (micros > 0 && micros <= MAX_LATENCY).then(|| Duration::from_micros(micros));
+        let plugins = self
+            .meters()
+            .map(|meters| meters.compensation())
+            .filter(|&frames| frames > 0)
+            .zip(self.sample_rate())
+            .map(|(frames, rate)| Duration::from_secs_f64(f64::from(frames) / f64::from(rate)));
+        match (device, plugins) {
+            (Some(device), Some(plugins)) => Some(device.saturating_add(plugins)),
+            (device, plugins) => device.or(plugins),
+        }
     }
 
     /// The mixer's meters (every track's real level, the reverb bus's and the master's),

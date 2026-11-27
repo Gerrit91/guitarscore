@@ -7335,3 +7335,20 @@ parameter view, the blob with the tone, latency made up, offline WAV export).
   Dragonfly reverbs, then 17 parameters.
 - Open: latency compensation, WAV export, the master, buses and drum parts, the plugin's
   own value texts, and the owner's look and listen.
+
+## 2026-11-27 — M24: plugin latency made up; box names fit
+
+- **Box names** (owner: the text did not fit the box): titles and details on the Sound
+  chain board are cut to the box's drawn width instead of a character count, and a
+  plugin's box leaves out a leading brand word its id names ("Room Reverb"). Snapshots
+  changed only in the first box's second line.
+- **Latency compensation:** `ExternalBlock::latency`, `Chain::latency` (blocks that play),
+  a delay line per strip after its chain and one for the click (`compensation.rs`, up to
+  8192 frames), `Meters::compensation`, added to `SynthPlayer::latency` for MIDI-out
+  tracks. Test (`test_compensation.rs`): two tracks, one through a block 300 frames late:
+  both notes start on the same frame, 300 frames after the plain mix; bypassed, nothing is
+  held back. Engine bench unchanged by it (408 ms with and without on today's machine;
+  yesterday's 328 was a cooler run).
+- **Flaky test fixed:** `stop_goes_back_to_where_playback_started_when_asked` failed about
+  one run in three, with or without these changes: `harness.run()` after Space gave up
+  while the toolbar repainted for the playing position. Now a step.

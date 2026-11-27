@@ -138,6 +138,7 @@ impl ExternalSource for PluginSource {
                     .unwrap_or_else(PoisonError::into_inner) = None;
                 return Some(Box::new(PluginBlock {
                     processor: Some(started.processor),
+                    latency: started.latency,
                     instance: started.instance,
                     handle: self.handle.clone(),
                     control: Arc::clone(&self.control),
@@ -160,6 +161,8 @@ impl ExternalSource for PluginSource {
 struct PluginBlock {
     /// Taken when the block is dropped, to go back to the plugin thread.
     processor: Option<Processor>,
+    /// Frames its sound comes out late.
+    latency: u32,
     instance: u64,
     handle: PluginHandle,
     control: Arc<PluginControl>,
@@ -190,6 +193,14 @@ impl ExternalBlock for PluginBlock {
     fn reset(&mut self) {
         if let Some(processor) = &mut self.processor {
             processor.reset();
+        }
+    }
+
+    fn latency(&self) -> u32 {
+        // A plugin that failed is bypassed: its sound is no longer late.
+        match &self.processor {
+            Some(processor) if !processor.failed() => self.latency,
+            _ => 0,
         }
     }
 }

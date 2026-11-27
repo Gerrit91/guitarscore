@@ -89,6 +89,8 @@ pub struct Meters {
     /// (0 or below; `f32` bits).
     reductions: Vec<AtomicU32>,
     bus_reduction: AtomicU32,
+    /// Frames the mix is held back to make up for the plugins' latency.
+    compensation: AtomicU32,
 }
 
 impl Default for Meters {
@@ -106,11 +108,22 @@ impl Default for Meters {
             master: Meter::default(),
             reductions: (0..MAX_TONES).map(|_| AtomicU32::new(0)).collect(),
             bus_reduction: AtomicU32::new(0),
+            compensation: AtomicU32::new(0),
         }
     }
 }
 
 impl Meters {
+    /// How many frames the mix is held back to make up for the plugins' latency (the
+    /// largest latency of the tracks playing): the sound is that much later still.
+    pub fn compensation(&self) -> u32 {
+        self.compensation.load(Ordering::Relaxed)
+    }
+
+    pub(crate) fn set_compensation(&self, frames: u32) {
+        self.compensation.store(frames, Ordering::Relaxed);
+    }
+
     /// The level of the song's track `track` after its fader. Silent for a track that does
     /// not play.
     pub fn track(&self, track: usize) -> Level {

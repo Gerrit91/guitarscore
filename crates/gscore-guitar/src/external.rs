@@ -14,6 +14,12 @@ pub trait ExternalBlock: Send {
 
     /// Forgets the sound so far (a stop, a jump): no tail rings on.
     fn reset(&mut self);
+
+    /// How many frames late its sound comes out (the mixer delays the other tracks by as
+    /// much, so they stay together).
+    fn latency(&self) -> u32 {
+        0
+    }
 }
 
 /// What makes the instances of an external block: one per chain it is placed in.

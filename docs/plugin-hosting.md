@@ -121,7 +121,22 @@ amp model, an impulse response, a sample library).
   saved settings make it again. Plugins off, or a plugin that cannot start: the place
   passes the sound, and the block says why.
 - Not yet: a drum part's chain, the master and the buses offer no plugin; the plugin's own
-  texts for values ("-6.0 dB") are not shown; its latency is not made up.
+  texts for values ("-6.0 dB") are not shown.
+
+## Latency (2026-11-27)
+
+A plugin hands its sound back late. The mix is held back instead of reading that track
+ahead: every strip gets a delay line after its chain (`gscore-audio/src/compensation.rs`),
+set to the largest latency of the tracks playing minus its own, so the tracks, their
+sends and the buses stay together; the metronome's click is held back as much. A strip
+that falls silent runs on until its line is empty. `Meters::compensation` says how much,
+and `SynthPlayer::latency` adds it, so MIDI-out tracks wait as long. A bypassed plugin, or
+one that failed, counts nothing (its sound does not pass it). Up to 8192 frames (170 ms at
+48 kHz) are made up; the lines are made with the mixer (4 MB), nothing allocates while
+playing. Reading a late track ahead would add no delay, but it reaches into the scheduler,
+loops and seeks: left for later if the delay bothers.
+Open: the cursor runs ahead of what is heard by the compensation (as by the device's own
+latency today); WAV export starts that much later.
 3. The host process, the watchdog and background scanning with the blocklist. Plugins
    leave "experimental" only after this step.
 4. Plugin editors in the host process (X11 through XWayland on Linux).

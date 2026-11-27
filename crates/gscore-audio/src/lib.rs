@@ -15,6 +15,7 @@ mod midi_out;
 // The metronome's own click (the synth engine plays it in a browser too).
 mod chains;
 mod click;
+mod compensation;
 mod guitars;
 mod limiter;
 mod meters;

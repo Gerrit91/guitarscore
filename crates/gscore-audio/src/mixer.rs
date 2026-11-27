@@ -41,6 +41,7 @@ use gscore_play::{MidiEvent, Sequence, controller};
 use rustysynth::PARTS;
 
 use crate::chains::{ChainKnobs, MAX_TONES, TrackTones};
+use crate::compensation::Delay;
 use crate::meters::{Ballistics, Meters, Needle, Peak, Which, peak_of};
 use crate::synth::BLOCK;
 
@@ -244,6 +245,10 @@ pub(crate) struct Mixer {
     parts_work: [[f32; BLOCK]; 2],
     meters: Arc<Meters>,
     ballistics: Ballistics,
+    /// Each strip's delay after its chain, making up for other tracks' plugin latency.
+    compensation: Vec<Delay>,
+    /// The largest plugin latency of the tracks playing: every strip comes out this late.
+    latency: usize,
 }
 
 impl std::fmt::Debug for Mixer {
@@ -304,7 +309,14 @@ impl Mixer {
             parts_work: [[0.0; BLOCK]; 2],
             meters: Arc::new(Meters::default()),
             ballistics: Ballistics::new(sample_rate, BLOCK),
+            compensation: (0..MAX_STRIPS).map(|_| Delay::default()).collect(),
+            latency: 0,
         }
+    }
+
+    /// The frames every strip is held back by (the largest plugin latency playing).
+    pub(crate) fn latency(&self) -> usize {
+        self.latency
     }
 
     /// The meters, to be read elsewhere.
@@ -710,6 +722,19 @@ impl Mixer {
                 }
             }
         }
+        // Every strip comes out as late as the latest plugin's track (the click as well:
+        // see `latency`).
+        let latency = self
+            .strips
+            .iter()
+            .take(self.count)
+            .map(|strip| self.tones.latency(strip.song_track))
+            .max()
+            .unwrap_or(0);
+        self.latency = usize::try_from(latency)
+            .unwrap_or(usize::MAX)
+            .min(crate::compensation::MAX_COMPENSATION);
+        self.meters.set_compensation(latency);
         for position in 0..self.count {
             self.mix_strip(position, frames, strings, drums, left, right);
         }
@@ -990,9 +1015,16 @@ impl Mixer {
             self.meters.publish(Which::Input(track), peak);
         }
         let sounding = peak_of(work_left) > 0.0 || (stereo && peak_of(work_right) > 0.0);
+        // This strip waits for the latest plugin's track: the rest of the latency.
+        let own = usize::try_from(self.tones.latency(strip.song_track)).unwrap_or(usize::MAX);
+        let wait = self.latency.saturating_sub(own);
+        let held = self
+            .compensation
+            .get(position)
+            .is_some_and(|delay| delay.holds(wait));
         let chain = self.tones.chain(strip.song_track);
         let ringing = chain.as_ref().is_some_and(|chain| chain.ringing());
-        if !sounding && !ringing {
+        if !sounding && !ringing && !held {
             self.settle_meter(position, 0.0, 0.0, 0.0);
             self.settle_chain_output(position);
             return;
@@ -1009,6 +1041,11 @@ impl Mixer {
                 part_reduction
             }
         };
+        if let Some(delay) = self.compensation.get_mut(position)
+            && (wait > 0 || held)
+        {
+            delay.process(work_left, work_right, wait);
+        }
         // What leaves the chain (and its output level), before the fader and pan: its own
         // meter, for setting the chain's output.
         let (chain_peak, track) = match self.strips.get_mut(position) {

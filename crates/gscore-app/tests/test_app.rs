@@ -1603,9 +1603,11 @@ fn stop_goes_back_to_where_playback_started_when_asked() {
     let measure = |app: &GuitarScoreApp| app.document().unwrap().editor().cursor().measure.get();
 
     cursor_to_measure(&mut harness, 1);
-    // As the user does it: Space, then the toolbar's Stop.
+    // As the user does it: Space, then the toolbar's Stop. Once playing, the toolbar
+    // repaints to move the position: a step, not `run` (which waits for the frames to
+    // settle and gives up while the device starts).
     harness.key_press(egui::Key::Space);
-    harness.run();
+    harness.step();
     if let Some(why) = wait_until_playing(&mut harness) {
         eprintln!("skipped: no usable audio device ({why})");
         return;
