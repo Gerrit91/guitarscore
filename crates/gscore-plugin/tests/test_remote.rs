@@ -150,3 +150,25 @@ fn a_missing_plugin_or_library_is_an_error_not_a_crash() {
     ));
     assert!(remote::describe(&missing, ID, &[]).is_err());
 }
+
+#[test]
+fn a_plugin_without_an_editor_says_so() {
+    let effect = RemoteEffect::start(&library_path(), ID, &[], CONFIG).unwrap();
+    let status = effect.status();
+    assert_eq!(status.editor(), Ok(false));
+    status.open_editor("Test", 1.0);
+    let started = Instant::now();
+    let answer = loop {
+        match status.editor() {
+            Ok(false) if started.elapsed() < Duration::from_secs(10) => {
+                std::thread::sleep(Duration::from_millis(20));
+            }
+            other => break other,
+        }
+    };
+    assert!(answer.unwrap_err().contains("no editor"));
+    // The plugin keeps running; dropping the effect with a handle still held ends it.
+    assert_eq!(effect.failure(), None);
+    drop(effect);
+    assert_eq!(status.take_state(), None);
+}

@@ -7371,3 +7371,16 @@ parameter view, the blob with the tone, latency made up, offline WAV export).
   plugin's Crash switch aborts its process) and a hang (Hang switch) each noticed and
   bypassed, describe, scan, errors. `cargo test --test x` alone does not rebuild the test
   plugin (an example): run the package's tests.
+
+## 2026-11-27 — M24 step 4: a plugin's own editor in a floating window
+
+Owner: plugin editors are needed before testing, and VST3. Dragonfly and LSP both offer a
+floating X11 editor of their own, so GuitarScore draws none: the host asks for it and keeps
+it alive with the timers and file descriptors the plugin registers (`editor.rs`; host
+handlers in `host.rs`). The host process now has a reader, a main and an audio thread
+(`serve.rs`). Messages `OpenEditor`, `CloseEditor`, `EditorOpened`, `EditorClosed`,
+`State`. The editor's settings come back once a second when they changed, and on closing;
+the app writes them into the tone (one undo step) without making the chain again
+(`Playback::accept_plugin_state`). The Plugin block has Open/Close editor. Tested: a plugin
+without an editor answers why; the rest needs a display (owner).
+VST3 decided: `vst3` bindings + own host code, its unsafe in the VST3 module.

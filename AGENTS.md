@@ -291,8 +291,9 @@ commands. Details of every step are in `docs/devlog.md`; known shortfalls in
   source of a track (an instrument fed the track's notes, beside SoundFont, modelled
   strings and MIDI out) and as blocks of a sound chain (track, drum part, bus, master).
   Desktop only.
-  - Formats: CLAP first, VST3 later (its SDK is MIT since VST 3.8; check again then). Not
-    VST2 (its SDK cannot be licensed).
+  - Formats: CLAP first, then VST3 (its SDK is MIT since VST 3.8). VST3 through the `vst3`
+    crate's bindings and our own host code in `gscore-plugin`, its unsafe confined to that
+    module (owner, 2026-11-27). Not VST2 (its SDK cannot be licensed).
   - `unsafe` approved by the owner (2026-11-26) for this, in the isolated crate
     `gscore-plugin` only, with a comment at each place saying it is the exception and
     why. Dependencies approved: clack (`clack-host`, `clack-extensions`; `clack-plugin`
@@ -319,7 +320,7 @@ commands. Details of every step are in `docs/devlog.md`; known shortfalls in
     `gscore-cli plugins --check`); 2 the plugin block in a sound chain (in process,
     experimental; *2a-2c done 2026-11-26*: track chains, parameter view, saved with the
     tone; open: latency, export, master, buses, drum parts); 3 the host process, watchdog and scanning (*built 2026-11-27*: a process per plugin,
-    pipes, watchdog, Restart; blocklist open); 4 editors; 5 a CLAP
+    pipes, watchdog, Restart; blocklist open); 4 editors (*built 2026-11-27*: floating window of the plugin's own, settings kept); 5 a CLAP
     instrument; 6 VST3.
   - **Done when:** the owner plays a song through CLAP effects and an instrument of their
     choice, opens their editors, saves and reopens it with the same sound, and a crashing

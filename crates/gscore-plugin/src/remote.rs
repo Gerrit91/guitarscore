@@ -106,6 +106,21 @@ struct Health {
     answered: AtomicU64,
     /// The effect is being dropped: the watchdog ends.
     closing: AtomicBool,
+    /// The plugin's editor: open, and why it could not open.
+    editor_open: AtomicBool,
+    editor_error: Mutex<Option<String>>,
+    /// Settings the plugin's editor changed, not taken by the app yet.
+    state: Mutex<Option<Vec<u8>>>,
+}
+
+/// What the writer thread sends.
+#[derive(Debug)]
+enum Outgoing {
+    Block(Packet),
+    /// A request from the app (the editor).
+    Command(ToHost),
+    /// The effect is dropped: ask the host to quit and end.
+    Stop,
 }
 
 impl Health {
@@ -118,11 +133,59 @@ impl Health {
     }
 }
 
-/// How a host is doing, readable from any thread (see [`RemoteEffect::status`]).
+/// How a host is doing, readable from any thread, and its editor (see
+/// [`RemoteEffect::status`]).
 #[derive(Debug, Clone)]
-pub struct Status(Arc<Health>);
+pub struct Status(Arc<Health>, SyncSender<Outgoing>);
 
 impl Status {
+    /// Asks the host to open the plugin's editor in a floating window (the answer shows
+    /// in [`Self::editor`]).
+    pub fn open_editor(&self, title: &str, scale: f64) {
+        *self
+            .0
+            .editor_error
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner) = None;
+        let _ = self.1.try_send(Outgoing::Command(ToHost::OpenEditor {
+            title: title.to_owned(),
+            scale,
+        }));
+    }
+
+    /// Asks the host to close the editor.
+    pub fn close_editor(&self) {
+        let _ = self.1.try_send(Outgoing::Command(ToHost::CloseEditor));
+    }
+
+    /// Whether the editor is open, or why it could not open.
+    pub fn editor(&self) -> Result<bool, String> {
+        match self
+            .0
+            .editor_error
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone()
+        {
+            Some(error) => Err(error),
+            None => Ok(self.0.editor_open.load(Ordering::Acquire)),
+        }
+    }
+
+    /// Whether the host still runs the plugin (it did not fail and was not dropped).
+    pub fn alive(&self) -> bool {
+        !self.0.failed.load(Ordering::Acquire) && !self.0.closing.load(Ordering::Acquire)
+    }
+
+    /// The settings the editor changed since the last call, if it changed any.
+    pub fn take_state(&self) -> Option<Vec<u8>> {
+        self.0
+            .state
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .take()
+    }
+
     /// Why the plugin stopped playing, if it did.
     pub fn failure(&self) -> Option<String> {
         if !self.0.failed.load(Ordering::Acquire) {
@@ -143,7 +206,7 @@ impl Status {
 #[derive(Debug)]
 pub struct RemoteEffect {
     /// Blocks to send, and empty packets to fill.
-    outgoing: SyncSender<Packet>,
+    outgoing: SyncSender<Outgoing>,
     free: Receiver<Packet>,
     /// Blocks back from the host, and packets returned for reuse.
     incoming: Receiver<Packet>,
@@ -215,7 +278,7 @@ impl RemoteEffect {
         };
         let health = Arc::new(Health::default());
         let child = Arc::new(Mutex::new(child));
-        let (outgoing, to_writer) = mpsc::sync_channel::<Packet>(PIPELINE * 2);
+        let (outgoing, to_writer) = mpsc::sync_channel::<Outgoing>(PIPELINE * 2);
         let (recycle, free_pool) = mpsc::sync_channel::<Packet>(PIPELINE * 4);
         let (to_audio, incoming) = mpsc::sync_channel::<Packet>(PIPELINE * 2);
         let (give_free, free) = mpsc::sync_channel::<Packet>(PIPELINE * 4);
@@ -289,7 +352,7 @@ impl RemoteEffect {
 
     /// A handle to how the host is doing, to be read on another thread.
     pub fn status(&self) -> Status {
-        Status(Arc::clone(&self.health))
+        Status(Arc::clone(&self.health), self.outgoing.clone())
     }
 
     /// Rendering offline (an export, faster than real time): [`Self::process`] waits for
@@ -355,8 +418,10 @@ impl RemoteEffect {
         packet.reset = std::mem::take(&mut self.reset);
         self.gather.left.clear();
         self.gather.right.clear();
-        if let Err(mpsc::TrySendError::Full(packet) | mpsc::TrySendError::Disconnected(packet)) =
-            self.outgoing.try_send(packet)
+        if let Err(
+            mpsc::TrySendError::Full(Outgoing::Block(packet))
+            | mpsc::TrySendError::Disconnected(Outgoing::Block(packet)),
+        ) = self.outgoing.try_send(Outgoing::Block(packet))
         {
             let _ = self.recycle.try_send(packet);
         }
@@ -424,8 +489,8 @@ impl Drop for RemoteEffect {
         // Ending the channel ends the writer, which asks the host to quit; the host
         // closing its output ends the reader. A host that does not go is stopped.
         self.health.closing.store(true, Ordering::Release);
-        let (dead_out, _) = mpsc::sync_channel(0);
-        drop(std::mem::replace(&mut self.outgoing, dead_out));
+        // Handles the app holds keep the channel open: the writer is told to stop.
+        let _ = self.outgoing.try_send(Outgoing::Stop);
         let deadline = Instant::now() + Duration::from_secs(2);
         loop {
             let done = self
@@ -471,13 +536,24 @@ fn watch(health: &Health, child: &Mutex<Child>) {
 /// The writer thread: sends each block.
 fn write_blocks(
     stdin: ChildStdin,
-    blocks: &Receiver<Packet>,
+    blocks: &Receiver<Outgoing>,
     sent_seqs: &Sender<u64>,
     health: &Health,
     child: &Mutex<Child>,
 ) {
     let mut stdin = BufWriter::new(stdin);
-    while let Ok(mut packet) = blocks.recv() {
+    while let Ok(next) = blocks.recv() {
+        let mut packet = match next {
+            Outgoing::Block(packet) => packet,
+            Outgoing::Command(command) => {
+                if write_frame(&mut stdin, &command.encode()).is_err() {
+                    health.fail(died(child));
+                    return;
+                }
+                continue;
+            }
+            Outgoing::Stop => break,
+        };
         if packet.reset && write_frame(&mut stdin, &ToHost::Reset.encode()).is_err() {
             health.fail(died(child));
             return;
@@ -520,9 +596,27 @@ fn read_blocks(
                 return;
             }
         };
-        health.answered.fetch_add(1, Ordering::Relaxed);
         let (left, right) = match FromHost::decode(&frame) {
-            Ok(FromHost::Processed(Ok(block))) => block,
+            Ok(FromHost::Processed(Ok(block))) => {
+                health.answered.fetch_add(1, Ordering::Relaxed);
+                block
+            }
+            Ok(FromHost::EditorOpened(result)) => {
+                health.editor_open.store(result.is_ok(), Ordering::Release);
+                *health
+                    .editor_error
+                    .lock()
+                    .unwrap_or_else(PoisonError::into_inner) = result.err();
+                continue;
+            }
+            Ok(FromHost::EditorClosed) => {
+                health.editor_open.store(false, Ordering::Release);
+                continue;
+            }
+            Ok(FromHost::State(state)) => {
+                *health.state.lock().unwrap_or_else(PoisonError::into_inner) = Some(state);
+                continue;
+            }
             Ok(FromHost::Processed(Err(why))) => {
                 health.fail(format!("the plugin failed: {why}"));
                 return;

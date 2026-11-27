@@ -71,6 +71,51 @@ impl PluginControl {
     pub fn latency(&self) -> u32 {
         self.latency.load(Ordering::Acquire)
     }
+
+    /// The host that plays the plugin now (the latest still running).
+    fn live(&self) -> Option<Status> {
+        self.hosts
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .iter()
+            .rev()
+            .find(|status| status.alive())
+            .cloned()
+    }
+
+    /// Opens the plugin's own editor in a floating window. False while no host plays it
+    /// (plugins off, not started yet, or stopped).
+    pub fn open_editor(&self, title: &str, scale: f64) -> bool {
+        match self.live() {
+            Some(status) => {
+                status.open_editor(title, scale);
+                true
+            }
+            None => false,
+        }
+    }
+
+    /// Closes the editor.
+    pub fn close_editor(&self) {
+        if let Some(status) = self.live() {
+            status.close_editor();
+        }
+    }
+
+    /// Whether the editor is open, or why it could not open.
+    pub fn editor(&self) -> Result<bool, String> {
+        self.live().map_or(Ok(false), |status| status.editor())
+    }
+
+    /// Settings the editor changed and the app has not taken yet.
+    pub fn take_state(&self) -> Option<Vec<u8>> {
+        self.hosts
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .iter()
+            .rev()
+            .find_map(Status::take_state)
+    }
 }
 
 /// A plugin and its saved settings, as a chain block.
@@ -134,8 +179,8 @@ impl ExternalSource for PluginSource {
                     .hosts
                     .lock()
                     .unwrap_or_else(PoisonError::into_inner);
-                // Hosts of chains made before (and dropped since) are forgotten.
-                hosts.retain(|status| status.failure().is_none());
+                // Hosts of chains dropped since (or failed) are forgotten.
+                hosts.retain(Status::alive);
                 hosts.push(remote.status());
                 drop(hosts);
                 Some(Box::new(PluginBlock {

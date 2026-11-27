@@ -155,6 +155,8 @@ struct Actions {
     close: bool,
     /// Look for installed plugins again.
     plugin_rescan: bool,
+    /// Open (true) or close (false) the editor of the plugin in this place.
+    plugin_editor: Option<(usize, bool)>,
     listen: bool,
     load: Option<usize>,
     chain: Option<ChainSetting>,
@@ -3235,6 +3237,8 @@ impl GuitarScoreApp {
                                                     }
                                                     actions.plugin_rescan |= edit.rescan;
                                                     actions.rebuild |= edit.restart;
+                                                    actions.plugin_editor =
+                                                        edit.editor.map(|open| (panel.place, open));
                                                     if let Some(choosing) = edit.choosing {
                                                         window.plugin_choosing = choosing;
                                                     }
@@ -3507,6 +3511,27 @@ impl GuitarScoreApp {
         }
         if actions.plugin_rescan {
             self.playback.plugins().rescan();
+        }
+        if let Some((place, open)) = actions.plugin_editor {
+            if open {
+                let name = tone
+                    .chain
+                    .blocks
+                    .get(place)
+                    .and_then(|block| block.plugin.as_ref())
+                    .map_or_else(|| "Plugin".to_owned(), |plugin| plugin.name.clone());
+                let title = format!("{name} — {}", self.track_name(track));
+                let scale = f64::from(ctx.pixels_per_point());
+                if let Err(why) = self
+                    .playback
+                    .plugins()
+                    .open_editor((track, place), &title, scale)
+                {
+                    self.notice = Some(why);
+                }
+            } else {
+                self.playback.plugins().close_editor((track, place));
+            }
         }
         if actions.close {
             self.save_settings();

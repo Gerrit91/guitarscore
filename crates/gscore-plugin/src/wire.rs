@@ -47,6 +47,10 @@ pub(crate) enum ToHost {
     Scan { library: PathBuf },
     /// Stop the plugin and end.
     Quit,
+    /// Open the plugin's editor in a floating window, titled, at a display scale.
+    OpenEditor { title: String, scale: f64 },
+    /// Close it.
+    CloseEditor,
 }
 
 /// From the host to the app.
@@ -60,6 +64,12 @@ pub(crate) enum FromHost {
     Described(Result<(PluginInfo, Vec<Param>, Vec<f64>, u32), String>),
     /// The answer to `Scan`.
     Scanned(Result<Vec<PluginInfo>, String>),
+    /// The answer to `OpenEditor`.
+    EditorOpened(Result<(), String>),
+    /// The editor was closed (by the user, or by `CloseEditor`).
+    EditorClosed,
+    /// The plugin's settings changed in its editor: its saved settings now.
+    State(Vec<u8>),
 }
 
 /// Writes `message` as one frame.
@@ -134,6 +144,12 @@ impl ToHost {
                 w.path(library);
             }
             ToHost::Quit => w.u8(5),
+            ToHost::OpenEditor { title, scale } => {
+                w.u8(6);
+                w.text(title);
+                w.f64(*scale);
+            }
+            ToHost::CloseEditor => w.u8(7),
         }
         w.0
     }
@@ -170,6 +186,11 @@ impl ToHost {
             },
             4 => ToHost::Scan { library: r.path()? },
             5 => ToHost::Quit,
+            6 => ToHost::OpenEditor {
+                title: r.text()?,
+                scale: r.f64()?,
+            },
+            7 => ToHost::CloseEditor,
             other => return Err(format!("unknown message {other}")),
         };
         r.end()?;
@@ -216,6 +237,15 @@ impl FromHost {
                     }
                 });
             }
+            FromHost::EditorOpened(result) => {
+                w.u8(4);
+                w.result(result, |_, ()| {});
+            }
+            FromHost::EditorClosed => w.u8(5),
+            FromHost::State(state) => {
+                w.u8(6);
+                w.bytes(state);
+            }
         }
         w.0
     }
@@ -247,6 +277,9 @@ impl FromHost {
                 }
                 Ok(plugins)
             })?),
+            4 => FromHost::EditorOpened(r.result(|_| Ok(()))?),
+            5 => FromHost::EditorClosed,
+            6 => FromHost::State(r.bytes()?),
             other => return Err(format!("unknown answer {other}")),
         };
         r.end()?;
@@ -520,6 +553,11 @@ mod tests {
                 library: "/z.clap".into(),
             },
             ToHost::Quit,
+            ToHost::OpenEditor {
+                title: "Room".into(),
+                scale: 1.5,
+            },
+            ToHost::CloseEditor,
         ];
         for message in to_host {
             assert_eq!(ToHost::decode(&message.encode()).unwrap(), message);
@@ -531,6 +569,10 @@ mod tests {
             FromHost::Described(Ok((info.clone(), vec![param], vec![0.5], 3))),
             FromHost::Scanned(Ok(vec![info])),
             FromHost::Scanned(Err("crash".into())),
+            FromHost::EditorOpened(Ok(())),
+            FromHost::EditorOpened(Err("no".into())),
+            FromHost::EditorClosed,
+            FromHost::State(vec![9, 8]),
         ];
         for message in from_host {
             assert_eq!(FromHost::decode(&message.encode()).unwrap(), message);

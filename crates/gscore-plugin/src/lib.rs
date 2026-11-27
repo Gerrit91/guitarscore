@@ -13,6 +13,7 @@
 //! hang in ways Rust cannot catch, so the app runs each plugin in a host process of its
 //! own ([`remote`], [`serve`]): a crash takes only that process down.
 
+mod editor;
 mod effect;
 mod error;
 mod host;

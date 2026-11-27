@@ -20,11 +20,9 @@ fn main() -> ExitCode {
     // Started by GuitarScore itself to run one plugin apart from the app (M24): no window,
     // no settings, just the requests on stdin.
     if std::env::args_os().nth(1).as_deref() == Some(gscore_plugin::remote::HOST_FLAG.as_ref()) {
-        let stdin = std::io::stdin();
-        let stdout = std::io::stdout();
-        let mut input = std::io::BufReader::new(stdin.lock());
-        let mut output = std::io::BufWriter::new(stdout.lock());
-        let code = gscore_plugin::serve(&mut input, &mut output);
+        let input = std::io::BufReader::new(std::io::stdin());
+        let output = std::io::BufWriter::new(std::io::stdout());
+        let code = gscore_plugin::serve(input, output);
         return ExitCode::from(u8::try_from(code).unwrap_or(1));
     }
     if let Some(dir) = gscore_session::default_crash_dir() {

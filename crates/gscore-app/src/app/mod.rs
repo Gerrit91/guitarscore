@@ -1081,6 +1081,8 @@ impl eframe::App for GuitarScoreApp {
         // ports and channels, other tones and other sends into the compressor bus, and
         // other mixer buses: hand them over when the open song is another or changed.
         self.sync_song_sound_if_changed();
+        // Settings changed in a plugin's own editor go into its track's tone.
+        self.take_plugin_states();
         // Keep a loop of the selected measures going; a new selection turns it on.
         self.auto_loop();
         self.poll_loop();

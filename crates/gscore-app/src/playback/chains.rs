@@ -546,6 +546,21 @@ impl Playback {
         self.send_tones();
     }
 
+    /// The plugin at `place` of `track`'s chain changed its settings in its own editor:
+    /// the engine already plays them, so the chain sent is noted with them (the track's
+    /// tone, set next, then needs no new chain, which would restart the plugin).
+    pub(crate) fn accept_plugin_state(&mut self, track: usize, place: usize, state: &str) {
+        if let Some(plugin) = self
+            .sent_tones
+            .get_mut(&track)
+            .and_then(|sent| sent.chain.blocks.get_mut(place))
+            .and_then(|block| block.plugin.as_mut())
+        {
+            plugin.state = state.to_owned();
+            plugin.values.clear();
+        }
+    }
+
     pub(super) fn forget_sent_tones(&mut self) {
         self.sent_tones.clear();
         self.sent_parts.clear();

@@ -10,7 +10,7 @@ description = "Hosting CLAP audio plugins (native builds only; the workspace's o
 [dependencies]
 clack-host = "0.2.0"
 thiserror = "2.0.18"
-clack-extensions = { version = "0.2.0", features = ["clack-host", "audio-ports", "latency", "log", "params", "state"] }
+clack-extensions = { version = "0.2.0", features = ["clack-host", "audio-ports", "gui", "latency", "log", "params", "posix-fd", "state", "timer"] }
 
 [dev-dependencies]
 # The test plugin (`examples/test_plugin.rs`), built as a CLAP library for the tests.

@@ -175,6 +175,41 @@ mod native {
             self.controls.get(&owner).and_then(|c| c.problem())
         }
 
+        /// Opens the plugin's own editor at `owner` in a floating window.
+        pub(crate) fn open_editor(
+            &self,
+            owner: Owner,
+            title: &str,
+            scale: f64,
+        ) -> Result<(), String> {
+            match self.controls.get(&owner) {
+                Some(control) if control.open_editor(title, scale) => Ok(()),
+                _ => Err("the plugin is not running (switch plugins on, or play once)".into()),
+            }
+        }
+
+        /// Closes it.
+        pub(crate) fn close_editor(&self, owner: Owner) {
+            if let Some(control) = self.controls.get(&owner) {
+                control.close_editor();
+            }
+        }
+
+        /// Whether the editor at `owner` is open, or why it could not open.
+        pub(crate) fn editor(&self, owner: Owner) -> Result<bool, String> {
+            self.controls
+                .get(&owner)
+                .map_or(Ok(false), |control| control.editor())
+        }
+
+        /// Settings changed in the plugins' editors, by where they play.
+        pub(crate) fn take_states(&self) -> Vec<(Owner, Vec<u8>)> {
+            self.controls
+                .iter()
+                .filter_map(|(owner, control)| control.take_state().map(|state| (*owner, state)))
+                .collect()
+        }
+
         /// The parameters of `block`'s plugin with its saved settings loaded.
         pub(crate) fn view(&mut self, block: &PluginBlock) -> Found<&PluginView> {
             let key = format!("{}#{}#{}", block.library.display(), block.id, block.state);
@@ -335,6 +370,25 @@ mod web {
 
         pub(crate) fn problem(&self, _owner: Owner) -> Option<String> {
             Some("plugins are not available in the browser".into())
+        }
+
+        pub(crate) fn open_editor(
+            &self,
+            _owner: Owner,
+            _title: &str,
+            _scale: f64,
+        ) -> Result<(), String> {
+            Err("plugins are not available in the browser".into())
+        }
+
+        pub(crate) fn close_editor(&self, _owner: Owner) {}
+
+        pub(crate) fn editor(&self, _owner: Owner) -> Result<bool, String> {
+            Ok(false)
+        }
+
+        pub(crate) fn take_states(&self) -> Vec<(Owner, Vec<u8>)> {
+            Vec::new()
         }
 
         pub(crate) fn view(&mut self, _block: &PluginBlock) -> Found<&PluginView> {

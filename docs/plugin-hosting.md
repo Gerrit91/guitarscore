@@ -78,6 +78,33 @@ amp model, an impulse response, a sample library).
 - Changes made in the editor come back as parameter events and the "settings changed"
   request: the egui view and the saved blob follow, and one gesture is one undo step.
 
+## Editors (step 4, built 2026-11-27)
+
+- Dragonfly and LSP (checked 2026-11-27) offer their editor as a floating X11 window of
+  their own, so the host creates no window and needs no window-system code or crate: it
+  asks the plugin for a floating editor (`clap.gui`, X11 on Linux, Win32 and Cocoa
+  elsewhere), passes the display's scale and a title, and keeps it alive by running the
+  timers (`clap.timer-support`) and file descriptors (`clap.posix-fd-support`) the plugin
+  registers. std has no poll: each descriptor is offered every 10 ms tick, which plugins
+  read without waiting.
+- The host process got three threads: a reader for the app's messages, the main thread
+  (the plugin and its editor), and an audio thread for the sound.
+- While the editor is open the host saves the plugin's settings every second and sends
+  them when they changed (some plugins do not report changes), and again when the window
+  closes. The app writes them into the track's tone as one undo step and tells playback
+  that the running plugin already has them, so the chain is not made again (that would
+  restart the plugin and close its editor).
+- The Plugin block has "Open editor" / "Close editor"; a plugin without a floating editor
+  says why. Not checked by hand yet: no X server here to show one headlessly.
+
+## VST3 (owner, 2026-11-27)
+
+The `vst3` crate (coupler-rs, MIT/Apache-2.0: the interface definitions only) with our own
+hosting code in a VST3 module of `gscore-plugin`, run in the same host processes as CLAP.
+The unsafe exception grows from one block to that module: every call into a VST3 plugin is
+through a COM-style interface and unsafe; each block keeps its SAFETY comment, and xtask
+still names the files allowed.
+
 ## Never crash: the host process (step 3, built 2026-11-27)
 
 - Every plugin runs in a host process of its own: the app itself started with

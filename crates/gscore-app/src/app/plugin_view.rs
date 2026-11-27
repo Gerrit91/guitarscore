@@ -30,13 +30,18 @@ pub(super) struct PluginPanel {
     installed: Option<Found<Installed>>,
     /// Plugins are switched off in the settings.
     off: bool,
+    /// Whether the plugin's own editor is open, or why it could not open.
+    editor: Result<bool, String>,
 }
 
 impl PluginPanel {
     /// Whether an answer of the plugin thread is still to come (the window redraws until
     /// it is there).
     pub(super) fn waiting(&self) -> bool {
-        matches!(self.view, Some(Found::Waiting)) || matches!(self.installed, Some(Found::Waiting))
+        matches!(self.view, Some(Found::Waiting))
+            || matches!(self.installed, Some(Found::Waiting))
+            // An editor asked for: its answer comes from the host.
+            || self.editor == Ok(true)
     }
 }
 
@@ -51,9 +56,43 @@ pub(super) struct PluginEdit {
     pub(super) choosing: Option<bool>,
     /// Start the plugin again (it crashed, hung or could not start).
     pub(super) restart: bool,
+    /// Open (true) or close (false) the plugin's own editor.
+    pub(super) editor: Option<bool>,
 }
 
 impl GuitarScoreApp {
+    /// Settings changed in the plugins' own editors: each goes into its track's tone (one
+    /// undo step), the running plugin kept as it is.
+    pub(super) fn take_plugin_states(&mut self) {
+        for ((track, place), state) in self.playback.plugins().take_states() {
+            let Some(player) = self.track_player(track) else {
+                continue;
+            };
+            let kind = match player.engine {
+                gscore_play::TrackEngine::Modelled(kind) => kind,
+                _ => player.preset_kind.unwrap_or(gscore_play::StringKind::Steel),
+            };
+            let mut tone = self.track_chain_tone(track, &player, kind);
+            let Some(plugin) = tone
+                .chain
+                .blocks
+                .get_mut(place)
+                .and_then(|block| block.plugin.as_mut())
+            else {
+                continue;
+            };
+            let encoded = crate::base64::encode(&state);
+            if plugin.state == encoded {
+                continue;
+            }
+            // The settings hold every parameter: none is set apart any more.
+            plugin.state.clone_from(&encoded);
+            plugin.values.clear();
+            self.playback.accept_plugin_state(track, place, &encoded);
+            self.set_track_tone(track, tone);
+        }
+    }
+
     /// What the plugin thread knows of the Plugin block at `place` of `track`'s chain
     /// `chain`; `choosing`: the list of plugins is asked for. `None` if the place holds
     /// another block.
@@ -77,12 +116,14 @@ impl GuitarScoreApp {
             _ => None,
         };
         let problem = (!off).then(|| plugins.problem((track, place))).flatten();
+        let editor = plugins.editor((track, place));
         Some(PluginPanel {
             place,
             problem,
             view,
             installed,
             off,
+            editor,
         })
     }
 }
@@ -184,6 +225,19 @@ pub(super) fn show(
                 edit.choosing = Some(true);
                 filter.clear();
             }
+            // The plugin's own editor, in a window of its own beside GuitarScore's.
+            let open = matches!(panel.editor, Ok(true));
+            let label = if open { "Close editor" } else { "Open editor" };
+            if ui
+                .button(label)
+                .on_hover_text(
+                    "The plugin's own window, with everything it offers (models, impulse \
+                     responses, presets). What you set there is kept with the tone.",
+                )
+                .clicked()
+            {
+                edit.editor = Some(!open);
+            }
             if !plugin.values.is_empty()
                 && ui
                     .small_button("Reset")
@@ -200,6 +254,9 @@ pub(super) fn show(
             }
         });
     });
+    if let Err(why) = &panel.editor {
+        ui.label(RichText::new(format!("Its editor could not open: {why}")).color(tokens.mute));
+    }
     if let Some(problem) = &panel.problem {
         ui.horizontal_wrapped(|ui| {
             ui.label(RichText::new(problem).color(tokens.mute));

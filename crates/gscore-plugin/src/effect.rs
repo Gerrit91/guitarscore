@@ -62,8 +62,10 @@ struct Ports {
 /// A plugin made from a library, used as an effect. Drop it on the thread that made it.
 pub struct Effect {
     id: String,
-    instance: PluginInstance<GsHost>,
+    pub(crate) instance: PluginInstance<GsHost>,
     ports: Ports,
+    /// Its editor is open (see `editor.rs`).
+    pub(crate) editor_open: bool,
 }
 
 impl fmt::Debug for Effect {
@@ -96,7 +98,7 @@ impl Effect {
         .map_err(|e| start(e.to_string()))?;
         let mut instance = PluginInstance::<GsHost>::new(
             |_| Shared::default(),
-            |shared| MainThread { shared },
+            |shared| MainThread::new(shared),
             library.entry(),
             &c_id,
             &info,
@@ -114,6 +116,7 @@ impl Effect {
             id: id.to_owned(),
             instance,
             ports,
+            editor_open: false,
         })
     }
 
