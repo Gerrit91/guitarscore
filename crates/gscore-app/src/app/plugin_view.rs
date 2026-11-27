@@ -49,6 +49,8 @@ pub(super) struct PluginEdit {
     pub(super) rescan: bool,
     /// Show the list of plugins (true) or the chosen one's parameters again (false).
     pub(super) choosing: Option<bool>,
+    /// Start the plugin again (it crashed, hung or could not start).
+    pub(super) restart: bool,
 }
 
 impl GuitarScoreApp {
@@ -199,7 +201,16 @@ pub(super) fn show(
         });
     });
     if let Some(problem) = &panel.problem {
-        ui.label(RichText::new(problem).color(tokens.mute));
+        ui.horizontal_wrapped(|ui| {
+            ui.label(RichText::new(problem).color(tokens.mute));
+            if ui
+                .small_button("Restart")
+                .on_hover_text("Start the plugin again (its settings as saved)")
+                .clicked()
+            {
+                edit.restart = true;
+            }
+        });
     }
     match &panel.view {
         None | Some(Found::Waiting) => {

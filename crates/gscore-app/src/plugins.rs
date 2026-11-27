@@ -82,32 +82,55 @@ pub(crate) use web::Plugins;
 #[cfg(not(target_arch = "wasm32"))]
 mod native {
     use std::collections::HashMap;
+    use std::path::PathBuf;
     use std::sync::Arc;
-    use std::sync::mpsc::{Receiver, TryRecvError};
+    use std::sync::mpsc::{self, Receiver, TryRecvError};
 
     use gscore_audio::{PluginControl, PluginSource};
     use gscore_guitar::{BlockKind, External};
-    use gscore_plugin::{Description, PluginError, PluginThread, Scanned};
+    use gscore_plugin::{Param, PluginError, PluginInfo, remote};
 
     use super::{Found, Installed, Listed, Owner, ParamView, PluginBlock, PluginView};
 
-    /// A request to the plugin thread and its answer once it came.
+    /// What `remote::describe` answers.
+    type Described = Result<(PluginInfo, Vec<Param>, Vec<f64>, u32), PluginError>;
+    /// One library's plugins, or why it could not be opened.
+    type Scanned = Vec<(PathBuf, Result<Vec<PluginInfo>, PluginError>)>;
+
+    /// A request to a plugin host and its answer once it came.
     #[derive(Debug)]
     enum Asked<T, A> {
         Waiting(Receiver<A>),
         Done(Found<T>),
     }
 
-    /// The plugins of the app.
+    /// The plugins of the app. Every plugin runs in a host process of its own (also to
+    /// be described or listed), so a plugin that crashes never takes the app with it.
     #[derive(Debug, Default)]
     pub(crate) struct Plugins {
         enabled: bool,
-        thread: Option<PluginThread>,
-        /// Why the thread could not be started.
-        thread_error: Option<String>,
         controls: HashMap<Owner, Arc<PluginControl>>,
-        views: HashMap<String, Asked<PluginView, Result<Description, PluginError>>>,
-        installed: Option<Asked<Installed, Vec<Scanned>>>,
+        views: HashMap<String, Asked<PluginView, Described>>,
+        installed: Option<Asked<Installed, Scanned>>,
+    }
+
+    /// Runs `work` on a thread of its own; its answer comes on the receiver (an error if
+    /// the thread could not start).
+    fn background<A: Send + 'static>(
+        work: impl FnOnce() -> A + Send + 'static,
+        failed: impl FnOnce(String) -> A,
+    ) -> Receiver<A> {
+        let (reply, answer) = mpsc::channel();
+        let sender = reply.clone();
+        if let Err(error) = std::thread::Builder::new()
+            .name("plugin request".into())
+            .spawn(move || {
+                let _ = sender.send(work());
+            })
+        {
+            let _ = reply.send(failed(error.to_string()));
+        }
+        answer
     }
 
     impl Plugins {
@@ -118,16 +141,6 @@ mod native {
 
         pub(crate) fn set_enabled(&mut self, enabled: bool) {
             self.enabled = enabled;
-        }
-
-        fn handle(&mut self) -> Option<gscore_plugin::PluginHandle> {
-            if self.thread.is_none() && self.thread_error.is_none() {
-                match PluginThread::spawn() {
-                    Ok(thread) => self.thread = Some(thread),
-                    Err(error) => self.thread_error = Some(error.to_string()),
-                }
-            }
-            self.thread.as_ref().map(PluginThread::handle)
         }
 
         /// The engine's block for `block`, or `None` while plugins are off. A block
@@ -141,19 +154,12 @@ mod native {
             if !self.enabled {
                 return None;
             }
-            let handle = self.handle()?;
             let control = match owner {
                 Some(owner) => Arc::clone(self.controls.entry(owner).or_default()),
                 None => Arc::new(PluginControl::default()),
             };
             control.set_values(&block.values);
-            let source = PluginSource::new(
-                handle,
-                &block.library,
-                &block.id,
-                block.state_bytes(),
-                control,
-            );
+            let source = PluginSource::new(&block.library, &block.id, block.state_bytes(), control);
             Some(BlockKind::External(External(Arc::new(source))))
         }
 
@@ -164,11 +170,8 @@ mod native {
             }
         }
 
-        /// Why the block at `owner` does not play, if it does not.
+        /// Why the block at `owner` does not play (it could not start, crashed or hung).
         pub(crate) fn problem(&self, owner: Owner) -> Option<String> {
-            if let Some(error) = &self.thread_error {
-                return Some(error.clone());
-            }
             self.controls.get(&owner).and_then(|c| c.problem())
         }
 
@@ -176,10 +179,12 @@ mod native {
         pub(crate) fn view(&mut self, block: &PluginBlock) -> Found<&PluginView> {
             let key = format!("{}#{}#{}", block.library.display(), block.id, block.state);
             if !self.views.contains_key(&key) {
-                let Some(handle) = self.handle() else {
-                    return Found::Failed(self.thread_error.clone().unwrap_or_default());
-                };
-                let answer = handle.describe(&block.library, &block.id, &block.state_bytes());
+                let (library, id, state) =
+                    (block.library.clone(), block.id.clone(), block.state_bytes());
+                let answer = background(
+                    move || remote::describe(&library, &id, &state),
+                    |error| Err(PluginError::Process(error)),
+                );
                 self.views.insert(key.clone(), Asked::Waiting(answer));
             }
             let Some(asked) = self.views.get_mut(&key) else {
@@ -190,21 +195,29 @@ mod native {
                 Err(error) => Found::Failed(error.to_string()),
             });
             match asked {
-                Asked::Waiting(_) => Found::Waiting,
+                Asked::Waiting(_) | Asked::Done(Found::Waiting) => Found::Waiting,
                 Asked::Done(Found::Ready(view)) => Found::Ready(view),
                 Asked::Done(Found::Failed(error)) => Found::Failed(error.clone()),
-                Asked::Done(Found::Waiting) => Found::Waiting,
             }
         }
 
-        /// The installed effects: scanned once (in the background) on the first call,
-        /// again after [`Self::rescan`].
+        /// The installed effects: scanned once (in the background, each library in a host
+        /// of its own) on the first call, again after [`Self::rescan`].
         pub(crate) fn installed(&mut self) -> Found<&Installed> {
             if self.installed.is_none() {
-                let Some(handle) = self.handle() else {
-                    return Found::Failed(self.thread_error.clone().unwrap_or_default());
-                };
-                self.installed = Some(Asked::Waiting(handle.scan(gscore_plugin::default_dirs())));
+                let answer = background(
+                    || {
+                        gscore_plugin::bundles_in(&gscore_plugin::default_dirs())
+                            .into_iter()
+                            .map(|library| {
+                                let plugins = remote::scan(&library);
+                                (library, plugins)
+                            })
+                            .collect()
+                    },
+                    |_| Vec::new(),
+                );
+                self.installed = Some(Asked::Waiting(answer));
             }
             let Some(asked) = self.installed.as_mut() else {
                 return Found::Waiting;
@@ -230,17 +243,18 @@ mod native {
                 Ok(value) => *asked = Asked::Done(answer(value)),
                 Err(TryRecvError::Empty) => {}
                 Err(TryRecvError::Disconnected) => {
-                    *asked = Asked::Done(Found::Failed("the plugin thread stopped".into()));
+                    *asked = Asked::Done(Found::Failed("the plugin request stopped".into()));
                 }
             }
         }
     }
 
-    fn view_of(description: Description) -> PluginView {
-        let params = description
-            .params
+    fn view_of(
+        (_, params, values, latency): (PluginInfo, Vec<Param>, Vec<f64>, u32),
+    ) -> PluginView {
+        let params = params
             .iter()
-            .zip(description.values.iter().copied())
+            .zip(values.iter().copied())
             .filter(|(param, _)| !param.hidden && !param.read_only)
             .filter(|(param, _)| param.min.is_finite() && param.max.is_finite())
             .filter(|(param, _)| param.max > param.min)
@@ -259,28 +273,29 @@ mod native {
                 },
             })
             .collect();
-        PluginView {
-            params,
-            latency: description.latency,
-        }
+        PluginView { params, latency }
     }
 
-    fn installed_of(scanned: Vec<Scanned>) -> Installed {
+    fn installed_of(scanned: Scanned) -> Installed {
         let mut installed = Installed::default();
         for (library, found) in scanned {
             match found {
-                Ok(plugins) => installed.effects.extend(
-                    plugins
-                        .into_iter()
-                        .filter(gscore_plugin::PluginInfo::is_effect)
-                        .map(|info| Listed {
-                            library: library.clone(),
-                            id: info.id,
-                            name: info.name,
-                            vendor: info.vendor,
-                            features: info.features,
-                        }),
-                ),
+                Ok(plugins) => {
+                    installed
+                        .effects
+                        .extend(
+                            plugins
+                                .into_iter()
+                                .filter(PluginInfo::is_effect)
+                                .map(|info| Listed {
+                                    library: library.clone(),
+                                    id: info.id,
+                                    name: info.name,
+                                    vendor: info.vendor,
+                                    features: info.features,
+                                }),
+                        )
+                }
                 Err(error) => installed.problems.push(error.to_string()),
             }
         }

@@ -3234,6 +3234,7 @@ impl GuitarScoreApp {
                                                         actions.chain = Some(changed);
                                                     }
                                                     actions.plugin_rescan |= edit.rescan;
+                                                    actions.rebuild |= edit.restart;
                                                     if let Some(choosing) = edit.choosing {
                                                         window.plugin_choosing = choosing;
                                                     }

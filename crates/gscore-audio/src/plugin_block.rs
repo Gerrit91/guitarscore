@@ -1,21 +1,19 @@
 //! A plugin as a block of a sound chain (M24, native builds only): [`PluginSource`] is the
-//! chain's [`ExternalSource`], starting one effect on the plugin thread for each chain it
-//! is placed in; [`PluginControl`] is what the app keeps to change the plugin's
-//! parameters while it plays and to hear back how it is doing.
+//! chain's [`ExternalSource`], starting one plugin host process for each chain it is placed
+//! in ([`gscore_plugin::remote`]); [`PluginControl`] is what the app keeps to change the
+//! plugin's parameters while it plays and to hear back how it is doing.
+//!
+//! A plugin that crashes or hangs takes only its host process down: its place then passes
+//! the sound unchanged, and the control says why. Making the chain again restarts it.
 
 use std::hash::Hasher as _;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
-use std::time::Duration;
 
 use gscore_guitar::{ExternalBlock, ExternalSource};
-use gscore_plugin::{AudioConfig, PluginHandle, Processor};
-
-/// How long making a chain waits for a plugin to start.
-const START_WAIT: Duration = Duration::from_secs(20);
-/// The longest block a chain hands a plugin (the engine's are far shorter; export's too).
-const MAX_FRAMES: u32 = 4096;
+use gscore_plugin::AudioConfig;
+use gscore_plugin::remote::{RemoteEffect, Status};
 
 /// The app's side of a plugin block: parameter values to play with, and what the plugin
 /// reported. Shared by every chain the block is placed in.
@@ -27,9 +25,9 @@ pub struct PluginControl {
     version: AtomicU64,
     /// Why the plugin could not be started (the place then plays the sound unchanged).
     error: Mutex<Option<String>>,
-    /// The plugin failed while playing and is bypassed.
-    failed: AtomicBool,
-    /// Frames its sound comes out late.
+    /// The hosts running it, for why one stopped.
+    hosts: Mutex<Vec<Status>>,
+    /// Frames its sound comes out late (its own latency and its host's).
     latency: AtomicU32,
 }
 
@@ -52,10 +50,16 @@ impl PluginControl {
         }
     }
 
-    /// Why the plugin could not be started, or that it failed while playing.
+    /// Why the plugin does not play: it could not start, or it crashed or hung.
     pub fn problem(&self) -> Option<String> {
-        if self.failed.load(Ordering::Acquire) {
-            return Some("the plugin failed while playing and is bypassed".into());
+        if let Some(failure) = self
+            .hosts
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .iter()
+            .find_map(Status::failure)
+        {
+            return Some(failure);
         }
         self.error
             .lock()
@@ -72,7 +76,6 @@ impl PluginControl {
 /// A plugin and its saved settings, as a chain block.
 pub struct PluginSource {
     key: String,
-    handle: PluginHandle,
     library: PathBuf,
     id: String,
     state: Vec<u8>,
@@ -90,20 +93,13 @@ impl std::fmt::Debug for PluginSource {
 impl PluginSource {
     /// Plugin `id` of the library at `library`, started with the settings `state` (empty:
     /// its defaults), playing with the parameter values `control` holds.
-    pub fn new(
-        handle: PluginHandle,
-        library: &Path,
-        id: &str,
-        state: Vec<u8>,
-        control: Arc<PluginControl>,
-    ) -> Self {
+    pub fn new(library: &Path, id: &str, state: Vec<u8>, control: Arc<PluginControl>) -> Self {
         // The same plugin with the same settings is the same block: no new chain for it.
         let mut hash = std::collections::hash_map::DefaultHasher::new();
         hash.write(&state);
         let key = format!("{}#{id}#{:016x}", library.display(), hash.finish());
         Self {
             key,
-            handle,
             library: library.to_owned(),
             id: id.to_owned(),
             state,
@@ -120,51 +116,49 @@ impl ExternalSource for PluginSource {
     fn instance(&self, sample_rate: u32) -> Option<Box<dyn ExternalBlock>> {
         let config = AudioConfig {
             sample_rate,
-            max_frames: MAX_FRAMES,
+            max_frames: gscore_plugin::remote::BLOCK as u32,
         };
-        let answer = self
-            .handle
-            .start(&self.library, &self.id, &self.state, config)
-            .recv_timeout(START_WAIT);
-        let error = match answer {
-            Ok(Ok(started)) => {
+        // Made off the audio thread: starting a host may take a while.
+        match RemoteEffect::start(&self.library, &self.id, &self.state, config) {
+            Ok(remote) => {
                 self.control
                     .latency
-                    .store(started.latency, Ordering::Release);
+                    .store(remote.latency(), Ordering::Release);
                 *self
                     .control
                     .error
                     .lock()
                     .unwrap_or_else(PoisonError::into_inner) = None;
-                return Some(Box::new(PluginBlock {
-                    processor: Some(started.processor),
-                    latency: started.latency,
-                    instance: started.instance,
-                    handle: self.handle.clone(),
+                let mut hosts = self
+                    .control
+                    .hosts
+                    .lock()
+                    .unwrap_or_else(PoisonError::into_inner);
+                // Hosts of chains made before (and dropped since) are forgotten.
+                hosts.retain(|status| status.failure().is_none());
+                hosts.push(remote.status());
+                drop(hosts);
+                Some(Box::new(PluginBlock {
+                    remote,
                     control: Arc::clone(&self.control),
                     seen: u64::MAX,
-                }));
+                }))
             }
-            Ok(Err(error)) => error.to_string(),
-            Err(_) => format!("the plugin \"{}\" did not start in time", self.id),
-        };
-        *self
-            .control
-            .error
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner) = Some(error);
-        None
+            Err(error) => {
+                *self
+                    .control
+                    .error
+                    .lock()
+                    .unwrap_or_else(PoisonError::into_inner) = Some(error.to_string());
+                None
+            }
+        }
     }
 }
 
 /// One running plugin in one chain (on the audio thread).
 struct PluginBlock {
-    /// Taken when the block is dropped, to go back to the plugin thread.
-    processor: Option<Processor>,
-    /// Frames its sound comes out late.
-    latency: u32,
-    instance: u64,
-    handle: PluginHandle,
+    remote: RemoteEffect,
     control: Arc<PluginControl>,
     /// The parameter version played with now.
     seen: u64,
@@ -172,44 +166,33 @@ struct PluginBlock {
 
 impl ExternalBlock for PluginBlock {
     fn process(&mut self, left: &mut [f32], right: &mut [f32]) {
-        let Some(processor) = &mut self.processor else {
-            return;
-        };
         let version = self.control.version.load(Ordering::Acquire);
         // Never wait for the lock here: a change missed now is taken on the next block.
         if version != self.seen
             && let Ok(values) = self.control.values.try_lock()
         {
             for &(id, value) in values.iter() {
-                processor.set_param(id, value);
+                self.remote.set_param(id, value);
             }
             self.seen = version;
         }
-        if processor.process(left, right).is_err() {
-            self.control.failed.store(true, Ordering::Release);
-        }
+        self.remote.process(left, right);
     }
 
     fn reset(&mut self) {
-        if let Some(processor) = &mut self.processor {
-            processor.reset();
-        }
+        self.remote.reset();
+    }
+
+    fn set_offline(&mut self, offline: bool) {
+        self.remote.set_offline(offline);
     }
 
     fn latency(&self) -> u32 {
-        // A plugin that failed is bypassed: its sound is no longer late.
-        match &self.processor {
-            Some(processor) if !processor.failed() => self.latency,
-            _ => 0,
-        }
-    }
-}
-
-impl Drop for PluginBlock {
-    fn drop(&mut self) {
-        // Chains are freed off the audio thread: the plugin thread deactivates it.
-        if let Some(processor) = self.processor.take() {
-            self.handle.stop(self.instance, processor);
+        // A plugin that stopped is bypassed: its sound is no longer late.
+        if self.remote.failed() {
+            0
+        } else {
+            self.remote.latency()
         }
     }
 }

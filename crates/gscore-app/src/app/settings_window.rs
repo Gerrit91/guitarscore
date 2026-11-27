@@ -868,9 +868,10 @@ impl GuitarScoreApp {
         ui.label(
             RichText::new(
                 "A track's sound chain can hold CLAP effects installed on this computer \
-                 (~/.clap, /usr/lib/clap, or the folders in CLAP_PATH). They run inside \
-                 GuitarScore for now: a plugin that crashes takes the app with it, so save \
-                 often. Off, their places pass the sound unchanged.",
+                 (~/.clap, /usr/lib/clap, or the folders in CLAP_PATH). Each runs in a \
+                 process of its own: one that crashes or hangs falls silent with a message \
+                 and can be restarted, GuitarScore keeps running. Off, their places pass \
+                 the sound unchanged.",
             )
             .weak(),
         );

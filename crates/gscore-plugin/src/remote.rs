@@ -41,9 +41,12 @@ pub const START_WAIT: Duration = Duration::from_secs(20);
 const MAX_PARAMS: usize = 256;
 /// The host program's name.
 const HOST: &str = "guitarscore-plugin-host";
+/// Started with this argument, the GuitarScore app serves as a plugin host itself (see
+/// [`crate::serve`]), so a release needs no program of its own for it.
+pub const HOST_FLAG: &str = "--plugin-host";
 
-/// Where the host program is: `GSCORE_PLUGIN_HOST` if set, else next to the running
-/// program (or a few folders up, where `cargo test` runs from).
+/// The dedicated host program, if there is one: `GSCORE_PLUGIN_HOST` if set, else next to
+/// the running program (or a few folders up, where `cargo test` runs from).
 pub fn host_program() -> Option<PathBuf> {
     if let Some(path) = std::env::var_os("GSCORE_PLUGIN_HOST") {
         return Some(PathBuf::from(path));
@@ -55,6 +58,19 @@ pub fn host_program() -> Option<PathBuf> {
         .take(5)
         .map(|dir| dir.join(&name))
         .find(|path| path.is_file())
+}
+
+/// How a host is started: the dedicated program, or else the running program (the app)
+/// with [`HOST_FLAG`].
+fn host_command() -> Result<Command, String> {
+    if let Some(program) = host_program() {
+        return Ok(Command::new(program));
+    }
+    let exe = std::env::current_exe()
+        .map_err(|e| format!("cannot find the program to host plugins: {e}"))?;
+    let mut command = Command::new(exe);
+    command.arg(HOST_FLAG);
+    Ok(command)
 }
 
 /// One block on its way: sound and the parameter changes to apply before it.
@@ -102,6 +118,27 @@ impl Health {
     }
 }
 
+/// How a host is doing, readable from any thread (see [`RemoteEffect::status`]).
+#[derive(Debug, Clone)]
+pub struct Status(Arc<Health>);
+
+impl Status {
+    /// Why the plugin stopped playing, if it did.
+    pub fn failure(&self) -> Option<String> {
+        if !self.0.failed.load(Ordering::Acquire) {
+            return None;
+        }
+        Some(
+            self.0
+                .why
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .clone()
+                .unwrap_or_else(|| "the plugin stopped".into()),
+        )
+    }
+}
+
 /// A plugin running in a host process: the audio thread's side.
 #[derive(Debug)]
 pub struct RemoteEffect {
@@ -130,6 +167,8 @@ pub struct RemoteEffect {
     reset: bool,
     /// A block that came back before its turn (one before it was lost).
     early: Option<Packet>,
+    /// Rendering offline: each block is waited for instead of played as silence.
+    offline: bool,
 }
 
 impl RemoteEffect {
@@ -229,6 +268,7 @@ impl RemoteEffect {
             pending: Vec::with_capacity(MAX_PARAMS),
             reset: false,
             early: None,
+            offline: false,
         })
     }
 
@@ -239,14 +279,24 @@ impl RemoteEffect {
 
     /// Why the plugin stopped playing (it crashed, hung or failed), if it did.
     pub fn failure(&self) -> Option<String> {
-        if !self.health.failed.load(Ordering::Acquire) {
-            return None;
-        }
-        self.health
-            .why
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .clone()
+        self.status().failure()
+    }
+
+    /// Whether the plugin stopped playing (cheap; for the audio thread).
+    pub fn failed(&self) -> bool {
+        self.health.failed.load(Ordering::Acquire)
+    }
+
+    /// A handle to how the host is doing, to be read on another thread.
+    pub fn status(&self) -> Status {
+        Status(Arc::clone(&self.health))
+    }
+
+    /// Rendering offline (an export, faster than real time): [`Self::process`] waits for
+    /// each block (up to [`WATCHDOG`]) instead of playing silence for one not back yet.
+    /// Not for the audio thread.
+    pub fn set_offline(&mut self, offline: bool) {
+        self.offline = offline;
     }
 
     /// Sets parameter `id` to `value` from the next block sent on.
@@ -346,6 +396,10 @@ impl RemoteEffect {
         loop {
             let packet = match self.early.take() {
                 Some(packet) => packet,
+                None if self.offline => match self.incoming.recv_timeout(WATCHDOG) {
+                    Ok(packet) => packet,
+                    Err(_) => return None,
+                },
                 None => match self.incoming.try_recv() {
                     Ok(packet) => packet,
                     Err(TryRecvError::Empty | TryRecvError::Disconnected) => return None,
@@ -512,14 +566,12 @@ fn read_blocks(
 
 /// Starts a host program.
 fn spawn() -> Result<(Child, ChildStdin, BufReader<ChildStdout>), String> {
-    let program = host_program()
-        .ok_or_else(|| format!("{HOST} is missing (it belongs next to GuitarScore)"))?;
-    let mut child = Command::new(&program)
+    let mut child = host_command()?
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
         .spawn()
-        .map_err(|e| format!("cannot start {}: {e}", program.display()))?;
+        .map_err(|e| format!("cannot start the plugin host: {e}"))?;
     let (Some(stdin), Some(stdout)) = (child.stdin.take(), child.stdout.take()) else {
         stop(&mut child);
         return Err("the plugin host has no pipes".into());

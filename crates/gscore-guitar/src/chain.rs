@@ -334,6 +334,16 @@ impl Chain {
         self.output = 10.0_f32.powf(db / 20.0);
     }
 
+    /// Tells its external blocks that it renders offline (an export): they may wait for
+    /// their sound rather than keep pace with a device.
+    pub fn set_offline(&mut self, offline: bool) {
+        for block in &mut self.blocks {
+            if let Block::External(instance) = block {
+                instance.0.set_offline(offline);
+            }
+        }
+    }
+
     /// How many frames late the chain's sound comes out: the latencies of its external
     /// blocks that play (a bypassed one's sound does not pass it, so is not late).
     pub fn latency(&self) -> u32 {

@@ -20,6 +20,10 @@ pub trait ExternalBlock: Send {
     fn latency(&self) -> u32 {
         0
     }
+
+    /// Rendering offline (an export, faster than real time): the block may wait for its
+    /// sound instead of dropping what is not ready in time.
+    fn set_offline(&mut self, _offline: bool) {}
 }
 
 /// What makes the instances of an external block: one per chain it is placed in.

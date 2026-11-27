@@ -61,6 +61,22 @@ fn sound_comes_back_from_the_host_at_the_stated_latency() {
 }
 
 #[test]
+fn offline_every_block_is_waited_for() {
+    // An export renders as fast as it can: nothing may be lost to the pace.
+    let mut effect = RemoteEffect::start(&library_path(), ID, &[], CONFIG).unwrap();
+    effect.set_offline(true);
+    effect.set_param(GAIN, 0.5);
+    let mut out = Vec::new();
+    for _ in 0..200 {
+        let (mut left, mut right) = (vec![0.5_f32; 64], vec![0.5_f32; 64]);
+        effect.process(&mut left, &mut right);
+        out.extend(left);
+    }
+    let lead = PROCESS_LATENCY as usize;
+    assert!(out[lead..].iter().all(|&s| (s - 0.25).abs() < 1e-6));
+}
+
+#[test]
 fn a_plugin_that_crashes_only_bypasses_itself() {
     let mut effect = RemoteEffect::start(&library_path(), ID, &[], CONFIG).unwrap();
     let _ = play(&mut effect, 20);

@@ -9,9 +9,9 @@
 //! `unsafe` is confined to `src/library.rs` (and the test plugin,
 //! `examples/test_plugin.rs`); everything else goes through clack's safe wrappers.
 //!
-//! Native builds only: there are no plugins in the browser. A plugin's code can still
-//! crash or hang in ways Rust cannot catch; the separate host process (a later step of
-//! M24) is what keeps such a crash away from the app.
+//! Native builds only: there are no plugins in the browser. A plugin's code can crash or
+//! hang in ways Rust cannot catch, so the app runs each plugin in a host process of its
+//! own ([`remote`], [`serve`]): a crash takes only that process down.
 
 mod effect;
 mod error;
@@ -20,7 +20,6 @@ mod library;
 pub mod remote;
 mod scan;
 mod serve;
-mod thread;
 mod wire;
 
 pub use effect::{AudioConfig, Effect, Param, Processor, Requests};
@@ -28,7 +27,6 @@ pub use error::PluginError;
 pub use library::{Library, PluginInfo};
 pub use scan::{bundles_in, default_dirs};
 pub use serve::serve;
-pub use thread::{Description, PluginHandle, PluginThread, Scanned, Started};
 
 /// How the host introduces itself to plugins.
 const HOST_NAME: &str = "GuitarScore";

@@ -175,7 +175,10 @@ pub fn write_wav_part_with(
         engine.set_track_model(track, Some(model));
     }
     for (track, spec, knobs) in chains {
-        if let Some(chain) = prepare_chain(spec, knobs, sample_rate) {
+        if let Some(mut chain) = prepare_chain(spec, knobs, sample_rate) {
+            // Rendered faster than real time: a plugin in a host process waits for its
+            // sound instead of keeping a device's pace.
+            chain.set_offline(true);
             let _ = engine.set_chain(*track, Some(chain), *knobs);
         }
     }

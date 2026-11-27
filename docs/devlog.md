@@ -7352,3 +7352,22 @@ parameter view, the blob with the tone, latency made up, offline WAV export).
 - **Flaky test fixed:** `stop_goes_back_to_where_playback_started_when_asked` failed about
   one run in three, with or without these changes: `harness.run()` after Space gave up
   while the toolbar repainted for the playing position. Now a step.
+
+## 2026-11-27 — M24 step 3: every plugin in a process of its own
+
+- `gscore_plugin::remote` (app side) and `serve` (host side), messages in `wire.rs`. The
+  app binary serves as the host with `--plugin-host`; `guitarscore-plugin-host` is the same
+  as a program of its own (tests). Pipes only, no new `unsafe`.
+- The audio thread hands 64-frame blocks over bounded channels and takes them back 8
+  blocks later (512 frames, added to the plugin's latency and made up); a late block is
+  silence. Offline (WAV export) each block is waited for. Found while testing: the reader
+  reused the audio side's returned packets for its answers, so nothing went back to the
+  free pool and every block after the 24th was dropped; answers now get new packets.
+- A watchdog thread (its first place, the writer, blocked on the full pipe of a hung host)
+  stops a host silent for 2 s; a crash, a hang or nonsense bypasses the plugin with the
+  reason, and the block offers Restart. Describe and scan run in hosts of their own.
+- The in-app plugin thread (`thread.rs`) is gone: nothing used it any more.
+- Tests (`test_remote.rs`): sound back at the stated latency, offline, a crash (the test
+  plugin's Crash switch aborts its process) and a hang (Hang switch) each noticed and
+  bypassed, describe, scan, errors. `cargo test --test x` alone does not rebuild the test
+  plugin (an example): run the package's tests.

@@ -78,16 +78,27 @@ amp model, an impulse response, a sample library).
 - Changes made in the editor come back as parameter events and the "settings changed"
   request: the egui view and the saved blob follow, and one gesture is one undo step.
 
-## Never crash: the host process (step 3)
+## Never crash: the host process (step 3, built 2026-11-27)
 
-- A helper binary runs the plugins. The app talks to it over a pipe (commands) and shared
-  memory (audio). The audio thread never waits on it: a plugin's output is used one block
-  later, and that latency is made up like a plugin's own latency. A block that is not
-  ready in time is silence, and repeated misses bypass the plugin.
-- If the process dies or hangs (watchdog), its plugins are bypassed, the user gets a
-  message, and they can be restarted. Editing continues.
-- Scanning runs in that process too, in the background. A library that crashes while
-  being scanned goes on a blocklist (kept in the settings, and the user can clear it).
+- Every plugin runs in a host process of its own: the app itself started with
+  `--plugin-host` (so a release ships nothing extra), or `guitarscore-plugin-host` (a binary
+  of `gscore-plugin`, used by its tests) when it lies next to the program. Describing a
+  plugin and listing a library's plugins run in short-lived hosts of their own too, so
+  opening the plugin list or the parameter view cannot crash the app either.
+- Pipes, not shared memory: the messages (`wire.rs`) go over the host's stdin and stdout,
+  framed, every length capped, what the host sends read as hostile (a plugin with a memory
+  fault can write anything). No `unsafe` beyond the one load.
+- The audio thread never waits: it hands 64-frame blocks to a writer thread and takes
+  answers from a reader thread through bounded channels, with packets that circulate (no
+  allocation on the audio thread), and plays each block 8 blocks (512 frames) after it
+  sent it. That fixed delay is added to the plugin's latency and made up by the mixer. A
+  block not back in time is silence and is dropped when it comes. An export renders
+  offline: there each block is waited for.
+- A watchdog thread stops a host that leaves blocks unanswered for 2 s. A crash (the pipe
+  ends), a hang or nonsense bypasses the plugin: its place passes the sound, the block
+  says why and offers Restart (the chain is made again).
+- Open: a blocklist of libraries that crash while scanned (today they are listed with
+  their error at every scan); the parameter view of a plugin that stopped.
 
 ## Steps
 
@@ -138,7 +149,7 @@ loops and seeks: left for later if the delay bothers.
 Open: the cursor runs ahead of what is heard by the compensation (as by the device's own
 latency today); WAV export starts that much later.
 3. The host process, the watchdog and background scanning with the blocklist. Plugins
-   leave "experimental" only after this step.
+   leave "experimental" only after this step. *Built 2026-11-27, blocklist open.*
 4. Plugin editors in the host process (X11 through XWayland on Linux).
 5. A CLAP instrument as a track's sound (notes, bends and slides as CLAP note events and
    expressions; tempo and transport).

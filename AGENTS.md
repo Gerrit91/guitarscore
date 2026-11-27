@@ -318,7 +318,8 @@ commands. Details of every step are in `docs/devlog.md`; known shortfalls in
   - Steps: 1 a CLAP effect, headless (*done 2026-11-26*: `gscore-plugin`,
     `gscore-cli plugins --check`); 2 the plugin block in a sound chain (in process,
     experimental; *2a-2c done 2026-11-26*: track chains, parameter view, saved with the
-    tone; open: latency, export, master, buses, drum parts); 3 the host process, watchdog and scanning; 4 editors; 5 a CLAP
+    tone; open: latency, export, master, buses, drum parts); 3 the host process, watchdog and scanning (*built 2026-11-27*: a process per plugin,
+    pipes, watchdog, Restart; blocklist open); 4 editors; 5 a CLAP
     instrument; 6 VST3.
   - **Done when:** the owner plays a song through CLAP effects and an instrument of their
     choice, opens their editors, saves and reopens it with the same sound, and a crashing
